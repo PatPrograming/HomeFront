@@ -1,13 +1,15 @@
 """Single DynamoDB table `mandate` (brief §6.4): key builders and item shapes.
 
-Item field names are camelCase, the same spelling stored in DynamoDB.
+Attributes are snake_case; items are stored in DynamoDB with camelCase keys (see wire.py).
 """
 
 from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
+
+from .wire import WireModel
 
 TABLE_NAME = "mandate"
 META = "META"
@@ -34,18 +36,18 @@ def event_key(ts: str, event_id: str) -> dict[str, str]:
     return {"pk": f"EVENTS#{ts[:10]}", "sk": f"{ts}#{event_id}"}
 
 
-class SessionItem(BaseModel):
+class SessionItem(WireModel):
     """SESSION#<sid> / META. The broker creates it; Offboard sets status=revoked."""
 
     status: Literal["active", "revoked"]
     agent: str
-    actingFor: str
+    acting_for: str
     office: str
     mode: Literal["official", "campaign"]
-    createdAt: str  # ISO-8601, UTC
+    created_at: str  # ISO-8601, UTC
 
 
-class StafferItem(BaseModel):
+class StafferItem(WireModel):
     """STAFFER#<id> / META. Offboard sets active=False."""
 
     active: bool
@@ -53,21 +55,19 @@ class StafferItem(BaseModel):
     role: Literal["staffer", "admin"]
 
 
-class CaseItem(BaseModel):
+class CaseItem(WireModel):
     """CASE#<id> / META. The gateway reads `office` from here, never from tool input."""
 
     office: str
     constituent: str
-    constituentEmail: str
+    constituent_email: str
     topic: str
     status: str
     notes: str = ""
 
 
-class EmailItem(BaseModel):
+class EmailItem(WireModel):
     """EMAIL#<id> / META. Body is untrusted public input."""
-
-    model_config = ConfigDict(populate_by_name=True)
 
     from_: str = Field(alias="from")  # `from` is a Python keyword
     subject: str

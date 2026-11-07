@@ -68,7 +68,7 @@ def test_ts_types_match_python():
     ts_tools = re.search(r"TOOL_NAMES = \[(.*?)\]", ts, re.S).group(1)
     assert re.findall(r'"(\w+)"', ts_tools) == list(TOOLS)
     ts_event = re.search(r"interface DecisionEvent \{(.*?)\}", ts, re.S).group(1)
-    assert re.findall(r"(\w+):", ts_event) == list(DecisionEvent.model_fields)
+    assert re.findall(r"(\w+):", ts_event) == [f.alias or n for n, f in DecisionEvent.model_fields.items()]
     ts_claims = re.search(r"interface MandateClaims \{(.*?)\}", ts, re.S).group(1)
     assert re.findall(r"(\w+):", ts_claims) == list(MandateClaims.model_fields)
     ts_reason = re.search(r"type Reason =(.*?);", ts, re.S).group(1)
@@ -110,12 +110,14 @@ def test_ddb_items():
     email = EmailItem.model_validate({"from": "a@b.gov", "subject": "s", "body": "b"})
     assert email.model_dump(by_alias=True) == {"from": "a@b.gov", "subject": "s", "body": "b"}
     with pytest.raises(ValueError):
-        SessionItem(status="paused", agent="a", actingFor="m", office="rep-x", mode="official", createdAt="t")
+        SessionItem(status="paused", agent="a", acting_for="m", office="rep-x", mode="official", created_at="t")
+    session = SessionItem(status="active", agent="a", acting_for="m", office="rep-x", mode="official", created_at="t")
+    assert set(session.model_dump()) == {"status", "agent", "actingFor", "office", "mode", "createdAt"}
 
 
 def test_sample_events_validate():
     for raw in json.loads((PKG / "samples" / "events.json").read_text()):
-        DecisionEvent.model_validate(raw)
+        assert DecisionEvent.model_validate(raw).model_dump(mode="json") == raw
 
 
 def test_dev_token_round_trip():
