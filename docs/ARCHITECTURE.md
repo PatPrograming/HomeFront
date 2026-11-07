@@ -17,7 +17,7 @@
 
 | Layer          | Choice                                   | Notes                                              |
 |----------------|------------------------------------------|----------------------------------------------------|
-| Frontend       | TODO (e.g. React / Next.js)              | Uses `supabase-js` for auth only                   |
+| Frontend       | React 18 + Vite (`Frontend/`)            | `supabase-js` for auth; all API calls via `src/lib/api.js` |
 | Backend API    | FastAPI (Python)                         | Single service. Flask dropped (see §9)             |
 | Auth           | Supabase Auth                            | Issues JWTs. The backend never handles passwords   |
 | Database       | Supabase Postgres                        | Row Level Security (RLS) turned on                 |
@@ -175,7 +175,6 @@ HomeFront/
 - [ ] Rate limiting on public endpoints (TODO)
 
 ## 12. Open Questions
-- TODO: Frontend framework?
 - TODO: Which OAuth providers?
 - TODO: Do we need roles or admin users?
 - TODO: Where in AWS do we deploy the backend?

@@ -29,18 +29,17 @@ export default function App() {
   )
 
   const refresh = useCallback(async () => {
-    const [a, t, au, m, h] = await Promise.all([
+    const [a, t, au, m] = await Promise.all([
       api.agents(),
       api.tools(),
       api.audit(),
       api.matrix(),
-      api.health(),
     ])
     setAgents(a)
     setTools(t)
     setAudit(au)
     setMatrix(m)
-    setAtlasVersion(h.atlas_version)
+    setAtlasVersion(m.atlas_version)
   }, [])
 
   useEffect(() => {
