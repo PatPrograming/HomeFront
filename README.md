@@ -2,41 +2,48 @@
 
 AWS × A10 Hackathon — **Prompt 1: Agentic Identity**
 
-Secure and manage AI agents with workload identity, fine-grained MCP tool grants, mid-task revocation, and **MITRE ATLAS** enrichment on every allow/deny.
+Government-agency agents that email, post/reply on social, scrape the web, and query **api.data.gov** — behind **Supabase user auth** plus **agent workload identity**, fine-grained MCP tool grants, mid-task revoke, and **MITRE ATLAS** labels on every allow/deny.
 
-## What this demo shows
+## What the demo shows
 
 1. Authenticate an agency agent (workload token)
 2. Allow selected MCP tools (`web.scrape`, `datagov.search`, `email.send`, …)
 3. Revoke a grant mid-task
 4. Block the next call — response tagged **`AML.T0053`** / **`AML.M0028`**
 
-ATLAS data is **vendored** from [mitre-atlas/atlas-data](https://github.com/mitre-atlas/atlas-data) (Agentic AI subset). There is no dependency on MITRE’s authoring API at runtime.
+ATLAS data is **vendored** from [mitre-atlas/atlas-data](https://github.com/mitre-atlas/atlas-data) (Agentic AI subset). Runtime does not call MITRE’s authoring API.
 
 ## Quick start
 
 ```bash
-# Terminal 1 — identity gateway + ATLAS enricher
-chmod +x scripts/*.sh
-./scripts/run-gateway.sh
+# Optional: copy Backend/.env.example → Backend/.env and fill Supabase keys
+# (agent IAM demo works with defaults; /api/v1/me needs real Supabase)
 
-# Terminal 2 — demo console
-./scripts/run-demo.sh
+chmod +x scripts/*.sh
+./scripts/run-gateway.sh   # unified API on :8080
+
+# other terminal
+./scripts/run-demo.sh      # agent IAM console on :5173
 ```
 
-- API: http://127.0.0.1:8080/docs  
-- Console: http://127.0.0.1:5173  
+- API docs: http://127.0.0.1:8080/docs  
+- User API: `/api/v1/health`, `/api/v1/me` (Supabase JWT)  
+- Agent IAM: `/auth/token`, `/mcp/call`, `/atlas/*`, `/agents/...`  
 
-Optional: set `DATA_GOV_API_KEY` and `HOMEFRONT_LIVE_DATAGOV=1` for live api.data.gov calls (key never returned to the agent).
+Optional: `DATA_GOV_API_KEY` and `HOMEFRONT_LIVE_DATAGOV=1` for live api.data.gov (key never returned to the agent).
 
 ## Layout
 
 ```
-packages/atlas-pack/       # build script + atlas-agentic-pack.json
+Backend/                   # FastAPI — Supabase auth + mounted agent IAM/ATLAS
+Frontend/                  # User-facing app (supabase-js) — see Frontend/README
+packages/atlas-pack/       # vendored ATLAS Agentic pack + build script
 packages/atlas-enricher/   # local ATLAS lookup + annotate
-packages/identity-gateway/ # authZ + revoke + MCP call proxy
+packages/identity-gateway/ # agent workload identity, grants, MCP authZ
 packages/mcp-tools/        # email / social / scrape / data.gov tools
-apps/demo-console/         # operator UI
+apps/demo-console/         # operator UI for the agent IAM demo
+supabase/migrations/       # profiles + RLS
+docs/ARCHITECTURE.md       # system design
 ```
 
 ## Rebuild ATLAS pack

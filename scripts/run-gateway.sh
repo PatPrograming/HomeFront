@@ -8,9 +8,10 @@ if [[ ! -d .venv ]]; then
 fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
-pip install -q -r requirements.txt
+pip install -q -r Backend/requirements.txt
 
-export PYTHONPATH="$ROOT/packages/atlas-enricher/src:$ROOT/packages/mcp-tools/src:$ROOT/packages/identity-gateway/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$ROOT/Backend:$ROOT/packages/atlas-enricher/src:$ROOT/packages/mcp-tools/src:$ROOT/packages/identity-gateway/src${PYTHONPATH:+:$PYTHONPATH}"
 export HOMEFRONT_LIVE_DATAGOV="${HOMEFRONT_LIVE_DATAGOV:-0}"
 
-exec python -m uvicorn identity_gateway.app:app --host 0.0.0.0 --port 8080
+# Unified API: Supabase user auth (/api/v1/*) + agent IAM + ATLAS (/, /atlas, /mcp, …)
+exec python -m uvicorn app.main:app --app-dir Backend --host 0.0.0.0 --port 8080
