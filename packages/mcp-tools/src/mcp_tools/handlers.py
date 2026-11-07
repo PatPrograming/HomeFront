@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any
+from typing import Any, Callable
+
+DATAGOV_SEARCH_URL = "https://api.gsa.gov/technology/datagov/v4/search"
 
 
 def _args_hash(args: dict[str, Any]) -> str:
@@ -86,16 +89,74 @@ def handle_web_scrape(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def handle_datagov_search(args: dict[str, Any]) -> dict[str, Any]:
-    """Search via api.data.gov using a gateway-held key. Never return the key."""
-    query = args.get("q") or args.get("query") or "climate"
-    api_key = os.environ.get("DATA_GOV_API_KEY") or "DEMO_KEY"
-    # Key is used server-side only; response must not echo it.
-    base = "https://api.gsa.gov/technology/datagov/v4/search"
-    url = f"{base}?{urllib.parse.urlencode({'q': query})}"
-    live = os.environ.get("HOMEFRONT_LIVE_DATAGOV", "1") == "1"
+def _datagov_api_key() -> str:
+    return (os.environ.get("DATA_GOV_API_KEY") or "").strip()
 
-    if not live:
+
+def _datagov_live_enabled() -> bool:
+    flag = (os.environ.get("HOMEFRONT_LIVE_DATAGOV") or "").strip().lower()
+    if flag in {"1", "true", "yes", "on"}:
+        return True
+    if flag in {"0", "false", "no", "off"}:
+        return False
+    return bool(_datagov_api_key())
+
+
+def _normalize_datagov_results(payload: Any, limit: int = 8) -> list[dict[str, Any]]:
+    """Pull a compact result list from Catalog API v4 (or similar) payloads."""
+    items: list[Any] = []
+    if isinstance(payload, dict):
+        for key in ("results", "dataset", "data", "items"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                items = value
+                break
+        if not items and isinstance(payload.get("result"), list):
+            items = payload["result"]
+    elif isinstance(payload, list):
+        items = payload
+
+    out: list[dict[str, Any]] = []
+    for item in items[:limit]:
+        if not isinstance(item, dict):
+            out.append({"title": str(item)})
+            continue
+        title = (
+            item.get("title")
+            or item.get("name")
+            or item.get("dataset_name")
+            or item.get("id")
+            or "Untitled dataset"
+        )
+        publisher = (
+            item.get("publisher")
+            or item.get("organization")
+            or item.get("agency")
+            or item.get("owner_org")
+        )
+        if isinstance(publisher, dict):
+            publisher = publisher.get("name") or publisher.get("title")
+        out.append(
+            {
+                "title": title,
+                "publisher": publisher,
+                "id": item.get("id") or item.get("identifier"),
+                "notes": (item.get("notes") or item.get("description") or "")[:240] or None,
+            }
+        )
+    return out
+
+
+def handle_datagov_search(args: dict[str, Any]) -> dict[str, Any]:
+    """Search via api.data.gov Catalog API using a gateway-held key. Never return the key."""
+    query = args.get("q") or args.get("query") or "climate"
+    api_key = _datagov_api_key() or "DEMO_KEY"
+    params = {"q": query}
+    if args.get("page"):
+        params["page"] = str(args["page"])
+    url = f"{DATAGOV_SEARCH_URL}?{urllib.parse.urlencode(params)}"
+
+    if not _datagov_live_enabled():
         return {
             "status": "ok",
             "simulated": True,
@@ -105,17 +166,58 @@ def handle_datagov_search(args: dict[str, Any]) -> dict[str, Any]:
             ],
             "credentials_exposed": False,
             "atlas_note": "X-Api-Key retained by gateway (AML.M0026).",
+            "hint": "Set DATA_GOV_API_KEY in Backend/.env to enable live api.data.gov searches.",
         }
 
     try:
-        req = urllib.request.Request(url, headers={"X-Api-Key": api_key, "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read(20000).decode("utf-8", errors="replace")
-        # Do not include request headers or api_key in the result.
+        req = urllib.request.Request(
+            url,
+            headers={
+                "X-Api-Key": api_key,
+                "Accept": "application/json",
+                "User-Agent": "HomeFront/0.1",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read(100_000).decode("utf-8", errors="replace")
+            status_code = getattr(resp, "status", 200)
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return {
+                "status": "error",
+                "query": query,
+                "error": "Non-JSON response from api.data.gov",
+                "raw_preview": raw[:500],
+                "credentials_exposed": False,
+                "atlas_note": "X-Api-Key retained by gateway (AML.M0026).",
+            }
+
+        results = _normalize_datagov_results(payload)
         return {
             "status": "ok",
+            "simulated": False,
+            "source": "api.data.gov Catalog API v4",
             "query": query,
-            "raw_preview": raw[:4000],
+            "http_status": status_code,
+            "result_count": len(results),
+            "results": results,
+            "credentials_exposed": False,
+            "using_demo_key": api_key == "DEMO_KEY",
+            "atlas_note": "X-Api-Key retained by gateway (AML.M0026).",
+        }
+    except urllib.error.HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", errors="replace")[:800]
+        except Exception:
+            pass
+        return {
+            "status": "error",
+            "query": query,
+            "error": f"HTTP {exc.code}: {exc.reason}",
+            "detail_preview": body,
             "credentials_exposed": False,
             "atlas_note": "X-Api-Key retained by gateway (AML.M0026).",
         }

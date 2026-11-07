@@ -30,7 +30,16 @@ chmod +x scripts/*.sh
 - User API: `/api/v1/health`, `/api/v1/me` (Supabase JWT)  
 - Agent IAM: `/auth/token`, `/mcp/call`, `/atlas/*`, `/agents/...`  
 
-Optional: `DATA_GOV_API_KEY` and `HOMEFRONT_LIVE_DATAGOV=1` for live api.data.gov (key never returned to the agent).
+### api.data.gov key
+
+1. Copy [`Backend/.env.example`](Backend/.env.example) → `Backend/.env`
+2. Paste your key:
+
+```bash
+DATA_GOV_API_KEY=your_key_here
+```
+
+3. Restart `./scripts/run-gateway.sh` — live Catalog search enables automatically. The key stays in the gateway (`AML.M0026`); agents never see it.
 
 ## Layout
 
