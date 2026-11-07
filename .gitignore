@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+node_modules/
+dist/
+*.egg-info/
+.DS_Store
+.env
+*.db
+apps/demo-console/dist/
