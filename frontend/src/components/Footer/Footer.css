@@ -1,0 +1,20 @@
+.footer {
+  height: 58px;
+  display: flex;
+  flex-direction: column;
+}
+
+.footer-top {
+  height: 17px;
+  background: var(--color-blue);
+}
+
+.footer-stripe {
+  height: 9px;
+  background: var(--color-light-yellow);
+}
+
+.footer-bottom {
+  flex: 1;
+  background: var(--color-blue);
+}

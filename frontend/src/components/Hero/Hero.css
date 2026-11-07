@@ -1,0 +1,80 @@
+.hero {
+  flex: 1;
+  min-height: 617px;
+  display: flex;
+  flex-wrap: wrap;
+  padding-left: 130px;
+  gap: 135px;
+}
+
+.hero-text {
+  width: 535px;
+  align-self: flex-end;
+  margin-bottom: 109px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.mission {
+  width: 100%;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 92pt;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 0 12px var(--text-glow), 3px 3px 6px var(--text-glow);
+}
+
+.mission span {
+  display: block;
+}
+
+.line-1 {
+  color: var(--color-white);
+}
+
+.line-2 {
+  color: var(--color-light-yellow);
+}
+
+.hero-buttons {
+  margin-top: 56px;
+  display: flex;
+  gap: 26px;
+}
+
+.btn {
+  width: 235px;
+  height: 76px;
+  border-radius: 16px;
+  font-family: var(--font-body);
+  font-size: 22px;
+  color: var(--color-black);
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--color-yellow);
+  border: 0;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 5px solid var(--color-white);
+}
+
+.demo-box {
+  width: 525px;
+  height: 471px;
+  align-self: flex-start;
+  margin-top: 39px;
+  background: var(--color-blue);
+  border: 5px solid var(--color-light-yellow);
+  color: var(--color-white);
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}

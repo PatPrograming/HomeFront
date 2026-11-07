@@ -1,0 +1,52 @@
+.navbar {
+  height: 91px;
+  display: flex;
+  align-items: center;
+  background: var(--navbar-gradient);
+  color: var(--color-white);
+}
+
+.nav-links {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  padding-right: 18px;
+}
+
+.nav-links a {
+  font-family: var(--font-nav);
+  font-weight: 700;
+  font-size: 24pt;
+  color: var(--color-white);
+  text-decoration: none;
+}
+
+.nav-links a:hover {
+  color: var(--color-yellow);
+}
+
+.hamburger {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  width: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+}
+
+.hamburger span {
+  display: block;
+  height: 6px;
+  background: var(--color-white);
+}
+
+.accent-bar {
+  height: 12px;
+  width: 535px;
+  max-width: 100%;
+  background: var(--color-yellow);
+  margin-top: -1px;
+}

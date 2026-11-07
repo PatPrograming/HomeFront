@@ -1,0 +1,15 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  min-height: 100vh;
+  /* Mountains over a 135deg gradient (light yellow top-left, light blue bottom-right) */
+  background-image: url("../assets/mountains.png"), var(--bg-gradient);
+  background-size: cover, 100% 100%;
+  background-position: center bottom, 0 0;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
