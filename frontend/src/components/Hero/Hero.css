@@ -1,0 +1,101 @@
+@import "../../styles/variables.css";
+
+@font-face {
+  font-family: "Obra Letra";
+  src: url("../../../fonts/KCObraLetraBold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  border: 2px solid var(--color-white);
+}
+
+.hero {
+  flex: 1;
+  min-height: 617px;
+  display: flex;
+  flex-direction: row;
+  margin-top: 52px;
+  padding-left: 130px;
+  gap: 120px; /* distance between the mission text and the demo box */
+}
+
+.hero-text {
+  width: 535px;
+  flex-shrink: 0;
+  padding: 92px 0 0;
+  align-self: flex-start;
+  justify-content: space-around;
+  display: flex;
+  flex-direction: column;
+}
+
+.mission {
+  width: 100%;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 92pt;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 0 12px var(--text-glow), 3px 3px 6px var(--text-glow);
+}
+
+.mission span {
+  display: block;
+}
+
+.line-1 {
+  color: var(--color-white);
+}
+
+.line-2 {
+  color: var(--color-light-yellow);
+}
+
+.hero-buttons {
+  margin-top: 56px;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  gap: 26px;
+}
+
+.btn {
+  width: 235px;
+  height: 76px;
+  border-radius: 16px;
+  font-family: var(--font-body);
+  font-size: 22px;
+  color: var(--color-black);
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--color-yellow);
+  border: 0;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 5px solid var(--color-white);
+}
+
+.demo-box {
+  width: 525px;
+  flex-shrink: 0;
+  min-height: 471px;
+  align-self: flex-start;
+  background: var(--color-blue);
+  border: 5px solid var(--color-light-yellow);
+  color: var(--color-white);
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}

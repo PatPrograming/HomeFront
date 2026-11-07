@@ -1,0 +1,12 @@
+.logo {
+  height: 91px;
+  flex-shrink: 0;
+  display: block;
+  background: var(--color-blue);
+}
+
+.logo-img {
+  height: 100%;
+  width: auto;
+  display: block;
+}

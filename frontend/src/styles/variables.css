@@ -1,0 +1,30 @@
+:root {
+  /* Palette */
+  --color-blue: #004f97;
+  --color-navy: #032a4e;
+  --color-light-blue: #b0eaf7;
+  --color-light-yellow: #ffb2a1;
+  --color-yellow: #c62b27;
+  --color-salmon: #ffb2a1;
+  --color-white: #ffffff;
+  --color-black: #010101;
+
+  /* Semantic */
+  --bg-gradient: linear-gradient(
+    135deg,
+    var(--color-light-yellow) 0%,
+    var(--color-light-blue) 100%
+  );
+  --navbar-gradient: linear-gradient(
+    90deg,
+    var(--color-blue) 0%,
+    var(--color-blue) 25%,
+    var(--color-light-yellow) 100%
+  );
+  --text-glow: var(--color-yellow);
+
+  /* Fonts */
+  --font-heading: "Obra Letra", sans-serif;
+  --font-nav: "Atkinson Hyperlegible", sans-serif;
+  --font-body: "Times New Roman", serif;
+}
