@@ -50,8 +50,8 @@ export default function Login() {
 
         {!configured && (
           <p role="alert">
-            Supabase isn&apos;t configured. Copy <code>Frontend/.env.example</code> to{" "}
-            <code>Frontend/.env</code> and fill in the values.
+            Supabase isn&apos;t configured. Copy <code>.env.example</code> to{" "}
+            <code>.env</code> at the repo root and fill in the values.
           </p>
         )}
 

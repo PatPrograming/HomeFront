@@ -166,7 +166,7 @@ def handle_datagov_search(args: dict[str, Any]) -> dict[str, Any]:
             ],
             "credentials_exposed": False,
             "atlas_note": "X-Api-Key retained by gateway (AML.M0026).",
-            "hint": "Set DATA_GOV_API_KEY in Backend/.env to enable live api.data.gov searches.",
+            "hint": "Set DATA_GOV_API_KEY in the repo-root .env to enable live api.data.gov searches.",
         }
 
     try:

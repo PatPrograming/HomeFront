@@ -10,7 +10,7 @@ fi
 source .venv/bin/activate
 pip install -q -r Backend/requirements.txt
 
-# Load Backend/.env without `source` (angle brackets in URLs break bash redirects).
+# Load repo-root .env without `source` (angle brackets in URLs break bash redirects).
 load_env_file() {
   local file="$1"
   [[ -f "$file" ]] || return 0
@@ -32,7 +32,7 @@ load_env_file() {
   done < "$file"
 }
 
-load_env_file "$ROOT/Backend/.env"
+load_env_file "$ROOT/.env"
 
 export PYTHONPATH="$ROOT/Backend:$ROOT/packages/atlas-enricher/src:$ROOT/packages/mcp-tools/src:$ROOT/packages/identity-gateway/src${PYTHONPATH:+:$PYTHONPATH}"
 

@@ -3,14 +3,13 @@
 React 18 + Vite. This is the main user-facing app.
 
 ```bash
-cp .env.example .env     # fill VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
-npm install
-npm run dev              # http://localhost:3000, proxies /api -> http://127.0.0.1:8080
+# From repo root — single shared env file
+cp .env.example .env     # fill SUPABASE_URL and SUPABASE_ANON_KEY (and DATA_GOV_API_KEY for the API)
+./scripts/run-gateway.sh
+./scripts/run-frontend.sh   # http://localhost:3000, proxies /api -> :8080
 ```
 
-Or from the repo root: `./scripts/run-frontend.sh`.
-
-Start the API first with `./scripts/run-gateway.sh`.
+`vite.config.js` sets `envDir` to the repo root and maps `SUPABASE_URL` / `SUPABASE_ANON_KEY` into `import.meta.env.VITE_*` so you do not need a separate `Frontend/.env`.
 
 ## Routes
 
@@ -19,19 +18,12 @@ Start the API first with `./scripts/run-gateway.sh`.
 | `/` | public | Home / hero |
 | `/login` | public | Sign in / sign up (Supabase) |
 | `/account` | required | Profile smoke test (`/api/v1/me`) |
-| `/monitoring` | required | Agent IAM console (Prompt 1): mint agent token, MCP tools, revoke, ATLAS audit |
+| `/monitoring` | required | Agent IAM console (Prompt 1) |
 
 ## How it talks to the backend
 
 - `src/lib/supabase.js`: Supabase client (sign up, log in, refresh). Public URL + anon key only.
-- `src/lib/api.js`: the only place that calls the backend. User routes attach `Authorization: Bearer <supabase access_token>`.
-- Agent MCP calls use a **separate** agent token from `POST /api/v1/auth/token` via `api.callTool(agentToken, …)`.
-- `src/lib/AuthProvider.jsx` / `src/components/RequireAuth.jsx`: session state and protected routes.
+- `src/lib/api.js`: calls `/api/v1/*`. User routes attach the Supabase access token.
+- Agent MCP calls use a separate agent token from `POST /api/v1/auth/token` via `api.callTool(agentToken, …)`.
 
-## Adding a backend call
-
-1. Add the endpoint in `Backend/app/routers/` (or agent IAM packages).
-2. Add one method to `api` in `src/lib/api.js`.
-3. Call it from a page. Wrap the route in `<RequireAuth>` if it needs a login.
-
-Never put the Supabase service role key here.
+Never put the Supabase service role key or api.data.gov key in any browser-exposed `VITE_*` variable.

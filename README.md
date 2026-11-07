@@ -16,8 +16,7 @@ ATLAS data is **vendored** from [mitre-atlas/atlas-data](https://github.com/mitr
 ## Quick start
 
 ```bash
-# Backend/.env — Supabase + DATA_GOV_API_KEY
-# Frontend/.env — VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
+cp .env.example .env   # once — fill SUPABASE_* and DATA_GOV_API_KEY
 
 chmod +x scripts/*.sh
 ./scripts/run-gateway.sh    # API on :8080
@@ -35,20 +34,15 @@ chmod +x scripts/*.sh
 - Everything is under `/api/v1`; Frontend proxies `/api` to :8080  
 - User API: `/api/v1/home`, `/api/v1/health`, `/api/v1/me` (Supabase JWT)  
 - Agent IAM: `/api/v1/auth/token`, `/api/v1/mcp/call`, `/api/v1/atlas/*`, `/api/v1/agents/...`  
-- Set `AGENT_ADMIN_REQUIRES_LOGIN=true` in `Backend/.env` to require a Supabase login for `/agents*`, `/auth/token` and `/audit`  
+- Set `AGENT_ADMIN_REQUIRES_LOGIN=true` in `.env` to require a Supabase login for `/agents*`, `/auth/token` and `/audit`  
 
-### Env files (not duplicates — different apps)
+### Env (one file for Backend + Frontend)
 
-| File | Holds |
-|------|--------|
-| [`Backend/.env`](Backend/.env.example) | `SUPABASE_*`, `DATA_GOV_API_KEY`, `ALLOWED_ORIGINS` |
-| [`Frontend/.env`](Frontend/.env.example) | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` only (public) |
-
-Never put the service role key or api.data.gov key in `Frontend/.env`.
+Copy [`.env.example`](.env.example) → `.env` at the **repo root**. Both the API and Vite frontend load it (`SUPABASE_*` for the server; Vite maps the same URL/anon key into the browser — service role and `DATA_GOV_API_KEY` never ship to the client).
 
 ### api.data.gov key
 
-1. Set in `Backend/.env`: `DATA_GOV_API_KEY=your_key_here`
+1. Set in `.env`: `DATA_GOV_API_KEY=your_key_here`
 2. Restart `./scripts/run-gateway.sh` — live Catalog search enables automatically. The key stays in the gateway (`AML.M0026`); agents never see it.
 
 ## Layout

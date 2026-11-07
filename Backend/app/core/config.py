@@ -5,8 +5,10 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
+_REPO_ROOT = _BACKEND_DIR.parent
 _ENV_FILES = (
-    str(_BACKEND_DIR / ".env"),
+    str(_REPO_ROOT / ".env"),
+    str(_BACKEND_DIR / ".env"),  # legacy fallback
     ".env",
 )
 
@@ -27,7 +29,7 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000,http://localhost:5173"
 
     # When true, agent management routes (/agents*, /auth/token, /audit) need a
-    # Supabase user JWT. Off by default so the standalone demo console still works.
+    # Supabase user JWT. Off by default for local demos.
     agent_admin_requires_login: bool = False
 
     # api.data.gov — gateway-held only; never returned to agents (AML.M0026).
