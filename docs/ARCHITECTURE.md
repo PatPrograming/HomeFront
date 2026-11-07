@@ -126,6 +126,8 @@ User-defined agents. Read and written by the gateway with the service role (`AGE
 
 Workload tokens and the audit log are still in memory.
 
+**API access** (`/agents*`, `/auth/token`, `/audit`): a signed-in user gets their own agents plus ownerless demo agents, and new agents are owned by the creator. Anonymous callers (only when `AGENT_ADMIN_REQUIRES_LOGIN=false`) get ownerless agents only. Other users' agents return `404`. An invalid user token is always `401`.
+
 ### Domain tables
 TODO: list HomeFront's own tables. Every table that belongs to a user should have a `user_id uuid references auth.users(id)` column and an RLS policy on it.
 

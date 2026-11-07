@@ -32,7 +32,22 @@ chmod +x scripts/*.sh
 - User API: `/api/v1/home`, `/api/v1/health`, `/api/v1/me` (Supabase JWT)  
 - Agent IAM: `/api/v1/auth/token`, `/api/v1/mcp/call`, `/api/v1/atlas/*`, `/api/v1/agents/...`  
 - Set `AGENT_ADMIN_REQUIRES_LOGIN=true` in `Backend/.env` to require a Supabase login for `/agents*`, `/auth/token` and `/audit`  
+- Agents are owner-scoped: a signed-in user sees and manages only their own agents plus ownerless demo agents (like `agent-comms-01`). Without a login, only the demo agents are reachable  
 - Set `AGENT_STORE=supabase` to keep agents in `public.agents` instead of memory (apply `supabase/migrations/` first; needs `SUPABASE_SERVICE_ROLE_KEY`)  
+
+### Running agents (Claude on Amazon Bedrock)
+
+1. In the AWS console, enable Bedrock model access for Claude Opus 5.5 (and Opus 4.8, the refusal fallback) in your region.
+2. In `Backend/.env`, set `BEDROCK_REGION` (e.g. `us-east-1`) and either `AWS_BEARER_TOKEN_BEDROCK` (a Bedrock API key) or standard AWS credentials (`AWS_PROFILE`, access keys, SSO).
+3. Restart the gateway, then start a run and poll it:
+
+```bash
+curl -X POST localhost:8080/api/v1/agents/agent-comms-01/runs \
+  -H 'Content-Type: application/json' -d '{"task": "Find data.gov datasets on flood risk and summarize them"}'
+curl localhost:8080/api/v1/agents/agent-comms-01/runs/<run_id>
+```
+
+The runner offers the model only the agent's granted tools, and sends every tool call through the same gateway checks as `/mcp/call`. A revoke mid-run blocks the next call, and the model is told it was denied. Runs stop after the agent's `max_steps`. Run history is in memory.
 
 ### api.data.gov key
 

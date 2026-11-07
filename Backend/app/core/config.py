@@ -35,6 +35,19 @@ class Settings(BaseSettings):
     # "supabase" uses public.agents via the service role key.
     agent_store: Literal["memory", "supabase"] = "memory"
 
+    # --- Agent runner: Claude on Amazon Bedrock ---------------------------
+    # Region enables the runner; empty = POST /agents/{id}/runs returns 503.
+    # Falls back to AWS_REGION / AWS_DEFAULT_REGION when unset.
+    bedrock_region: str = ""
+    # Auth: a Bedrock API key, else the standard AWS credential chain (env
+    # keys, AWS_PROFILE, SSO, instance role) signed with SigV4.
+    aws_bearer_token_bedrock: str = ""
+    aws_profile: str = ""
+    bedrock_model_id: str = "anthropic.claude-opus-5-5"
+    # Retried automatically if the primary model declines (refusal) a request.
+    bedrock_fallback_model_id: str = "anthropic.claude-opus-4-8"
+    runner_effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
+
     # api.data.gov — gateway-held only; never returned to agents (AML.M0026).
     data_gov_api_key: str = ""
     # When empty, live mode auto-enables if data_gov_api_key is set.
@@ -53,6 +66,16 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+    @property
+    def resolved_bedrock_region(self) -> str:
+        import os
+
+        return (
+            self.bedrock_region.strip()
+            or os.environ.get("AWS_REGION", "").strip()
+            or os.environ.get("AWS_DEFAULT_REGION", "").strip()
+        )
 
     @property
     def live_datagov(self) -> bool:
