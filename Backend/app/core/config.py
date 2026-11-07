@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str = ""  # legacy HS256 projects only
     allowed_origins: str = "http://localhost:3000,http://localhost:5173"
 
+    # When true, agent management routes (/agents*, /auth/token, /audit) need a
+    # Supabase user JWT. Off by default so the standalone demo console still works.
+    agent_admin_requires_login: bool = False
+
     # api.data.gov — gateway-held only; never returned to agents (AML.M0026).
     data_gov_api_key: str = ""
     # When empty, live mode auto-enables if data_gov_api_key is set.

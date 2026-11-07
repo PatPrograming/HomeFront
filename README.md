@@ -22,13 +22,16 @@ ATLAS data is **vendored** from [mitre-atlas/atlas-data](https://github.com/mitr
 chmod +x scripts/*.sh
 ./scripts/run-gateway.sh   # unified API on :8080
 
-# other terminal
+# other terminals
+./scripts/run-frontend.sh  # main app on :3000 (copy Frontend/.env.example → Frontend/.env first)
 ./scripts/run-demo.sh      # agent IAM console on :5173
 ```
 
 - API docs: http://127.0.0.1:8080/docs  
-- User API: `/api/v1/health`, `/api/v1/me` (Supabase JWT)  
-- Agent IAM: `/auth/token`, `/mcp/call`, `/atlas/*`, `/agents/...`  
+- Everything is under `/api/v1`; both frontends proxy `/api` to :8080  
+- User API: `/api/v1/home`, `/api/v1/health`, `/api/v1/me` (Supabase JWT)  
+- Agent IAM: `/api/v1/auth/token`, `/api/v1/mcp/call`, `/api/v1/atlas/*`, `/api/v1/agents/...`  
+- Set `AGENT_ADMIN_REQUIRES_LOGIN=true` in `Backend/.env` to require a Supabase login for `/agents*`, `/auth/token` and `/audit`  
 
 ### api.data.gov key
 
@@ -45,7 +48,7 @@ DATA_GOV_API_KEY=your_key_here
 
 ```
 Backend/                   # FastAPI — Supabase auth + mounted agent IAM/ATLAS
-Frontend/                  # User-facing app (supabase-js) — see Frontend/README
+Frontend/                  # User-facing React app (supabase-js) — see Frontend/README
 packages/atlas-pack/       # vendored ATLAS Agentic pack + build script
 packages/atlas-enricher/   # local ATLAS lookup + annotate
 packages/identity-gateway/ # agent workload identity, grants, MCP authZ
