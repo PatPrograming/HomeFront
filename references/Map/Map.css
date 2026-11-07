@@ -1,0 +1,56 @@
+@keyframes tooltipPop {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.92);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.tooltip-pop {
+    animation: tooltipPop 180ms cubic-bezier(.2, .8, .2, 1);
+    transform-origin: left bottom;
+}
+
+/* end anim*/
+@keyframes clubCountPulse {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.5);
+    }
+}
+
+.club-count-pulse {
+    animation: clubCountPulse 500ms ease-in-out 1;
+}
+
+.map-club-list-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: transparent;
+}
+.map-club-list-scroll > a:first-child > div {
+    border-top-left-radius: 0.75rem;
+}
+
+.map-club-list-scroll > a:last-child > div {
+    border-bottom-left-radius: 0.75rem;
+}
+
+/* Hide horizontal scrollbar for Chrome, Safari, and Opera */
+.body::-webkit-scrollbar:horizontal {
+    display: none;
+}
+
+/* Hide scrollbars for Firefox and IE/Edge */
+.body {
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox (Hides both vertical and horizontal) */
+}
