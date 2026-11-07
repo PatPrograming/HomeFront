@@ -8,20 +8,14 @@
   font-display: swap;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  border: 2px solid var(--color-white);
-}
-
 .hero {
   flex: 1;
   min-height: 617px;
   display: flex;
   flex-direction: row;
   margin-top: 52px;
-  padding-left: 130px;
+  justify-content: space-around;
+  align-items: center;
   gap: 120px; /* distance between the mission text and the demo box */
 }
 
