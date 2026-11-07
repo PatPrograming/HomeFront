@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.agent_iam import include_agent_iam
 from app.core.config import apply_datagov_env, get_settings
-from app.routers import health, profiles
+from app.routers import health, home, profiles
 
 API_PREFIX = "/api/v1"
 
@@ -28,10 +28,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router, prefix=API_PREFIX)
+    app.include_router(home.router, prefix=API_PREFIX)
     app.include_router(profiles.router, prefix=API_PREFIX)
 
-    # Prompt 1: agent identity, tool grants/revoke, ATLAS enrichment
-    include_agent_iam(app)
+    # Prompt 1: agent identity, tool grants/revoke, ATLAS enrichment (all under /api/v1)
+    include_agent_iam(app, prefix=API_PREFIX)
 
     return app
 

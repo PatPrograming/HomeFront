@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_BASE || '/api'
+const BASE = import.meta.env.VITE_API_BASE || '/api/v1'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -68,7 +68,6 @@ export type Matrix = {
 }
 
 export const api = {
-  health: () => request<{ status: string; atlas_version: string }>('/health'),
   agents: () => request<Agent[]>('/agents'),
   tools: () => request<Tool[]>('/tools'),
   audit: () => request<AuditEvent[]>('/audit?limit=80'),
