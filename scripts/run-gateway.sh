@@ -34,7 +34,7 @@ load_env_file() {
 
 load_env_file "$ROOT/.env"
 
-export PYTHONPATH="$ROOT/Backend:$ROOT/packages/atlas-enricher/src:$ROOT/packages/mcp-tools/src:$ROOT/packages/identity-gateway/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$ROOT/Backend:$ROOT/packages/mandate-contracts/src:$ROOT/packages/atlas-enricher/src:$ROOT/packages/mcp-tools/src:$ROOT/packages/identity-gateway/src${PYTHONPATH:+:$PYTHONPATH}"
 
 # Live api.data.gov when a key is present, unless HOMEFRONT_LIVE_DATAGOV is set explicitly.
 if [[ -z "${HOMEFRONT_LIVE_DATAGOV:-}" ]]; then
