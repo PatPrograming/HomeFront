@@ -16,44 +16,51 @@ ATLAS data is **vendored** from [mitre-atlas/atlas-data](https://github.com/mitr
 ## Quick start
 
 ```bash
-# Optional: copy Backend/.env.example → Backend/.env and fill Supabase keys
-# (agent IAM demo works with defaults; /api/v1/me needs real Supabase)
+# Backend/.env — Supabase + DATA_GOV_API_KEY
+# Frontend/.env — VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
 
 chmod +x scripts/*.sh
-./scripts/run-gateway.sh   # unified API on :8080
-
-# other terminals
-./scripts/run-frontend.sh  # main app on :3000 (copy Frontend/.env.example → Frontend/.env first)
-./scripts/run-demo.sh      # agent IAM console on :5173
+./scripts/run-gateway.sh    # API on :8080
+./scripts/run-frontend.sh   # main app on :3000
 ```
 
+### Demo (inside the product UI)
+
+1. Open http://localhost:3000 → **Sign in** (or sign up)
+2. Nav → **Monitoring** (http://localhost:3000/monitoring)
+3. **Authenticate agent** → **2. datagov.search** (live Catalog data) → **3. email.send**
+4. **4. Revoke email.send** → **5. Retry** → blocked as **`AML.T0053`** / **`AML.M0028`**
+
 - API docs: http://127.0.0.1:8080/docs  
-- Everything is under `/api/v1`; both frontends proxy `/api` to :8080  
+- Everything is under `/api/v1`; Frontend proxies `/api` to :8080  
 - User API: `/api/v1/home`, `/api/v1/health`, `/api/v1/me` (Supabase JWT)  
 - Agent IAM: `/api/v1/auth/token`, `/api/v1/mcp/call`, `/api/v1/atlas/*`, `/api/v1/agents/...`  
 - Set `AGENT_ADMIN_REQUIRES_LOGIN=true` in `Backend/.env` to require a Supabase login for `/agents*`, `/auth/token` and `/audit`  
 
+### Env files (not duplicates — different apps)
+
+| File | Holds |
+|------|--------|
+| [`Backend/.env`](Backend/.env.example) | `SUPABASE_*`, `DATA_GOV_API_KEY`, `ALLOWED_ORIGINS` |
+| [`Frontend/.env`](Frontend/.env.example) | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` only (public) |
+
+Never put the service role key or api.data.gov key in `Frontend/.env`.
+
 ### api.data.gov key
 
-1. Copy [`Backend/.env.example`](Backend/.env.example) → `Backend/.env`
-2. Paste your key:
-
-```bash
-DATA_GOV_API_KEY=your_key_here
-```
-
-3. Restart `./scripts/run-gateway.sh` — live Catalog search enables automatically. The key stays in the gateway (`AML.M0026`); agents never see it.
+1. Set in `Backend/.env`: `DATA_GOV_API_KEY=your_key_here`
+2. Restart `./scripts/run-gateway.sh` — live Catalog search enables automatically. The key stays in the gateway (`AML.M0026`); agents never see it.
 
 ## Layout
 
 ```
 Backend/                   # FastAPI — Supabase auth + mounted agent IAM/ATLAS
-Frontend/                  # User-facing React app (supabase-js) — see Frontend/README
+Frontend/                  # Main product UI — Monitoring = agent IAM demo
 packages/atlas-pack/       # vendored ATLAS Agentic pack + build script
 packages/atlas-enricher/   # local ATLAS lookup + annotate
 packages/identity-gateway/ # agent workload identity, grants, MCP authZ
 packages/mcp-tools/        # email / social / scrape / data.gov tools
-apps/demo-console/         # operator UI for the agent IAM demo
+references/                # design/reference assets
 supabase/migrations/       # profiles + RLS
 docs/ARCHITECTURE.md       # system design
 ```

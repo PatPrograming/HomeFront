@@ -6,8 +6,14 @@ const BASE = import.meta.env.VITE_API_BASE || "/api/v1";
 
 export class ApiError extends Error {
   constructor(status, data) {
-    const detail = typeof data?.detail === "string" ? data.detail : `HTTP ${status}`;
-    super(detail);
+    const detail = data?.detail;
+    const message =
+      typeof detail === "string"
+        ? detail
+        : detail && typeof detail === "object" && detail.message
+          ? detail.message
+          : `HTTP ${status}`;
+    super(message);
     this.status = status;
     this.data = data;
   }
@@ -44,6 +50,7 @@ export const api = {
   home: () => request("/home", { auth: false }),
   health: () => request("/health", { auth: false }),
   tools: () => request("/tools", { auth: false }),
+  matrix: () => request("/demo/matrix", { auth: false }),
 
   // signed-in user
   me: () => request("/me"),
@@ -56,4 +63,20 @@ export const api = {
     request(`/agents/${agentId}/grants/${encodeURIComponent(tool)}/revoke`, { method: "POST" }),
   grantTool: (agentId, tool) =>
     request(`/agents/${agentId}/grants/${encodeURIComponent(tool)}`, { method: "POST" }),
+
+  // mint agent workload token (user JWT when admin login required)
+  mintAgentToken: (agentId, ttlSeconds = 3600) =>
+    request("/auth/token", {
+      method: "POST",
+      body: { agent_id: agentId, ttl_seconds: ttlSeconds },
+    }),
+
+  // MCP tool call uses the agent token only — never the Supabase user JWT
+  callTool: (agentToken, tool, arguments_ = {}) =>
+    request("/mcp/call", {
+      auth: false,
+      method: "POST",
+      headers: { Authorization: `Bearer ${agentToken}` },
+      body: { tool, arguments: arguments_ },
+    }),
 };
