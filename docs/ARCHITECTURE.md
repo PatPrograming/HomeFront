@@ -106,6 +106,26 @@ sequenceDiagram
 - Update: a user can update their own row only.
 - Insert/Delete: only the signup trigger and cascade, not clients.
 
+### `public.agents`
+User-defined agents. Read and written by the gateway with the service role (`AGENT_STORE=supabase`).
+
+| Column        | Type        | Constraints / notes                                         |
+|---------------|-------------|-------------------------------------------------------------|
+| id            | text        | PK, `^[a-z0-9][a-z0-9-]{2,63}$` (used in URLs)              |
+| owner_id      | uuid        | FK → `auth.users.id`, cascade delete. null = demo/system    |
+| name / agency | text        | 1–80 / 1–120 chars                                          |
+| instructions  | text        | ≤ 8000 chars. The agent's purpose and system prompt         |
+| model         | text        | null = runner default                                       |
+| max_steps     | integer     | 1–50, default 10. Caps turns per run (AML.T0034)            |
+| tool_grants   | text[]      | Tool names, checked against `TOOL_REGISTRY` by the API      |
+| token_version | integer     | Bumped on grant changes to invalidate workload tokens       |
+| active        | boolean     | Inactive agents can't get tokens                            |
+| created_at / updated_at | timestamptz | `updated_at` set by trigger                         |
+
+**RLS policies:** owners can select, insert, update and delete their own rows. Rows with no owner are visible only to the service role.
+
+Workload tokens and the audit log are still in memory.
+
 ### Domain tables
 TODO: list HomeFront's own tables. Every table that belongs to a user should have a `user_id uuid references auth.users(id)` column and an RLS policy on it.
 

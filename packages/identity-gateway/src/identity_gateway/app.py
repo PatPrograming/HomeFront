@@ -26,9 +26,17 @@ from atlas_enricher.router import build_router  # noqa: E402
 from mcp_tools.handlers import invoke_tool  # noqa: E402
 from mcp_tools.registry import get_tool, list_tools, tool_public_view  # noqa: E402
 
-from .store import InMemoryStore
+from .store import (
+    AGENT_ID_PATTERN,
+    DEFAULT_MAX_STEPS,
+    AgentRecord,
+    DuplicateAgentError,
+    GatewayStore,
+)
 
-store = InMemoryStore()
+# Agents live in memory by default; the host app can swap in Supabase via
+# store.use_agent_repository(...).
+store = GatewayStore()
 enricher = AtlasEnricher()
 
 app = FastAPI(
@@ -72,11 +80,41 @@ class ToolCallRequest(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
 
 
+# Field limits mirror the check constraints on public.agents.
 class CreateAgentRequest(BaseModel):
-    name: str
-    agency: str
+    name: str = Field(min_length=1, max_length=80)
+    agency: str = Field(min_length=1, max_length=120)
+    instructions: str = Field(default="", max_length=8000)
+    model: str | None = Field(default=None, min_length=1, max_length=100)
+    max_steps: int = Field(default=DEFAULT_MAX_STEPS, ge=1, le=50)
     tool_grants: list[str] = Field(default_factory=list)
-    agent_id: str | None = None
+    agent_id: str | None = Field(default=None, pattern=AGENT_ID_PATTERN)
+
+
+class UpdateAgentRequest(BaseModel):
+    """Partial update of an agent's definition. Use the /grants routes for tools."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    agency: str | None = Field(default=None, min_length=1, max_length=120)
+    instructions: str | None = Field(default=None, max_length=8000)
+    model: str | None = Field(default=None, min_length=1, max_length=100)
+    max_steps: int | None = Field(default=None, ge=1, le=50)
+    active: bool | None = None
+
+
+def _agent_view(agent: AgentRecord) -> dict[str, Any]:
+    return {
+        "agent_id": agent.agent_id,
+        "name": agent.name,
+        "agency": agent.agency,
+        "instructions": agent.instructions,
+        "model": agent.model,
+        "max_steps": agent.max_steps,
+        "owner_id": agent.owner_id,
+        "tool_grants": sorted(agent.tool_grants),
+        "token_version": agent.token_version,
+        "active": agent.active,
+    }
 
 
 def _bearer(authorization: str | None) -> str:
@@ -119,7 +157,7 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "atlas_version": enricher.version,
-        "agents": len(store.agents),
+        "agents": store.agent_count(),
     }
 
 
@@ -131,32 +169,48 @@ def tools_catalog() -> list[dict[str, Any]]:
 
 @app.get("/agents")
 def agents() -> list[dict[str, Any]]:
-    return [
-        {
-            "agent_id": a.agent_id,
-            "name": a.name,
-            "agency": a.agency,
-            "tool_grants": sorted(a.tool_grants),
-            "token_version": a.token_version,
-            "active": a.active,
-        }
-        for a in store.list_agents()
-    ]
+    return [_agent_view(a) for a in store.list_agents()]
 
 
-@app.post("/agents")
+@app.post("/agents", status_code=201)
 def create_agent(body: CreateAgentRequest) -> dict[str, Any]:
     unknown = [t for t in body.tool_grants if get_tool(t) is None]
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown tools: {unknown}")
-    agent = store.create_agent(body.name, body.agency, body.tool_grants, body.agent_id)
-    return {
-        "agent_id": agent.agent_id,
-        "name": agent.name,
-        "agency": agent.agency,
-        "tool_grants": sorted(agent.tool_grants),
-        "token_version": agent.token_version,
-    }
+    try:
+        agent = store.create_agent(
+            body.name,
+            body.agency,
+            body.tool_grants,
+            body.agent_id,
+            instructions=body.instructions,
+            model=body.model,
+            max_steps=body.max_steps,
+        )
+    except DuplicateAgentError:
+        raise HTTPException(status_code=409, detail=f"Agent {body.agent_id} already exists")
+    return _agent_view(agent)
+
+
+@app.get("/agents/{agent_id}")
+def get_agent(agent_id: str) -> dict[str, Any]:
+    agent = store.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    return _agent_view(agent)
+
+
+@app.patch("/agents/{agent_id}")
+def update_agent(agent_id: str, body: UpdateAgentRequest) -> dict[str, Any]:
+    # exclude_unset: only fields the caller sent. "model": null resets to the
+    # runner default; null for any other field is ignored.
+    changes = body.model_dump(exclude_unset=True)
+    changes = {k: v for k, v in changes.items() if v is not None or k == "model"}
+    try:
+        agent = store.update_agent(agent_id, **changes)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    return _agent_view(agent)
 
 
 @app.post("/auth/token", response_model=AuthResponse)
@@ -164,6 +218,8 @@ def authenticate(body: AuthRequest) -> AuthResponse:
     agent = store.get_agent(body.agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Unknown agent")
+    if not agent.active:
+        raise HTTPException(status_code=403, detail="Agent is inactive")
     tok = store.issue_token(agent.agent_id, body.ttl_seconds)
     atlas = enricher.annotate(
         AnnotateRequest(
@@ -198,13 +254,7 @@ def authenticate(body: AuthRequest) -> AuthResponse:
 @app.get("/auth/me")
 def me(resolved=Depends(require_agent)) -> dict[str, Any]:
     agent, tok = resolved
-    return {
-        "agent_id": agent.agent_id,
-        "name": agent.name,
-        "agency": agent.agency,
-        "tool_grants": sorted(agent.tool_grants),
-        "token_version": tok.token_version,
-    }
+    return {**_agent_view(agent), "token_version": tok.token_version}
 
 
 @app.put("/agents/{agent_id}/grants")

@@ -66,7 +66,14 @@ def include_agent_iam(host_app: FastAPI, prefix: str = "") -> None:
     _ensure_package_paths()
     from atlas_enricher.router import build_router
     from identity_gateway.app import app as agent_app
-    from identity_gateway.app import enricher
+    from identity_gateway.app import enricher, store
+
+    if get_settings().agent_store == "supabase":
+        from identity_gateway.supabase_repo import SupabaseAgentRepository
+
+        from app.core.supabase import get_admin_client
+
+        store.use_agent_repository(SupabaseAgentRepository(get_admin_client()))
 
     # The gateway nests the ATLAS router, so it isn't in agent_app.routes; mount it directly.
     host_app.include_router(build_router(enricher), prefix=prefix)

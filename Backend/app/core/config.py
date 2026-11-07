@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,6 +30,10 @@ class Settings(BaseSettings):
     # When true, agent management routes (/agents*, /auth/token, /audit) need a
     # Supabase user JWT. Off by default so the standalone demo console still works.
     agent_admin_requires_login: bool = False
+
+    # Where agent definitions live. "memory" (default) is lost on restart;
+    # "supabase" uses public.agents via the service role key.
+    agent_store: Literal["memory", "supabase"] = "memory"
 
     # api.data.gov — gateway-held only; never returned to agents (AML.M0026).
     data_gov_api_key: str = ""

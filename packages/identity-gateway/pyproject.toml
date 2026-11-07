@@ -12,6 +12,10 @@ dependencies = [
   "mcp-tools",
 ]
 
+[project.optional-dependencies]
+# SupabaseAgentRepository (identity_gateway.supabase_repo)
+supabase = ["supabase>=2.7"]
+
 [tool.uv.sources]
 atlas-enricher = { path = "../atlas-enricher", editable = true }
 mcp-tools = { path = "../mcp-tools", editable = true }

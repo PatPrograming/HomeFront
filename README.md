@@ -32,6 +32,7 @@ chmod +x scripts/*.sh
 - User API: `/api/v1/home`, `/api/v1/health`, `/api/v1/me` (Supabase JWT)  
 - Agent IAM: `/api/v1/auth/token`, `/api/v1/mcp/call`, `/api/v1/atlas/*`, `/api/v1/agents/...`  
 - Set `AGENT_ADMIN_REQUIRES_LOGIN=true` in `Backend/.env` to require a Supabase login for `/agents*`, `/auth/token` and `/audit`  
+- Set `AGENT_STORE=supabase` to keep agents in `public.agents` instead of memory (apply `supabase/migrations/` first; needs `SUPABASE_SERVICE_ROLE_KEY`)  
 
 ### api.data.gov key
 
