@@ -150,6 +150,7 @@ def demo_agent() -> AgentRecord:
         name="Agency Comms Agent",
         agency="Example Civic Agency",
         tool_grants={"email.send", "web.scrape", "datagov.search"},
+        recipients=["constituent@example.gov"],
         instructions=(
             "You handle public communications for the agency. Research with data.gov and "
             "public web pages, then draft and send clear, accurate emails to residents."

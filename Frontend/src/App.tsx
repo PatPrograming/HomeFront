@@ -61,14 +61,7 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route
-            path="/monitoring"
-            element={
-              <RequireAuth>
-                <Monitoring />
-              </RequireAuth>
-            }
-          />
+          <Route path="/monitoring" element={<Monitoring />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </BrowserRouter>
