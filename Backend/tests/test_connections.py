@@ -61,6 +61,7 @@ class Provider:
     def __init__(self):
         self.requests: list[httpx.Request] = []
         self.token_status = 200
+        self.override: dict[str, dict] = {}  # token-endpoint url -> JSON body to return with 200
 
     def to(self, url: str) -> list[httpx.Request]:
         return [r for r in self.requests if str(r.url).split("?")[0] == url]
@@ -71,12 +72,16 @@ class Provider:
         if url in (GOOGLE_TOKEN, X_TOKEN):
             if self.token_status != 200:
                 return httpx.Response(self.token_status, json={"error": "invalid_grant"})
+            if url in self.override:
+                return httpx.Response(200, json=self.override[url])
             if url == GOOGLE_TOKEN:
                 return httpx.Response(200, json={
                     "access_token": ACCESS_1, "refresh_token": REFRESH_1, "expires_in": 3600,
                     "id_token": _id_token("maya@gmail.com"),
+                    "scope": "openid email https://www.googleapis.com/auth/gmail.send",
                 })
-            return httpx.Response(200, json={"access_token": X_ACCESS, "refresh_token": X_REFRESH, "expires_in": 7200})
+            return httpx.Response(200, json={"access_token": X_ACCESS, "refresh_token": X_REFRESH, "expires_in": 7200,
+                                             "scope": "tweet.read tweet.write users.read offline.access"})
         if url == X_ME:
             return httpx.Response(200, json={"data": {"id": "42", "username": "mayax"}})
         if url in (GOOGLE_REVOKE, X_REVOKE):
@@ -442,3 +447,98 @@ def test_a_staffer_cannot_offboard_so_cannot_revoke_others_connections(client, c
     connect(client, SAM)
     assert client.post("/api/v1/staff/sam/offboard", json={}, headers=MAYA).status_code == 403
     assert cx.require_connection("sam", "gmail")
+
+
+# ==== round-1 review gaps (G4, G5) ============================================================
+
+
+class FakeSupervisor:
+    def __init__(self):
+        self.stopped: list[tuple[str, str]] = []
+
+    def stop_staffer(self, staffer_id, reason):
+        self.stopped.append((staffer_id, reason))
+
+
+@pytest.fixture
+def supervisor():
+    from app.services import agent_supervisor
+
+    fake = FakeSupervisor()
+    agent_supervisor.set_supervisor(fake)
+    yield fake
+    agent_supervisor.set_supervisor(None)
+
+
+def test_offboarding_still_completes_when_revoking_connections_blows_up(client, svc, store, supervisor, monkeypatch):
+    connect(client, MAYA)
+
+    def boom(staffer):
+        raise RuntimeError("unexpected failure while revoking")
+
+    monkeypatch.setattr(svc, "revoke_all", boom)
+    r = client.post("/api/v1/staff/maya/offboard", json={}, headers=CHIEF)
+    assert r.status_code == 200, r.text
+    assert store.get_staffer("maya").active is False
+    assert supervisor.stopped and supervisor.stopped[0][0] == "maya"
+
+
+def test_offboarding_deletes_the_rows_it_can_even_if_one_provider_fails(client, svc, table, store, supervisor, monkeypatch):
+    connect(client, MAYA)
+    connect(client, MAYA, "x")
+    real = svc.disconnect
+
+    def flaky(staffer, provider_id):
+        if provider_id == "gmail":
+            raise RuntimeError("unexpected failure on gmail")
+        return real(staffer, provider_id)
+
+    monkeypatch.setattr(svc, "disconnect", flaky)
+    r = client.post("/api/v1/staff/maya/offboard", json={}, headers=CHIEF)
+    assert r.status_code == 200, r.text
+    assert store.get_staffer("maya").active is False
+    assert supervisor.stopped and supervisor.stopped[0][0] == "maya"
+    assert [i for i in connection_rows(table) if i["sk"] == "PROVIDER#x"] == []
+
+
+def _callback(client, pid="gmail"):
+    start = client.post(f"/api/v1/connections/{pid}/start", json={}, headers=MAYA).json()
+    return client.post("/api/v1/connections/callback", json={"code": CODE, "state": state_of(start["authorizeUrl"])}, headers=MAYA)
+
+
+def test_callback_when_gmail_send_was_not_granted_is_a_plain_error_and_stores_nothing(client, provider, table):
+    provider.override[GOOGLE_TOKEN] = {
+        "access_token": ACCESS_1, "refresh_token": REFRESH_1, "expires_in": 3600,
+        "id_token": _id_token("maya@gmail.com"), "scope": "openid email",
+    }
+    r = _callback(client)
+    assert r.status_code in (400, 502)
+    assert isinstance(r.json()["detail"], str) and r.json()["detail"] != "Connected"
+    assert connection_rows(table) == []
+    assert listing(client)["gmail"]["connected"] is False
+    assert len(provider.to(GOOGLE_REVOKE)) == 1
+    for secret in (ACCESS_1, REFRESH_1):
+        assert secret not in r.text
+
+
+def test_callback_when_tweet_write_was_not_granted_is_a_plain_error_and_stores_nothing(client, provider, table):
+    provider.override[X_TOKEN] = {
+        "access_token": X_ACCESS, "refresh_token": X_REFRESH, "expires_in": 7200, "scope": "tweet.read users.read offline.access",
+    }
+    r = _callback(client, "x")
+    assert r.status_code in (400, 502)
+    assert connection_rows(table) == []
+    assert len(provider.to(X_REVOKE)) == 1
+
+
+@pytest.mark.parametrize("missing", ["id_token", "access_token", "expires_in"])
+def test_callback_with_an_incomplete_google_token_response_is_a_clean_error_not_a_500(client, provider, table, missing):
+    body = {
+        "access_token": ACCESS_1, "refresh_token": REFRESH_1, "expires_in": 3600,
+        "id_token": _id_token("maya@gmail.com"), "scope": "openid email https://www.googleapis.com/auth/gmail.send",
+    }
+    del body[missing]
+    provider.override[GOOGLE_TOKEN] = body
+    r = _callback(client)
+    assert r.status_code in (400, 502)
+    assert connection_rows(table) == []

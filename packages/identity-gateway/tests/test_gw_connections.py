@@ -88,7 +88,8 @@ class Provider:
                 return httpx.Response(self.token_status, json={"error": "invalid_grant"})
             return httpx.Response(200, json={
                 "access_token": ACCESS_1, "refresh_token": REFRESH_1, "expires_in": self.expires_in,
-                "id_token": id_token(self.google_email), "scope": "openid email gmail.send",
+                "id_token": id_token(self.google_email),
+                "scope": "openid email https://www.googleapis.com/auth/gmail.send",
             })
         if url == X_TOKEN:
             form = self.form(request)
@@ -100,7 +101,8 @@ class Provider:
             if self.token_status != 200:
                 return httpx.Response(self.token_status, json={"error": "invalid_grant"})
             return httpx.Response(200, json={"access_token": X_ACCESS, "refresh_token": X_REFRESH,
-                                             "expires_in": self.expires_in})
+                                             "expires_in": self.expires_in,
+                                             "scope": "tweet.read tweet.write users.read offline.access"})
         if url == X_ME:
             return httpx.Response(200, json={"data": {"id": "42", "username": self.x_username}})
         if url == GMAIL_SEND:
@@ -770,3 +772,275 @@ def test_nothing_logs_a_token_code_or_verifier(svc, clock, table, caplog):
     text = caplog.text
     for secret in (ACCESS_1, ACCESS_2, REFRESH_1, X_ACCESS, X_REFRESH, CODE, verifier):
         assert secret not in text
+
+
+# ==== round-1 review gaps (G1-G3, G5-G7, G9) ==================================================
+
+import botocore.exceptions  # noqa: E402
+
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+
+
+def build(cx, staffers, provider, clock, kms_key, override=None):
+    """A service whose HTTP goes through `override(request)` first; it returns a Response or None to fall through."""
+
+    def handler(request):
+        if override is not None:
+            handled = override(request)
+            if handled is not None:
+                return handled
+        return provider(request)
+
+    return cx.ConnectionService(
+        staffers, cx.KmsCipher(boto3.client("kms", region_name="us-east-1"), kms_key),
+        httpx.Client(transport=httpx.MockTransport(handler)), cx.OAuthConfig.from_env(), clock=clock,
+    )
+
+
+def is_refresh(request):
+    return str(request.url).split("?")[0] in (GOOGLE_TOKEN, X_TOKEN) and Provider.form(request).get("grant_type") == "refresh_token"
+
+
+# ---- G1: refresh must not resurrect a disconnected row -----------------------------------------
+
+
+def test_refresh_after_a_concurrent_disconnect_does_not_recreate_the_row(cx, staffers, provider, clock, kms_key, table):
+    def disconnect_mid_refresh(request):
+        if is_refresh(request):
+            table.delete_item(Key={"pk": "CONNECTION#maya", "sk": "PROVIDER#gmail"})
+
+    svc = build(cx, staffers, provider, clock, kms_key, disconnect_mid_refresh)
+    connect(svc)
+    clock.now += 3600
+    with pytest.raises(cx.NeedsConnection):
+        svc.require("maya", "gmail")
+    assert connection_item(table) is None
+    assert [i for i in raw_items(table) if i["pk"].startswith("CONNECTION#")] == []
+
+
+def test_send_after_a_concurrent_disconnect_sends_nothing_and_list_still_works(cx, staffers, provider, clock, kms_key, table):
+    def disconnect_mid_refresh(request):
+        if is_refresh(request):
+            table.delete_item(Key={"pk": "CONNECTION#maya", "sk": "PROVIDER#gmail"})
+
+    svc = build(cx, staffers, provider, clock, kms_key, disconnect_mid_refresh)
+    connect(svc)
+    clock.now += 3600
+    with pytest.raises(cx.NeedsConnection):
+        svc.send_gmail("maya", "jane@example.com", "Hi", "Body")
+    assert provider.to(GMAIL_SEND) == []
+    assert {r["provider"]: r for r in svc.list("maya")}["gmail"]["connected"] is False  # must not raise
+
+
+# ---- G2: a failed refresh must not delete a row someone else already refreshed ------------------
+
+
+def test_refresh_failure_keeps_a_row_that_a_parallel_refresh_already_replaced(cx, staffers, provider, clock, kms_key, table):
+    holder = {}
+
+    def parallel_winner_then_400(request):
+        if is_refresh(request):
+            winner = holder["svc"]._encrypt("maya", "gmail", {
+                "access_token": "winner-access", "refresh_token": REFRESH_1, "expires_at": clock.now + 3600,
+            })
+            holder["winner"] = winner
+            table.update_item(
+                Key={"pk": "CONNECTION#maya", "sk": "PROVIDER#gmail"},
+                UpdateExpression="SET ciphertext = :c", ExpressionAttributeValues={":c": winner},
+            )
+            return httpx.Response(400, json={"error": "invalid_grant"})
+
+    svc = holder["svc"] = build(cx, staffers, provider, clock, kms_key, parallel_winner_then_400)
+    connect(svc)
+    clock.now += 3600
+    try:
+        svc.require("maya", "gmail")
+    except (cx.NeedsConnection, cx.ProviderError):
+        pass
+    row = connection_item(table)
+    assert row is not None, "the winner's freshly refreshed row was deleted by the loser's failed refresh"
+    assert row["ciphertext"] == holder["winner"]
+
+
+# ---- G3: disconnect always deletes our copy -----------------------------------------------------
+
+
+def _kms_unreachable(*args, **kwargs):
+    raise botocore.exceptions.EndpointConnectionError(endpoint_url="x")
+
+
+def test_disconnect_deletes_the_row_even_when_kms_is_unreachable(svc, table, monkeypatch):
+    connect(svc)
+    monkeypatch.setattr(svc.cipher, "decrypt", _kms_unreachable)
+    assert svc.disconnect("maya", "gmail") is True
+    assert connection_item(table) is None
+
+
+def test_revoke_all_continues_across_providers_when_kms_is_unreachable(svc, table, monkeypatch):
+    connect(svc, "maya", "gmail")
+    connect(svc, "maya", "x")
+    monkeypatch.setattr(svc.cipher, "decrypt", _kms_unreachable)
+    assert svc.revoke_all("maya") == 2
+    assert connection_item(table, "maya", "gmail") is None
+    assert connection_item(table, "maya", "x") is None
+
+
+# ---- G5: finish checks the granted scopes and the shape of the token response ------------------
+
+
+def token_override(url, body):
+    """Replace the (non-refresh) token-endpoint 200 body for `url`."""
+
+    def override(request):
+        if str(request.url).split("?")[0] == url and not is_refresh(request):
+            return httpx.Response(200, json=body)
+
+    return override
+
+
+def google_body(**changes):
+    body = {
+        "access_token": ACCESS_1, "refresh_token": REFRESH_1, "expires_in": 3600,
+        "id_token": id_token("maya@gmail.com"), "scope": f"openid email {GMAIL_SEND_SCOPE}",
+    }
+    body.update(changes)
+    return {k: v for k, v in body.items() if v is not None}
+
+
+def x_body(**changes):
+    body = {
+        "access_token": X_ACCESS, "refresh_token": X_REFRESH, "expires_in": 7200,
+        "scope": "tweet.read tweet.write users.read offline.access",
+    }
+    body.update(changes)
+    return {k: v for k, v in body.items() if v is not None}
+
+
+def test_gmail_grant_without_gmail_send_is_rejected_nothing_stored_and_revoked(cx, staffers, provider, clock, kms_key, table):
+    svc = build(cx, staffers, provider, clock, kms_key, token_override(GOOGLE_TOKEN, google_body(scope="openid email")))
+    with pytest.raises(cx.ProviderError):
+        connect(svc)
+    assert connection_item(table) is None
+    revokes = provider.to(GOOGLE_REVOKE)
+    assert len(revokes) == 1  # the grant we will not use is handed back
+    assert dict(urllib.parse.parse_qsl(revokes[0].content.decode()))["token"] in (ACCESS_1, REFRESH_1)
+
+
+def test_x_grant_without_tweet_write_is_rejected_nothing_stored_and_revoked(cx, staffers, provider, clock, kms_key, table):
+    body = x_body(scope="tweet.read users.read offline.access")
+    svc = build(cx, staffers, provider, clock, kms_key, token_override(X_TOKEN, body))
+    with pytest.raises(cx.ProviderError):
+        connect(svc, provider_id="x")
+    assert connection_item(table, "maya", "x") is None
+    assert len(provider.to(X_REVOKE)) == 1
+
+
+def test_stored_scopes_are_the_scopes_actually_granted(cx, staffers, provider, clock, kms_key, table):
+    granted = f"openid https://www.googleapis.com/auth/userinfo.email {GMAIL_SEND_SCOPE}"
+    svc = build(cx, staffers, provider, clock, kms_key, token_override(GOOGLE_TOKEN, google_body(scope=granted)))
+    conn = connect(svc)
+    assert set(conn.scopes.split()) == set(granted.split())
+    assert set(connection_item(table)["scopes"].split()) == set(granted.split())
+    assert set(svc.require("maya", "gmail").scopes.split()) == set(granted.split())
+
+
+@pytest.mark.parametrize("missing", ["id_token", "access_token", "expires_in"])
+def test_gmail_token_response_missing_a_field_is_provider_error(cx, staffers, provider, clock, kms_key, table, missing):
+    svc = build(cx, staffers, provider, clock, kms_key, token_override(GOOGLE_TOKEN, google_body(**{missing: None})))
+    with pytest.raises(cx.ProviderError):
+        connect(svc)
+    assert connection_item(table) is None
+
+
+@pytest.mark.parametrize("missing", ["access_token", "expires_in"])
+def test_x_token_response_missing_a_field_is_provider_error(cx, staffers, provider, clock, kms_key, table, missing):
+    svc = build(cx, staffers, provider, clock, kms_key, token_override(X_TOKEN, x_body(**{missing: None})))
+    with pytest.raises(cx.ProviderError):
+        connect(svc, provider_id="x")
+    assert connection_item(table, "maya", "x") is None
+
+
+# ---- G6: clean up the grant when a later step fails; only invalid_grant deletes ------------------
+
+
+def test_failed_x_handle_lookup_revokes_the_fresh_token_and_stores_nothing(cx, staffers, provider, clock, kms_key, table):
+    def me_500(request):
+        if str(request.url).split("?")[0] == X_ME:
+            return httpx.Response(500, json={})
+
+    svc = build(cx, staffers, provider, clock, kms_key, me_500)
+    with pytest.raises(cx.ProviderError):
+        connect(svc, provider_id="x")
+    assert connection_item(table, "maya", "x") is None
+    revokes = provider.to(X_REVOKE)
+    assert len(revokes) == 1
+    assert dict(urllib.parse.parse_qsl(revokes[0].content.decode()))["token"] in (X_ACCESS, X_REFRESH)
+
+
+def test_refresh_rejected_with_400_tries_to_revoke_the_refresh_token(svc, cx, provider, clock):
+    connect(svc)
+    clock.now += 3600
+    provider.refresh_status = 400
+    with pytest.raises(cx.NeedsConnection):
+        svc.require("maya", "gmail")
+    revokes = provider.to(GOOGLE_REVOKE)
+    assert len(revokes) == 1
+    assert dict(urllib.parse.parse_qsl(revokes[0].content.decode()))["token"] == REFRESH_1
+
+
+def test_refresh_rejected_with_401_needs_connection_and_deletes_the_row(svc, cx, provider, clock, table):
+    connect(svc)
+    clock.now += 3600
+    provider.refresh_status = 401
+    with pytest.raises(cx.NeedsConnection):
+        svc.require("maya", "gmail")
+    assert connection_item(table) is None
+
+
+@pytest.mark.parametrize("status", [429, 500, 503])
+def test_refresh_hitting_a_provider_outage_is_provider_error_and_keeps_the_row(svc, cx, provider, clock, table, status):
+    connect(svc)
+    clock.now += 3600
+    provider.refresh_status = status
+    with pytest.raises(cx.ProviderError):
+        svc.send_gmail("maya", "jane@example.com", "Hi", "Body")
+    assert connection_item(table) is not None
+    assert provider.to(GMAIL_SEND) == []
+    provider.refresh_status = 200
+    svc.send_gmail("maya", "jane@example.com", "Hi", "Body")  # still connected; works once the provider recovers
+
+
+# ---- G7 ------------------------------------------------------------------------------------
+
+
+def test_needs_connection_result_for_an_unknown_provider_does_not_raise_and_labels_with_the_id(cx):
+    result = cx.needs_connection_result(cx.NeedsConnection("myspace"))
+    assert result["status"] == "needs_connection"
+    assert result["provider"] == "myspace" and result["label"] == "myspace"
+
+
+# ---- G9: importing must not lower a stricter SDK log level ---------------------------------------
+
+
+@pytest.mark.parametrize("sdk_logger", ["botocore", "boto3"])
+@pytest.mark.parametrize("before", [logging.WARNING, logging.ERROR, logging.DEBUG])
+def test_importing_connections_never_lowers_an_sdk_log_level(cx, sdk_logger, before):
+    import importlib.util
+    import sys
+
+    logger = logging.getLogger(sdk_logger)
+    saved = logger.level
+    name = "identity_gateway._connections_log_probe"  # a private copy, so the real module and its classes stay intact
+    try:
+        logger.setLevel(before)
+        spec = importlib.util.spec_from_file_location(name, cx.__file__)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        if before == logging.DEBUG:
+            assert logger.level >= logging.INFO
+        else:
+            assert logger.level == before
+    finally:
+        sys.modules.pop(name, None)
+        logger.setLevel(saved)
