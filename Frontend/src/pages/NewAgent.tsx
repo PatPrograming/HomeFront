@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import { agentsApi as api } from "../lib/agentsApi";
-import { describeError, type Agent, type AgentKind, type AgentType, type Tool } from "../lib/agents";
+import { describeError, type Agent, type AgentKind, type AgentType } from "../lib/agents";
+import {
+  diffFromRecommended,
+  initialSelection,
+  isAvailable,
+  type PermissionChange,
+  type PermissionOption,
+} from "../lib/permissions";
 import "./Agents.css";
 
 // The agent types users pick from. `custom` and the generic `research` type
@@ -16,7 +23,7 @@ export default function NewAgent() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [types, setTypes] = useState<AgentType[]>([]);
-  const [tools, setTools] = useState<Tool[]>([]);
+  const [options, setOptions] = useState<PermissionOption[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
@@ -31,11 +38,9 @@ export default function NewAgent() {
   const type = useMemo(() => types.find((t) => t.kind === kind), [types, kind]);
 
   useEffect(() => {
-    Promise.all([api.agentTypes(), api.tools()])
-      .then(([ty, to]) => {
-        setTypes(ty);
-        setTools(to);
-      })
+    api
+      .agentTypes()
+      .then(setTypes)
       .catch((e) => setLoadError(describeError(e)));
   }, []);
 
@@ -43,21 +48,38 @@ export default function NewAgent() {
   useEffect(() => {
     if (!type) return;
     setInstructions(type.default_instructions);
-    setGrants(type.default_tools);
     setMaxSteps(type.default_max_steps);
     setError(null);
   }, [type]);
 
+  // The server's recommendation, not the type's default tools, is the starting selection.
+  useEffect(() => {
+    if (!kind) return;
+    let stale = false;
+    setOptions([]);
+    setGrants([]);
+    api
+      .agentPermissions(kind)
+      .then((permissions) => {
+        if (stale) return;
+        setOptions(permissions.tools);
+        setGrants(initialSelection(permissions.tools));
+      })
+      .catch((e) => !stale && setLoadError(describeError(e)));
+    return () => {
+      stale = true;
+    };
+  }, [kind]);
+
   const choose = (k: AgentKind) => setParams({ kind: k }, { replace: true });
 
-  const allowedTools = useMemo(() => {
-    if (!type) return [];
-    const allowed = type.allowed_tools;
-    return tools.filter((t) => allowed === null || allowed.includes(t.name));
-  }, [type, tools]);
+  const changes = useMemo(() => diffFromRecommended(options, grants), [options, grants]);
 
-  const toggleGrant = (tool: string) =>
-    setGrants((cur) => (cur.includes(tool) ? cur.filter((t) => t !== tool) : [...cur, tool]));
+  // The grants never hold an unavailable tool, even if a change event reaches a disabled box.
+  const toggleGrant = (option: PermissionOption) => {
+    if (!isAvailable(option)) return;
+    setGrants((cur) => (cur.includes(option.name) ? cur.filter((t) => t !== option.name) : [...cur, option.name]));
+  };
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -126,6 +148,7 @@ export default function NewAgent() {
           </div>
 
           {type && (
+            <div className="agent-layout">
             <form className="agent-form" onSubmit={submit}>
               <div className="form-row">
                 <label className="field">
@@ -178,20 +201,22 @@ export default function NewAgent() {
               <fieldset className="field tool-picker">
                 <legend className="field-label">Tools</legend>
                 <span className="field-hint">
-                  Only tools allowed for {type.label.toLowerCase()} agents are listed. You can revoke any
-                  of them later, even mid-task.
+                  The recommended tools are checked. Tools your role or this agent type can't hold are
+                  greyed out. You can revoke any of them later, even mid-task.
                 </span>
-                {allowedTools.map((t) => (
-                  <label key={t.name} className="tool-option">
+                {options.map((o) => (
+                  <label key={o.name} className={`tool-option${isAvailable(o) ? "" : " is-disabled"}`}>
                     <input
                       type="checkbox"
-                      checked={grants.includes(t.name)}
-                      onChange={() => toggleGrant(t.name)}
+                      checked={grants.includes(o.name)}
+                      disabled={!isAvailable(o)}
+                      onChange={() => toggleGrant(o)}
                     />
                     <span>
-                      <code>{t.name}</code>
-                      <span className={`risk risk-${t.risk_level}`}>{t.risk_level} risk</span>
-                      <span className="tool-desc">{t.description}</span>
+                      <strong>{o.label}</strong> <code>{o.name}</code>
+                      <span className={`risk risk-${o.risk}`}>{o.risk} risk</span>
+                      <span className="tool-desc">{o.effect}</span>
+                      {o.reason_unavailable && <span className="tool-reason">{o.reason_unavailable}</span>}
                     </span>
                   </label>
                 ))}
@@ -226,9 +251,39 @@ export default function NewAgent() {
                 </Link>
               </div>
             </form>
+            <aside className="permission-panel" aria-live="polite" aria-label="How your choices change this agent">
+              <h2>Your changes</h2>
+              {changes.added.length + changes.removed.length === 0 ? (
+                <p className="muted">This matches the recommended permissions.</p>
+              ) : (
+                <ul>
+                  {changes.removed.map((c) => (
+                    <ChangeItem key={c.name} change={c} kind="Removed" />
+                  ))}
+                  {changes.added.map((c) => (
+                    <ChangeItem key={c.name} change={c} kind="Added" />
+                  ))}
+                </ul>
+              )}
+            </aside>
+            </div>
           )}
         </div>
       </div>
     </Layout>
+  );
+}
+
+function ChangeItem({ change, kind }: { change: PermissionChange; kind: "Added" | "Removed" }) {
+  return (
+    <li className="change">
+      <strong>
+        <span className="change-kind">{kind}</span> {change.label}
+      </strong>
+      <span className="change-effect">{change.effect}</span>
+      <span className={`risk risk-${change.risk}`}>{change.risk} risk</span>
+      {change.beyondRecommendation && <span className="change-note">Beyond the recommendation</span>}
+      {change.review && <span className="change-note">{change.review}</span>}
+    </li>
   );
 }

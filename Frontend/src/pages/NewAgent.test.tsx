@@ -32,7 +32,7 @@ const api = {
   agentTypes: vi.fn(async () => [TYPE]),
   tools: vi.fn(async () => TOOLS),
   agentPermissions: vi.fn(async (kind: string) => ({ kind, role: "chief_of_staff", role_label: "Chief of Staff", tools: OPTIONS })),
-  createAgent: vi.fn(async (body: { name: string }) => ({ agent_id: "agent-1", ...body })),
+  createAgent: vi.fn(async (body: { name: string; tool_grants: string[] }) => ({ agent_id: "agent-1", ...body })),
 };
 vi.mock("../lib/agentsApi", () => ({ agentsApi: api }));
 

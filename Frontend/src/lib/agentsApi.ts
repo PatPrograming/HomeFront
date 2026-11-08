@@ -19,6 +19,7 @@ import type {
   TestEmailResult,
   Tool,
 } from "./agents";
+import type { AgentPermissions } from "./permissions";
 
 /** The ATLAS note the old gateway attaches to allow/deny/revoke answers. */
 export interface AtlasNote {
@@ -86,6 +87,9 @@ export const agentsApi = {
   // Catalogs (still need a login). `/tools` is the mandate flow's catalog, so the old one is `/agent-tools`.
   tools: () => request<Tool[]>("/agent-tools"),
   agentTypes: () => request<AgentType[]>("/agent-types"),
+  // Every tool for this kind, with what the caller's role allows and the recommended set.
+  agentPermissions: (kind: string) =>
+    request<AgentPermissions>(`/agent-permissions?kind=${encodeURIComponent(kind)}`),
   matrix: () => request<AtlasMatrix>("/demo/matrix", { auth: false }),
   status: () => request<StorageStatus>("/status"),
 
