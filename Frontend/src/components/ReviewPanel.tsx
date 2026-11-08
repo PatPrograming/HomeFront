@@ -52,17 +52,22 @@ export default function ReviewPanel({
     setBusy(true);
     setError(null);
     setConnect(null);
+    // Open the tab now, inside the click, so the browser doesn't block it; it gets X's address below.
+    const xTab = status === "sent" && draft.tool === "social_post" ? window.open("", "_blank") : null;
+    if (xTab) xTab.opener = null;
     try {
       const result = await action();
-      // X isn't connected: the approved text opens in X's compose page, and the staffer presses Post there.
+      // X posts are never sent by the server: the approved text opens in X's compose page.
       if (status === "sent" && result && (result as ApproveResult).status === "share_link") {
         const url = (result as { url: string }).url;
-        window.open(url, "_blank", "noopener");
+        if (xTab) xTab.location.href = url;
+        else window.open(url, "_blank", "noopener");
         setShareUrl(url);
         onDecided?.(status);
         await onDone();
         return;
       }
+      xTab?.close(); // nothing to open on X
       // Lane I: a platform that isn't connected yet; nothing was sent, so the draft stays open here.
       const outcome = status === "sent" && result ? approveOutcome(result as ApproveResult) : { done: true as const };
       if (!outcome.done) {
@@ -73,6 +78,7 @@ export default function ReviewPanel({
       await onDone();
       onClose();
     } catch (e) {
+      xTab?.close();
       setError(staleMessage(e) ? "This draft changed since you opened it. Close it and open it again to see the latest version." : connectionMessage(e, false));
     } finally {
       setBusy(false);

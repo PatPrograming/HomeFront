@@ -97,6 +97,11 @@ export function DraftCardView(p: DraftCardViewProps) {
           {d.tool === "email_send" && <p className="draft-card-to">To {d.recipient ?? d.args.to}</p>}
           {d.tool === "email_send" && <p className="draft-card-subject">{d.args.subject}</p>}
           <p className="draft-card-text">{d.tool === "email_send" ? d.args.body : d.args.text}</p>
+          {d.tool === "social_post" && d.status === "sent" && (d.platform ?? "x") === "x" && (
+            <a className="btn btn-primary" href={`https://x.com/intent/post?text=${encodeURIComponent(d.args.text ?? "")}`} target="_blank" rel="noopener noreferrer">
+              Open on X
+            </a>
+          )}
         </div>
       )}
 
