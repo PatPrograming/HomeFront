@@ -240,3 +240,38 @@ describe("mock sidebar auto titles", () => {
     expect(autoTitle(text)).toBe(title);
   });
 });
+
+describe("mock draft edits (Lane H's routes)", () => {
+  beforeEach(() => store.clear());
+  type D = { id: string; version: number; revising: boolean; args: Record<string, string>; editable: string[] };
+  const drafts = async () => ((await mockRequest("GET", "/drafts", undefined, MAYA)) as { drafts: D[] }).drafts;
+
+  async function heldReply(): Promise<D> {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const a = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    await mockRequest("POST", `/sessions/${a.sid}/messages`, { text: "Check my email" }, MAYA);
+    vi.advanceTimersByTime(2000);
+    await mockRequest("GET", `/sessions/${a.sid}/messages`, undefined, MAYA);
+    return (await drafts())[0];
+  }
+
+  it("saves the staffer's edits as the next version, and refuses the recipient", async () => {
+    const d = await heldReply();
+    expect(d).toMatchObject({ version: 1, revising: false, editable: ["subject", "body"] });
+    await mockRequest("PATCH", `/drafts/${d.id}`, { body: "Thanks, we are on it." }, MAYA);
+    expect((await drafts()).find((x) => x.id === d.id)).toMatchObject({ version: 2, args: { body: "Thanks, we are on it." } });
+    await expect(mockRequest("PATCH", `/drafts/${d.id}`, { to: "someone@else.example" }, MAYA)).rejects.toMatchObject({ status: 403 });
+    vi.useRealTimers();
+  });
+
+  it("'make it shorter' gives a shorter next version a moment later", async () => {
+    const d = await heldReply();
+    await mockRequest("POST", `/drafts/${d.id}/revise`, { instruction: "make it shorter" }, MAYA);
+    expect((await drafts()).find((x) => x.id === d.id)!.revising).toBe(true);
+    vi.advanceTimersByTime(2000);
+    const after = (await drafts()).find((x) => x.id === d.id)!;
+    expect(after).toMatchObject({ version: 2, revising: false });
+    expect(after.args.body.length).toBeLessThan(d.args.body.length);
+    vi.useRealTimers();
+  });
+});

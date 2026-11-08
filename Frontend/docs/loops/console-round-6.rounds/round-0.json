@@ -1,0 +1,77 @@
+{
+  "round": 0,
+  "at": "2026-11-08T12:27:11.317Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162",
+  "passed": [],
+  "failed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5"
+  ],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Earlier prompts stay after a session renews; drafts stay under their own reply",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleRollover.test.tsx src/components/ReviewCards.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 4599,
+      "note": "",
+      "stdoutTail": " ❯ src/pages/ConsoleRollover.test.tsx:84:50\n     82|     vi.resetModules(); // a fresh page, same sessionStorage\n     83|     renderToStaticMarkup(<Console />);\n     84|     expect(panel.chat.messages.map((m) => m.id)).toEqual([\"u1\", \"a1\", …\n       |                                                  ^\n     85|   });\n     86| });\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯\n\n\n Test Files  2 failed (2)\n      Tests  4 failed | 4 passed (8)\n   Start at  04:27:04\n   Duration  1.87s (transform 518ms, setup 0ms, collect 738ms, tests 116ms, environment 0ms, prepare 560ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Editable draft card: edit in place, platforms/recipient shown, Save, revise → Draft N",
+      "command": "cd Frontend && npx vitest run src/components/DraftCard.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 733,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\nNo test files found, exiting with code 1\n\nfilter: src/components/DraftCard.test.tsx\ninclude: **/*.{test,spec}.?(c|m)[jt]s?(x)\nexclude:  **/node_modules/**, **/dist/**, **/cypress/**, **/.{idea,git,cache,output,temp}/**, **/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Descriptive agent names for staff, raw id and expiry admin-only",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleRoles.test.tsx src/components/AgentActivity.test.tsx src/lib/agentActivity.test.ts src/pages/Console.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 1437,
+      "note": "",
+      "stdoutTail": " ❯ src/lib/agentActivity.test.ts:63:12\n     61| \n     62|   it(\"names the agent by what it does, never by its id\", () => {\n     63|     expect(agentKind(\"inbox_read\")).toBe(\"Email agent\");\n       |            ^\n     64|     expect(agentKind(\"email_send\")).toBe(\"Email agent\");\n     65|     expect(agentKind(\"social_post\")).toBe(\"Social media agent\");\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯\n\n\n Test Files  4 failed (4)\n      Tests  5 failed | 17 passed (22)\n   Start at  04:27:08\n   Duration  713ms (transform 369ms, setup 0ms, collect 772ms, tests 124ms, environment 0ms, prepare 410ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Sending rules behind a button; chat full width",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleSendingRules.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 1590,
+      "note": "",
+      "stdoutTail": " ❯ src/pages/ConsoleSendingRules.test.tsx:44:18\n     42|     rules.open = true;\n     43|     const html = renderToStaticMarkup(<Console />);\n     44|     expect(html).toMatch(/role=\"dialog\"[^>]*aria-label=\"Sending rules\"…\n       |                  ^\n     45|     expect(html).toContain(\"What it can send without asking\");\n     46|     expect(html).toContain(\"Case status updates\");\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯\n\n\n Test Files  1 failed (1)\n      Tests  2 failed (2)\n   Start at  04:27:09\n   Duration  803ms (transform 220ms, setup 0ms, collect 328ms, tests 21ms, environment 0ms, prepare 98ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C5",
+      "check": "Frontend types, build, full suite",
+      "command": "cd Frontend && npx tsc --noEmit && npm run build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 721,
+      "note": "",
+      "stdoutTail": "src/lib/agentActivity.test.ts(3,10): error TS2305: Module '\"./agentActivity\"' has no exported member 'agentKind'.",
+      "stderrTail": ""
+    }
+  ]
+}

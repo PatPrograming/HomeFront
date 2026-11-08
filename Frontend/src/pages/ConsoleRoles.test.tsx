@@ -54,7 +54,9 @@ describe("Console role gate", () => {
     const html = render(["staffer"]);
     expect(html).toContain("I can&#x27;t do that.");
     expect(html).toContain("Blocked: export all constituent records (never allowed)");
-    expect(html).toContain("Access ends at");
+    expect(html).toContain("Your assistant acts for you");
+    expect(html).not.toContain("Access ends at"); // the expiry is an admin detail now
+    expect(html).not.toContain("agent-1"); // staff see what the agent does, not its raw id
     for (const secret of ["forbid-bulk-export", "read-tools", "AML.T0053", "AML.T0051", SID, "Live decisions", "PROMPT_ATTACK", "Technical details"]) {
       expect(html, secret).not.toContain(secret);
     }
@@ -62,7 +64,7 @@ describe("Console role gate", () => {
 
   it("admin also sees the live feed with Cedar policy and ATLAS ids, guardrail flags and the session id", () => {
     const html = render(["admin"]);
-    for (const shown of ["Live decisions", "forbid-bulk-export", "AML.T0053", "PROMPT_ATTACK", SID, "Technical details"]) {
+    for (const shown of ["Live decisions", "forbid-bulk-export", "AML.T0053", "PROMPT_ATTACK", SID, "Technical details", "agent-1", "Session expires in"]) {
       expect(html, shown).toContain(shown);
     }
   });

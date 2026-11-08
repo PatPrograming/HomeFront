@@ -74,7 +74,16 @@ export interface Draft {
   urgency: "high" | "medium" | "low";
   score: number;
   reason: string;
+  // Editing in the chat (Lane H's routes). Older servers send none of these.
+  version?: number; // "Draft N": +1 on each saved edit or revision
+  revising?: boolean; // the agent is writing the next version from the staffer's instruction
+  editable?: string[]; // which fields the staffer may change; the server decides (the recipient normally not)
+  platforms?: string[]; // a post's chosen platforms, e.g. ["x", "bluesky"]
+  platformOptions?: { id: string; label: string }[]; // the platforms the server can post to
 }
+
+/** PATCH /drafts/{id}: the staffer's edits, only fields listed in the draft's `editable`. */
+export type DraftPatch = { subject?: string; body?: string; text?: string; to?: string; platforms?: string[] };
 
 /** GET /sessions: one of the caller's conversations (Lane E's route). Carries the card fields, so switching to
  * it can show the identity line without another call. */
@@ -196,6 +205,10 @@ export const api = {
   sendMessage: (sid: string, text: string) =>
     request<ChatMessage>(`/sessions/${encodeURIComponent(sid)}/messages`, { method: "POST", body: { text } }),
   drafts: () => request<{ drafts: Draft[] }>("/drafts"),
+  // Edit a held draft in place (Save edits), or ask the agent for a new version ("make it shorter").
+  updateDraft: (id: string, patch: DraftPatch) => request<Draft>(`/drafts/${encodeURIComponent(id)}`, { method: "PATCH", body: patch }),
+  reviseDraft: (id: string, instruction: string) =>
+    request<{ id: string; revising: true }>(`/drafts/${encodeURIComponent(id)}/revise`, { method: "POST", body: { instruction } }),
   // Let the agent send this category alone for one session (staffer's own login; chat text never grants)
   grant: (sid: string, category: string) =>
     request<{ sid: string; category: string; label: string; scope: string }>(`/sessions/${encodeURIComponent(sid)}/grants`, {

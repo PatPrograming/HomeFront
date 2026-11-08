@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { DecisionEvent } from "../../../packages/mandate-contracts/ts/index";
 import type { AutonomyCategory, Draft, SessionCard } from "../lib/api";
 import { turnEvents } from "../lib/agentActivity";
@@ -31,6 +31,7 @@ export interface ChatActivity {
 export interface ChatReview {
   drafts: Draft[];
   onOpen: (id: string) => void;
+  onChanged: () => Promise<void>; // reload the drafts after an edit or a revision
 }
 
 // Copies one reply to the clipboard, and says so for a moment.
@@ -61,12 +62,14 @@ export default function ChatPanel({
   disabled,
   activity,
   review,
+  renewedAfter = null,
 }: {
   chat: Chat;
   sid: string | null;
   disabled: boolean;
   activity?: ChatActivity;
   review?: ChatReview;
+  renewedAfter?: string | null; // the last message before the session renewed: a divider follows it
 }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -174,32 +177,39 @@ export default function ChatPanel({
             )}
           </div>
         ) : (
-          chat.messages.map((m, i) =>
-            m.role === "user" ? (
-              <div key={m.id} className="msg from-user">
-                <p className="bubble-text">{m.text}</p>
-                <time className="msg-time" dateTime={m.ts}>
-                  {time(m.ts)}
-                </time>
-              </div>
-            ) : (
-              <div key={m.id} className="msg from-agent">
-                <span className="agent-mark" aria-hidden="true" />
-                <div className="msg-body">
-                  <span className="sr-only">Assistant: </span>
-                  {i > 0 && disclosure(chat.messages[i - 1].ts, m.ts, false)}
+          chat.messages.map((m, i) => (
+            <Fragment key={m.id}>
+              {m.role === "user" ? (
+                <div className="msg from-user">
                   <p className="bubble-text">{m.text}</p>
-                  {placed.get(m.id) && <ReviewCards drafts={placed.get(m.id)!} onOpen={review!.onOpen} />}
-                  <div className="msg-foot">
-                    <time className="msg-time" dateTime={m.ts}>
-                      {time(m.ts)}
-                    </time>
-                    <CopyButton text={m.text} />
+                  <time className="msg-time" dateTime={m.ts}>
+                    {time(m.ts)}
+                  </time>
+                </div>
+              ) : (
+                <div className="msg from-agent">
+                  <span className="agent-mark" aria-hidden="true" />
+                  <div className="msg-body">
+                    <span className="sr-only">Assistant: </span>
+                    {i > 0 && disclosure(chat.messages[i - 1].ts, m.ts, false)}
+                    <p className="bubble-text">{m.text}</p>
+                    {placed.get(m.id) && <ReviewCards drafts={placed.get(m.id)!} onOpen={review!.onOpen} onChanged={review!.onChanged} />}
+                    <div className="msg-foot">
+                      <time className="msg-time" dateTime={m.ts}>
+                        {time(m.ts)}
+                      </time>
+                      <CopyButton text={m.text} />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ),
-          )
+              )}
+              {m.id === renewedAfter && (
+                <p className="chat-divider" role="separator">
+                  <span>Your assistant's access was renewed. Everything above stays in this conversation.</span>
+                </p>
+              )}
+            </Fragment>
+          ))
         )}
         {waiting && !disabled && !stalled && (
           <div className="msg from-agent">

@@ -1,6 +1,6 @@
 import type { DecisionEvent } from "../../../packages/mandate-contracts/ts/index";
 import type { AutonomyCategory, SessionCard } from "../lib/api";
-import { describeEvent, permissionLines } from "../lib/agentActivity";
+import { agentKind, describeEvent, permissionLines } from "../lib/agentActivity";
 
 const count = (n: number) => (n === 0 ? "no actions" : n === 1 ? "1 action" : `${n} actions`);
 
@@ -38,7 +38,7 @@ export default function AgentActivity({
       </summary>
       <div className="activity-body">
         <p className="activity-who">
-          <strong>{card.agent}</strong> · Acting for you ({card.actingFor}) · Office {card.office}
+          <strong>Your assistant</strong> · Acting for you ({card.actingFor}) · Office {card.office}
         </p>
 
         <p className="activity-label">What it did</p>
@@ -48,7 +48,7 @@ export default function AgentActivity({
               const line = describeEvent(e);
               return (
                 <li key={e.id} className={line.blocked ? "is-blocked" : undefined}>
-                  {line.text}
+                  {`${agentKind(e.tool)}: ${line.text}`}
                 </li>
               );
             })}

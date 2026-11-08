@@ -27,11 +27,17 @@ interface Stats {
 
 export interface AssistantState {
   chats: Record<string, ChatMessage[]>;
-  drafts: Record<string, Omit<Draft, "urgency" | "score" | "reason"> & { actingFor: string; sid: string }>; // ranked when listed
+  drafts: Record<string, StoredDraft>; // ranked when listed
   autonomy: Record<string, Record<string, Stats>>; // username → category → stats
   answered: Record<string, string[]>; // username → inbox email ids already handled
   grants?: Record<string, string[]>; // sid → categories the staffer let the agent send alone in that session
 }
+
+type StoredDraft = Omit<Draft, "urgency" | "score" | "reason" | "revising"> & {
+  actingFor: string;
+  sid: string;
+  revising?: { instruction: string; at: number };
+};
 
 export interface MockSessionRef {
   sid: string;
@@ -61,6 +67,33 @@ const LOCKED = new Set(["sensitive", "staff_memo", "suspicious", "other", "new_c
 const PROMOTE_AFTER: Record<string, number> = { social_post: 5 };
 const DEFAULT_PROMOTE_AFTER = 3;
 const MIN_UNCHANGED_SHARE = 0.9;
+
+// What the staffer may change in a draft, and where a post can go (the server decides both in Lane H's API).
+const EDITABLE: Record<Draft["tool"], string[]> = { email_send: ["subject", "body"], social_post: ["text", "platforms"] };
+const PLATFORMS = [
+  { id: "x", label: "X" },
+  { id: "bluesky", label: "Bluesky" },
+  { id: "facebook", label: "Facebook" },
+  { id: "linkedin", label: "LinkedIn" },
+];
+const REVISE_MS = 1500;
+
+// The scripted agent's revision: "shorter" keeps the first sentence or two; anything else is noted at the end.
+function revise(text: string, instruction: string): string {
+  if (/short|brief|concise|trim/i.test(instruction)) {
+    const sentences = text.match(/[^.!?\n]+[.!?]?/g)?.map((x) => x.trim()).filter(Boolean) ?? [text];
+    return sentences.slice(0, Math.max(1, Math.ceil(sentences.length / 2))).join(" ");
+  }
+  return `${text}\n\n(${instruction})`;
+}
+
+function finishRevision(d: StoredDraft, now: number): void {
+  if (!d.revising || now - d.revising.at < REVISE_MS) return;
+  const field = d.tool === "email_send" ? "body" : "text";
+  d.args[field] = revise(d.args[field], d.revising.instruction);
+  d.version = (d.version ?? 1) + 1;
+  d.revising = undefined;
+}
 
 const inbox = new Map((inboxData as InboxEmail[]).map((e) => [e.id, e]));
 
@@ -188,6 +221,7 @@ function outbound(
   state.drafts[id] = {
     id, status: "pending", tool, category, categoryLabel: LABELS[category], args,
     createdAt: new Date(now).toISOString(), actingFor: session.actingFor, sid: session.sid,
+    version: 1, ...(tool === "social_post" ? { platforms: ["x"] } : {}),
   };
   events.push(event(session, tool, resource, "held for staff review", now));
   return "held";
@@ -311,10 +345,37 @@ export function assistantRoute(
   }
 
   if (method === "GET" && pathname === "/drafts") {
+    for (const d of Object.values(state.drafts)) finishRevision(d, now);
     const drafts = Object.values(state.drafts)
       .filter((d) => d.actingFor === user && d.status === "pending")
-      .map((d) => ({ ...d, ...rankDraft(d, now) }));
+      .map((d) => ({
+        ...d, ...rankDraft(d, now), revising: Boolean(d.revising), editable: EDITABLE[d.tool],
+        ...(d.tool === "social_post" ? { platformOptions: PLATFORMS } : {}),
+      }));
     return { drafts: drafts.sort((a, b) => b.score - a.score || a.createdAt.localeCompare(b.createdAt)) };
+  }
+  // Lane H's edit routes: PATCH saves the staffer's edits (only editable fields); revise asks the agent for the
+  // next version, which appears REVISE_MS later.
+  const editPath = pathname.match(/^\/drafts\/([^/]+)(\/revise)?$/);
+  if (editPath && (method === "PATCH" || (method === "POST" && editPath[2]))) {
+    const draft = state.drafts[decodeURIComponent(editPath[1])];
+    if (!draft || draft.actingFor !== user) throw new MockError(404, "Unknown draft");
+    if (draft.status !== "pending") throw new MockError(409, `Draft already ${draft.status}`);
+    if (method === "POST") {
+      const instruction = String((body as { instruction?: string }).instruction ?? "").trim().slice(0, 500);
+      if (!instruction) throw new MockError(422, "Say what to change");
+      draft.revising = { instruction, at: now };
+      return { id: draft.id, revising: true };
+    }
+    const patch = (body ?? {}) as Record<string, unknown>;
+    const refused = Object.keys(patch).filter((k) => !EDITABLE[draft.tool].includes(k));
+    if (refused.length) throw new MockError(403, `You can't change ${refused.join(", ")} here`);
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === "platforms") draft.platforms = (v as string[]).filter((p) => PLATFORMS.some((o) => o.id === p));
+      else draft.args[k] = String(v);
+    }
+    draft.version = (draft.version ?? 1) + 1;
+    return { ...draft, revising: false };
   }
   const draftPath = pathname.match(/^\/drafts\/([^/]+)\/(approve|reject)$/);
   if (method === "POST" && draftPath) {

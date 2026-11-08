@@ -13,6 +13,21 @@ const LABELS: Record<string, string> = {
   records_bulk_export: "Export all constituent records",
 };
 
+// Staff see which kind of agent acted, by what it does; the raw agent id is an admin detail (Technical details).
+const KIND: Record<string, string> = {
+  inbox_read: "Email agent",
+  email_send: "Email agent",
+  social_post: "Social media agent",
+  datagov_search: "Research agent",
+  web_scrape: "Research agent",
+  case_read: "Research agent",
+  records_bulk_export: "Records agent",
+};
+
+export function agentKind(tool: string): string {
+  return KIND[tool] ?? "Assistant";
+}
+
 export function toolLabel(tool: string): string {
   return LABELS[tool] ?? tool.replace(/_/g, " ");
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Draft, type DraftEdits } from "../lib/api";
 import { connectionMessage } from "../lib/errors";
+import { draftTitle } from "./DraftCardView";
 
 // Only the text can change; the recipient or account is what the gateway's policy already checked.
 const EDITABLE: Record<Draft["tool"], (keyof DraftEdits)[]> = { email_send: ["subject", "body"], social_post: ["text"] };
@@ -33,7 +34,7 @@ export default function ReviewPanel({
   const [error, setError] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const isEmail = draft.tool === "email_send";
-  const title = isEmail ? `Reply to ${draft.args.to}` : `Post on @${draft.args.account}`;
+  const title = draftTitle(draft);
 
   // A different draft opened in the same panel starts clean, with focus on its title for screen readers.
   useEffect(() => {
@@ -61,7 +62,9 @@ export default function ReviewPanel({
     <section className="review-panel" role="dialog" aria-labelledby="review-panel-title">
       <header className="review-panel-head">
         <div>
-          <p className="review-panel-kind">{draft.categoryLabel} · needs your review</p>
+          <p className="review-panel-kind">
+            Draft {draft.version ?? 1} · {draft.categoryLabel} · needs your review
+          </p>
           <h2 id="review-panel-title" ref={headingRef} tabIndex={-1}>
             {title}
           </h2>

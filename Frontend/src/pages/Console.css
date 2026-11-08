@@ -206,7 +206,7 @@
 
 .assistant-main {
   width: 100%;
-  max-width: 760px;
+  max-width: 860px; /* the chat is the main thing: no right rail beside it */
   margin: 0 auto;
   min-width: 0;
   min-height: calc(100vh - 68px - 8px);
@@ -264,7 +264,7 @@
   color: var(--line-strong, #c5cdd8);
 }
 
-.mandate-console .rail-toggle {
+.mandate-console .rules-toggle {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -274,7 +274,7 @@
   color: var(--ink);
 }
 
-.mandate-console .rail-toggle:hover {
+.mandate-console .rules-toggle:hover {
   background: var(--tone);
 }
 
@@ -487,8 +487,7 @@
 }
 
 .activity-who strong {
-  font-family: var(--mono);
-  font-size: 13px;
+  font-weight: 600;
 }
 
 .activity-label {
@@ -658,23 +657,8 @@
   outline-offset: 0;
 }
 
-/* Right rail / drawer */
-.rail {
-  display: grid;
-  gap: 16px;
-  align-content: start;
-  min-width: 0;
-}
-
-.rail .panel {
-  padding: 18px;
-}
-
-.rail h2 {
-  font-size: 16px;
-}
-
-.rail-close-row {
+/* Sending rules: a popover under its button on a wide screen, a sheet on a phone (see the 600 px block). */
+.conv-close-row {
   display: flex;
   justify-content: flex-end;
 }
@@ -686,45 +670,32 @@
   background: rgba(15, 28, 46, 0.32);
 }
 
-@media (max-width: 1023px) {
-  .rail {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 60;
-    width: min(420px, 100%);
-    padding: 12px 16px 24px;
-    overflow-y: auto;
-    background: var(--canvas, #f5f7fa);
-    box-shadow: -12px 0 32px rgba(15, 28, 46, 0.16);
-    transform: translateX(100%);
-    visibility: hidden;
-    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.25s;
-  }
-  .rail.is-open {
-    transform: none;
-    visibility: visible;
-    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
+.rules-anchor {
+  position: relative;
 }
 
-@media (min-width: 1024px) {
-  .assistant-shell {
-    grid-template-columns: minmax(0, 1fr) 340px;
-  }
-  .rail {
-    position: sticky;
-    top: 84px;
-    max-height: calc(100vh - 100px);
-    overflow-y: auto;
-    padding: 16px 0 24px;
-  }
-  .mandate-console .rail-toggle,
-  .rail-close-row,
-  .rail-backdrop {
-    display: none;
-  }
+.rules-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(75vh, 680px);
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 2px 4px rgba(15, 28, 46, 0.04), 0 24px 48px rgba(15, 28, 46, 0.14);
+}
+
+.rules-popover .panel {
+  padding: 0;
+  border: 0;
+}
+
+.rules-popover h2 {
+  font-size: 16px;
 }
 
 @media (max-width: 600px) {
@@ -1067,9 +1038,6 @@
     max-height: 100%;
     width: 100%;
   }
-  .rail.is-covered {
-    display: none;
-  }
 }
 
 @media (max-width: 1023px) {
@@ -1340,7 +1308,7 @@
 @media (min-width: 1280px) {
   /* The sidebar column takes the sidebar's own width: 248 px open, 40 px collapsed. */
   .assistant-shell {
-    grid-template-columns: auto minmax(0, 1fr) 320px;
+    grid-template-columns: auto minmax(0, 1fr);
   }
   .assistant-shell.has-review {
     grid-template-columns: auto minmax(0, 1fr) minmax(380px, 440px);
@@ -1555,7 +1523,8 @@
 }
 
 @media (max-width: 600px) {
-  .waiting-popover {
+  .waiting-popover,
+  .rules-popover {
     position: fixed;
     inset: 0;
     z-index: 70;
@@ -1589,13 +1558,12 @@
   .activity-dot {
     animation: none;
   }
-  .rail,
-  .rail.is-open,
   .activity .chevron {
     transition: none;
   }
   .review-slot,
-  .waiting-popover {
+  .waiting-popover,
+  .rules-popover {
     animation: none;
   }
   .conv-rail,
@@ -1864,4 +1832,150 @@
 
 .gate-message p {
   margin: 8px 0 12px;
+}
+
+/* A renewed session inside one conversation: a quiet line, not a box. */
+.chat-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.chat-divider::before,
+.chat-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* A draft in the chat: version, where it goes, the text; edit in place or ask for a change. */
+.review-cards > li {
+  list-style: none;
+}
+
+.draft-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+.draft-card.is-done {
+  background: transparent;
+}
+
+.draft-card.is-revising {
+  opacity: 0.7;
+}
+
+.draft-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.draft-version {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--blue-50, #eef4fb);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.draft-card-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.draft-card-meta {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.draft-card.is-done .draft-card-meta {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.draft-card-body {
+  display: grid;
+  gap: 4px;
+}
+
+.draft-card-to {
+  font-size: 13px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.draft-card-subject {
+  font-weight: 600;
+}
+
+.draft-card-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+.draft-card-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.draft-card-foot {
+  display: grid;
+  gap: 10px;
+}
+
+.draft-revise {
+  display: flex;
+  gap: 8px;
+}
+
+.draft-revise input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: 15px/1.3 var(--sans);
+}
+
+.draft-revise input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 0;
+}
+
+.platform-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mandate-console .platform-chip {
+  min-height: 32px;
+  padding: 0 12px;
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.mandate-console .platform-chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--blue-50, #eef4fb);
+  color: var(--accent);
+}
+
+.review-cards {
+  max-width: 640px;
 }

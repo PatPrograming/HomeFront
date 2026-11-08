@@ -1,0 +1,83 @@
+{
+  "round": 1,
+  "at": "2026-11-08T12:37:09.252Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162",
+  "passed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5"
+  ],
+  "failed": [],
+  "fixed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5"
+  ],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Earlier prompts stay after a session renews; drafts stay under their own reply",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleRollover.test.tsx src/components/ReviewCards.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 1790,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/components/ReviewCards.test.tsx (5 tests) 14ms\n ✓ src/pages/ConsoleRollover.test.tsx (3 tests) 10ms\n\n Test Files  2 passed (2)\n      Tests  8 passed (8)\n   Start at  04:36:48\n   Duration  748ms (transform 262ms, setup 0ms, collect 480ms, tests 24ms, environment 0ms, prepare 200ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Editable draft card: edit in place, platforms/recipient shown, Save, revise → Draft N",
+      "command": "cd Frontend && npx vitest run src/components/DraftCard.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 1393,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/components/DraftCard.test.tsx (7 tests) 73ms\n\n Test Files  1 passed (1)\n      Tests  7 passed (7)\n   Start at  04:36:50\n   Duration  562ms (transform 133ms, setup 0ms, collect 139ms, tests 73ms, environment 0ms, prepare 85ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Descriptive agent names for staff, raw id and expiry admin-only",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleRoles.test.tsx src/components/AgentActivity.test.tsx src/lib/agentActivity.test.ts src/pages/Console.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 1552,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/lib/agentActivity.test.ts (7 tests) 5ms\n ✓ src/components/AgentActivity.test.tsx (5 tests) 9ms\n ✓ src/pages/Console.test.tsx (5 tests) 13ms\n ✓ src/pages/ConsoleRoles.test.tsx (5 tests) 37ms\n\n Test Files  4 passed (4)\n      Tests  22 passed (22)\n   Start at  04:36:51\n   Duration  753ms (transform 442ms, setup 0ms, collect 1.05s, tests 64ms, environment 1ms, prepare 393ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Sending rules behind a button; chat full width",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleSendingRules.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 1236,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/pages/ConsoleSendingRules.test.tsx (2 tests) 8ms\n\n Test Files  1 passed (1)\n      Tests  2 passed (2)\n   Start at  04:36:52\n   Duration  551ms (transform 164ms, setup 0ms, collect 224ms, tests 8ms, environment 0ms, prepare 65ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C5",
+      "check": "Frontend types, build, full suite",
+      "command": "cd Frontend && npx tsc --noEmit && npm run build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 15658,
+      "note": "",
+      "stdoutTail": "   ✓ mock forbidden request > refuses a bulk export, naming the policy, with one DENY event and no draft  607ms\n   ✓ mock GET /sessions: several conversations > keeps earlier conversations open, lists the caller's own with title and waiting count  735ms\n   ✓ mock GET /sessions: several conversations > each conversation keeps its own chat  487ms\n   ✓ mock GET /sessions: several conversations > caps open conversations per person  731ms\n   ✓ mock GET /sessions: several conversations > ranks waiting drafts with urgency, score and reason  487ms\n   ✓ mock sidebar routes > names a conversation short, from what the staffer asked first  365ms\n   ✓ mock sidebar routes > renames, pins (pinned first), groups, searches, archives, restores and soft-deletes  1580ms\n   ✓ mock sidebar routes > only the owner can change a conversation  375ms\n   ✓ mock draft edits (Lane H's routes) > saves the staffer's edits as the next version, and refuses the recipient  852ms\n   ✓ mock draft edits (Lane H's routes) > 'make it shorter' gives a shorter next version a moment later  853ms\n\n Test Files  31 passed (31)\n      Tests  166 passed (166)\n   Start at  04:36:56\n   Duration  12.31s (transform 1.42s, setup 0ms, collect 4.81s, tests 12.44s, environment 4ms, prepare 4.42s)",
+      "stderrTail": ""
+    }
+  ]
+}

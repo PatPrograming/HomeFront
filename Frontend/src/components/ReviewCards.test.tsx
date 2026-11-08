@@ -4,17 +4,19 @@ import { describe, expect, it, vi } from "vitest";
 import type { ChatMessage, Draft } from "../lib/api";
 import ReviewCards, { draftsByReply } from "./ReviewCards";
 
+vi.mock("../lib/api", () => ({ api: {} })); // the cards' edit and revise calls aren't made here
+
 const draft = (id: string, createdAt: string, to: string): Draft => ({
   id, status: "pending", tool: "email_send", category: "case_status", categoryLabel: "Case status updates", urgency: "medium", score: 40, reason: "r",
   args: { to, subject: "Re: x", body: "y" }, createdAt, sid: "sid-1",
 });
 const drafts = [draft("d1", "2026-11-08T08:00:02Z", "marcus.bell@example.com"), draft("d2", "2026-11-08T08:00:09Z", "rosa@example.com")];
 
-// All the <button> elements in a rendered element tree (ReviewCards has no hooks, so calling it is rendering it).
-function buttons(node: ReactNode): ReactElement<{ onClick: () => void; "aria-label"?: string }>[] {
-  if (!isValidElement(node)) return Array.isArray(node) ? node.flatMap(buttons) : [];
-  const el = node as ReactElement<{ children?: ReactNode; onClick: () => void }>;
-  return [...(el.type === "button" ? [el] : []), ...buttons(el.props.children)];
+// Every element in a rendered tree (ReviewCards has no hooks, so calling it is rendering it).
+function all(node: ReactNode): ReactElement[] {
+  if (!isValidElement(node)) return Array.isArray(node) ? node.flatMap(all) : [];
+  const el = node as ReactElement<{ children?: ReactNode }>;
+  return [el, ...all(el.props.children)];
 }
 
 describe("ReviewCards: review from the chat", () => {
@@ -32,23 +34,35 @@ describe("ReviewCards: review from the chat", () => {
     expect(draftsByReply([], drafts).size).toBe(0); // no reply yet: the badge still reaches them
   });
 
-  it("renders one card per draft, saying who it is for and that it needs review", () => {
-    const html = renderToStaticMarkup(<ReviewCards drafts={drafts} onOpen={() => {}} />);
+  it("never puts a draft under an earlier turn's reply while its own turn is still running", () => {
+    const running: ChatMessage[] = [
+      { id: "u1", ts: "2026-11-08T08:00:00Z", role: "user", text: "check email" },
+      { id: "a1", ts: "2026-11-08T08:00:05Z", role: "assistant", text: "done" },
+      { id: "u2", ts: "2026-11-08T08:00:06Z", role: "user", text: "post about the pandemic" },
+    ];
+    const fresh = draft("d9", "2026-11-08T08:00:07Z", "x@example.com"); // made by the turn still running
+    expect(draftsByReply(running, [fresh]).get("a1")).toBeUndefined();
+  });
+
+  it("renders one editable draft card per draft, saying who it is for and that it needs review", () => {
+    const html = renderToStaticMarkup(<ReviewCards drafts={drafts} onOpen={() => {}} onChanged={async () => {}} />);
     expect(html).toContain("Reply to marcus.bell@example.com");
     expect(html).toContain("Reply to rosa@example.com");
     expect(html.match(/needs your review/g)).toHaveLength(2);
   });
 
-  it("clicking a card's Review opens that draft", () => {
+  it("each card gets its own draft and the console's open and reload callbacks", () => {
     const onOpen = vi.fn();
-    const [, second] = buttons(ReviewCards({ drafts, onOpen }));
-    second.props.onClick();
-    expect(onOpen).toHaveBeenCalledWith("d2");
+    const onChanged = vi.fn(async () => {});
+    const cards = all(ReviewCards({ drafts, onOpen, onChanged })).filter((e) => (e.props as { draft?: Draft }).draft);
+    expect(cards.map((c) => (c.props as { draft: Draft }).draft.id)).toEqual(["d1", "d2"]);
+    for (const c of cards) expect(c.props).toMatchObject({ onOpen, onChanged });
   });
 
   it("shows a decided draft as done, without a Review button", () => {
-    const html = renderToStaticMarkup(<ReviewCards drafts={[{ ...drafts[0], status: "sent" }]} onOpen={() => {}} />);
+    const html = renderToStaticMarkup(<ReviewCards drafts={[{ ...drafts[0], status: "sent" }]} onOpen={() => {}} onChanged={async () => {}} />);
     expect(html).toContain("Sent");
     expect(html).not.toContain("needs your review");
+    expect(html).not.toContain("Review and send");
   });
 });

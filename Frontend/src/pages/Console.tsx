@@ -8,7 +8,7 @@ import IdentityLine from "../components/IdentityLine";
 import ReviewPanel from "../components/ReviewPanel";
 import Sidebar from "../components/Sidebar";
 import WaitingList, { type WaitingScope } from "../components/WaitingList";
-import { api, type Draft, type SessionCard, type SessionSummary } from "../lib/api";
+import { api, type ChatMessage, type Draft, type SessionCard, type SessionSummary } from "../lib/api";
 import { connectionMessage } from "../lib/errors";
 import { useOpenDraft } from "../lib/useOpenDraft";
 import { useSession } from "../lib/AuthProvider";
@@ -20,6 +20,7 @@ import { useEventFeed } from "../lib/useEventFeed";
 import { useReview } from "../lib/useReview";
 import { useSessionRevoked } from "../lib/useSessionRevoked";
 import { useSessions } from "../lib/useSessions";
+import { useToggle } from "../lib/useToggle";
 import { sortDrafts, type WaitingOrder } from "../lib/waiting";
 import "./Console.css";
 
@@ -28,6 +29,23 @@ import "./Console.css";
 const CARD_KEY = "mandate.card";
 const REVOKED = "session revoked / delegator inactive";
 const GRANTS_KEY = "mandate.grants"; // { [sid]: categories } granted with "Approve and allow for this session"
+// A session lasts an hour; the next message then starts a new one. So the conversation doesn't lose what came
+// before, this tab keeps the earlier sessions' messages (they can't change once a session has ended) under the
+// new sid: { [sid]: { sids: earlier sids, messages } }.
+const HISTORY_KEY = "mandate.history";
+
+interface Earlier {
+  sids: string[];
+  messages: ChatMessage[];
+}
+
+function loadHistory(): Record<string, Earlier> {
+  try {
+    return JSON.parse(sessionStorage.getItem(HISTORY_KEY) ?? "{}") as Record<string, Earlier>;
+  } catch {
+    return {};
+  }
+}
 
 // The API has no "list grants" route, so the console remembers the grants this tab made, per session.
 function loadGrants(): Record<string, string[]> {
@@ -54,8 +72,11 @@ export default function Console() {
   const session = useSession();
   const [card, setCard] = useState<SessionCard | null>(() => loadCard(session.username));
   const feed = useEventFeed({ limit: 100 });
-  const events = sessionEvents(feed.events, card?.sid ?? null); // the admin Audit log shows every session
-  const revoked = useSessionRevoked(card?.sid ?? null) || events.some((e) => e.reason === REVOKED);
+  const [history, setHistory] = useState(loadHistory);
+  const earlier = card ? history[card.sid] : undefined;
+  const chain = [...(earlier?.sids ?? []), ...(card ? [card.sid] : [])]; // this conversation's sessions, oldest first
+  const revoked = useSessionRevoked(card?.sid ?? null) || sessionEvents(feed.events, card?.sid ?? null).some((e) => e.reason === REVOKED);
+  const events = feed.events.filter((e) => chain.includes(e.sid)); // the admin Audit log shows every session
   const chat = useChat(card?.sid ?? null);
   const conversations = useSessions();
   const review = useReview();
@@ -70,8 +91,15 @@ export default function Console() {
   // Errors, such as the broker refusing an offboarded staffer, show under the chat box.
   async function send(text: string) {
     if (card && !needsNewSession(card, Date.now())) return chat.send(text);
+    // The session's hour is up: keep what was said so far above the new session's messages.
+    const kept: Earlier | null = card ? { sids: chain, messages: shownMessages } : null;
     const next = await sendInSession(card, text, Date.now(), api);
     if (next.card.sid !== card?.sid) {
+      if (kept?.messages.length) {
+        const all = { ...history, [next.card.sid]: kept };
+        sessionStorage.setItem(HISTORY_KEY, JSON.stringify(all));
+        setHistory(all);
+      }
       showCard(next.card);
       conversations.reload();
     }
@@ -96,21 +124,22 @@ export default function Console() {
   function newConversation() {
     showCard(null);
   }
-  const chatWithSession: Chat = { ...chat, send };
+  const shownMessages = [...(earlier?.messages ?? []), ...chat.messages];
+  const chatWithSession: Chat = { ...chat, messages: shownMessages, send };
   const locked = new Set(review.categories.filter((c) => c.locked).map((c) => c.category));
   const admin = isAdmin(session);
-  const [railOpen, setRailOpen] = useState(false);
+  const [railOpen, setRailOpen] = useToggle(false); // the Sending rules popover
   const [convOpen, setConvOpen] = useState(false); // the conversation menu under 1280 px
   const [waitingOpen, setWaitingOpen] = useState(false);
   const [scope, setScope] = useState<WaitingScope>("this");
   const [order, setOrder] = useState<WaitingOrder>("rank");
-  const mine = review.drafts.filter((d) => d.sid === card?.sid);
+  const mine = review.drafts.filter((d) => d.sid !== undefined && chain.includes(d.sid));
   const titles = Object.fromEntries(conversations.sessions.map((c: SessionSummary) => [c.sid, c.title]));
   const reviewing = useOpenDraft();
   const openDraft = review.drafts.find((d) => d.id === reviewing.openId) ?? null; // a draft decided elsewhere closes
   // Drafts decided in this tab keep their card in the chat, marked Sent or Rejected.
   const [decided, setDecided] = useState<Record<string, Draft>>({});
-  const chatDrafts = [...mine, ...Object.values(decided).filter((d) => d.sid === card?.sid && !mine.some((p) => p.id === d.id))].sort(
+  const chatDrafts = [...mine, ...Object.values(decided).filter((d) => d.sid !== undefined && chain.includes(d.sid) && !mine.some((p) => p.id === d.id))].sort(
     (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id), // a decided card keeps its place
   );
   const openerRef = useRef<HTMLElement | null>(null);
@@ -165,7 +194,7 @@ export default function Console() {
         <div className={`assistant-shell${openDraft ? " has-review" : ""}`}>
           {/* The staffer's conversations: a left sidebar from 1280 px (collapsible), a drawer ("Conversations") below. */}
           <aside id="conversations" className={`conv-rail${convOpen ? " is-open" : ""}`}>
-            <div className="rail-close-row conv-close-row">
+            <div className="conv-close-row">
               <button type="button" className="icon-btn" onClick={() => setConvOpen(false)} aria-label="Close conversations">
                 <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                   <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -242,15 +271,31 @@ export default function Console() {
                     )}
                   </div>
                 )}
-                <button
-                  type="button"
-                  className="rail-toggle"
-                  aria-expanded={railOpen}
-                  aria-controls="assistant-rail"
-                  onClick={() => setRailOpen(true)}
-                >
-                  Sending rules
-                </button>
+                {/* What it may send without asking: one click away on every screen, so the chat keeps the width. */}
+                <div className="rules-anchor">
+                  <button
+                    type="button"
+                    className="rules-toggle"
+                    aria-expanded={railOpen}
+                    aria-controls="sending-rules"
+                    onClick={() => setRailOpen(!railOpen)}
+                  >
+                    Sending rules
+                  </button>
+                  {railOpen && (
+                    <div id="sending-rules" className="rules-popover" role="dialog" aria-label="Sending rules">
+                      <div className="waiting-popover-head">
+                        <h2>Sending rules</h2>
+                        <button type="button" className="icon-btn" onClick={() => setRailOpen(false)} aria-label="Close sending rules">
+                          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </div>
+                      <AutonomyPanel categories={review.categories} onChange={review.reload} />
+                    </div>
+                  )}
+                </div>
               </div>
             </header>
 
@@ -264,11 +309,12 @@ export default function Console() {
             )}
 
             <ChatPanel
+              renewedAfter={earlier?.messages[earlier.messages.length - 1]?.id ?? null}
               chat={chatWithSession}
               sid={card?.sid ?? null}
               disabled={revoked}
               activity={{ card, events, categories: review.categories, grants: card ? grants[card.sid] ?? [] : [], admin }}
-              review={{ drafts: chatDrafts, onOpen: openReview }}
+              review={{ drafts: chatDrafts, onOpen: openReview, onChanged: review.reload }}
             />
           </div>
 
@@ -288,22 +334,6 @@ export default function Console() {
             </div>
           )}
 
-          {/* What it may send alone: a right rail on a wide screen (hidden while a draft is open), a drawer on smaller ones. */}
-          <aside
-            id="assistant-rail"
-            className={`rail${railOpen ? " is-open" : ""}${openDraft ? " is-covered" : ""}`}
-            aria-label="Sending rules"
-          >
-            <div className="rail-close-row">
-              <button type="button" className="icon-btn" onClick={() => setRailOpen(false)} aria-label="Close sending rules">
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                  <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-            <AutonomyPanel categories={review.categories} onChange={review.reload} />
-          </aside>
-          {railOpen && <div className="rail-backdrop" onClick={() => setRailOpen(false)} aria-hidden="true" />}
         </div>
 
         {/* Admins only: the raw identity card and every ALLOW / DENY with its Cedar policy and ATLAS ids. */}
