@@ -41,7 +41,7 @@ The agent client secret (`COGNITO_AGENT_CLIENT_SECRET`) goes only into the git-i
 
 ### The two clients
 
-`staff-web` is a public browser client with no secret. A human logs in with authorization code + PKCE, and the browser sends the resulting access token.
+`staff-web` is a public browser client with no secret. A human logs in on Cognito's managed login page with the authorization code flow, and the browser sends the resulting access token. Cognito does not force PKCE on a public client, so the frontend must send a PKCE code challenge itself (any standard OIDC library does).
 
 `mandate-agent` is a confidential client with a secret. It uses `client_credentials`, so the agent proves its own workload identity with scope `mandate/tools`. No user is involved.
 
@@ -59,7 +59,7 @@ Every failure returns the same 401, so a caller learns nothing about why. A vali
 
 ### Revocation
 
-The backend checks a Cognito access token locally, from its signature, without asking Cognito. So a token stays valid until `exp` (60 minutes by default) even if the user is disabled: Cognito's `RevokeToken` only cancels refresh tokens and is not visible to a local check, and `client_credentials` tokens have no refresh token at all.
+The backend checks a Cognito access token locally, from its signature, without asking Cognito. So a token stays valid until `exp` (60 minutes by default) even if the user is disabled: Cognito's `RevokeToken` cancels a refresh token and the access tokens made from it, but only Cognito's own endpoints see that; a local signature check does not. `client_credentials` tokens have no refresh token to revoke at all.
 
 Revocation is therefore lane B's job: a DynamoDB session and staffer status check (ConsistentRead) on every tool call. Offboarding flips that status, and the next call is denied.
 
@@ -68,7 +68,10 @@ Revocation is therefore lane B's job: a DynamoDB session and staffer status chec
 `staff-web` allows `ADMIN_USER_PASSWORD_AUTH`, which needs AWS credentials. Use it only when the browser login is unavailable:
 
 ```bash
-aws cognito-idp admin-initiate-auth --region us-east-1 --user-pool-id <POOL_ID> --client-id <STAFF_CLIENT_ID> --auth-flow ADMIN_USER_PASSWORD_AUTH --auth-parameters USERNAME=<username>,PASSWORD=<password>
+read -rs PW   # type the password; it stays out of shell history
+aws cognito-idp admin-initiate-auth --region us-east-1 --user-pool-id "$COGNITO_USER_POOL_ID" \
+  --client-id "$COGNITO_STAFF_CLIENT_ID" --auth-flow ADMIN_USER_PASSWORD_AUTH \
+  --auth-parameters "USERNAME=maya,PASSWORD=$PW"
 ```
 
 ### Get an agent token
