@@ -1,6 +1,6 @@
 """Mount MITRE ATLAS agent IAM routes onto the HomeFront API.
 
-User auth stays on Supabase (`app.core.auth`). Agent workload identity,
+User auth is Amazon Cognito (`app.core.auth`). Agent workload identity,
 MCP tool grants/revoke, and ATLAS enrichment live in `packages/identity-gateway`
 and are attached here so one FastAPI process serves both, all under `/api/v1`.
 
@@ -49,7 +49,7 @@ def _ensure_package_paths() -> None:
 
 
 def resolve_user_id(authorization: str | None) -> str | None:
-    """Supabase user id for an agent-management request, or None if anonymous.
+    """Cognito user id (`sub`) for an agent-management request, or None if anonymous.
 
     Anonymous is allowed only when `AGENT_ADMIN_REQUIRES_LOGIN=false`. A token
     that is present but invalid is always rejected.
@@ -85,12 +85,14 @@ def include_agent_iam(host_app: FastAPI, prefix: str = "") -> None:
     set_actor_resolver(lambda authorization: Actor(user_id=resolve_user_id(authorization)))
     configure_bedrock_runner()
 
-    if get_settings().agent_store == "supabase":
-        from identity_gateway.supabase_repo import SupabaseAgentRepository
+    if get_settings().agent_store == "dynamodb":
+        from identity_gateway.dynamo_repo import DynamoAgentRepository, seed_demo_agent
 
-        from app.core.supabase import get_admin_client
+        from app.core.dynamodb import table
 
-        store.use_agent_repository(SupabaseAgentRepository(get_admin_client()))
+        repo = DynamoAgentRepository(table("agents"))
+        seed_demo_agent(repo)  # replaces the SQL migration's seed row
+        store.use_agent_repository(repo)
 
     # The gateway nests the ATLAS router, so it isn't in agent_app.routes; mount it directly.
     host_app.include_router(build_router(enricher), prefix=prefix)

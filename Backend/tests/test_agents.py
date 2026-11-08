@@ -1,5 +1,4 @@
 import uuid
-from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,12 +11,14 @@ from identity_gateway.store import (  # noqa: E402
     GatewayStore,
     MemoryAgentRepository,
 )
-from identity_gateway.supabase_repo import (  # noqa: E402
-    SupabaseAgentRepository,
-    agent_from_row,
-    agent_to_row,
+from identity_gateway.dynamo_repo import (  # noqa: E402
+    DynamoAgentRepository,
+    agent_from_item,
+    agent_to_item,
+    seed_demo_agent,
 )
-from postgrest.exceptions import APIError  # noqa: E402
+
+from app.core.dynamodb import table  # noqa: E402
 
 client = TestClient(app)
 
@@ -173,75 +174,16 @@ def test_store_update_rejects_non_editable_fields():
         store.update_agent("agent-comms-01", token_version=99)
 
 
-# --- Supabase repository (fake client, no network) --------------------------
+# --- DynamoDB repository (moto) ---------------------------------------------
 
 
-class FakeQuery:
-    """Minimal stand-in for the postgrest query builder over a list of rows."""
-
-    def __init__(self, rows: list[dict], error: APIError | None = None):
-        self.rows = rows
-        self.error = error
-        self._op = "select"
-        self._payload = None
-        self._filters: list[tuple[str, object]] = []
-        self._count = False
-
-    def select(self, *_cols, count=None, head=None):
-        self._op, self._count = "select", bool(count)
-        return self
-
-    def insert(self, payload):
-        self._op, self._payload = "insert", payload
-        return self
-
-    def update(self, payload):
-        self._op, self._payload = "update", payload
-        return self
-
-    def eq(self, col, val):
-        self._filters.append((col, val))
-        return self
-
-    def order(self, *_a, **_k):
-        return self
-
-    def limit(self, *_a):
-        return self
-
-    def _match(self):
-        return [r for r in self.rows if all(r.get(c) == v for c, v in self._filters)]
-
-    def execute(self):
-        if self.error:
-            raise self.error
-        stamp = {"created_at": "2026-11-07T12:00:00.123456+00:00"}
-        if self._op == "insert":
-            row = {**self._payload, **stamp}
-            self.rows.append(row)
-            return SimpleNamespace(data=[row], count=None)
-        if self._op == "update":
-            hits = self._match()
-            for r in hits:
-                r.update(self._payload)
-            return SimpleNamespace(data=hits, count=None)
-        hits = self._match()
-        return SimpleNamespace(data=hits, count=len(hits) if self._count else None)
+def _repo() -> DynamoAgentRepository:
+    return DynamoAgentRepository(table("agents"))
 
 
-class FakeClient:
-    def __init__(self, error: APIError | None = None):
-        self.rows: list[dict] = []
-        self.error = error
-
-    def table(self, name):
-        assert name == "agents"
-        return FakeQuery(self.rows, self.error)
-
-
-def test_row_round_trip():
+def test_item_round_trip():
     agent = AgentRecord(
-        agent_id="agent-rt-01",
+        agent_id=_new_id(),
         name="RT",
         agency="Agency",
         tool_grants={"web.scrape", "datagov.search"},
@@ -252,31 +194,90 @@ def test_row_round_trip():
         token_version=3,
         active=False,
     )
-    row = agent_to_row(agent)
-    assert row["tool_grants"] == ["datagov.search", "web.scrape"]
-    back = agent_from_row({**row, "created_at": "2026-11-07T12:00:00+00:00"})
-    assert back.created_at > 0
+    item = agent_to_item(agent)
+    assert item["tool_grants"] == ["datagov.search", "web.scrape"]
+    back = agent_from_item(item)
+    assert back.created_at == pytest.approx(agent.created_at, abs=1e-3)
     assert back == AgentRecord(**{**agent.__dict__, "created_at": back.created_at})
 
 
-def test_supabase_repository_crud():
-    repo = SupabaseAgentRepository(FakeClient())
+def test_dynamo_repository_crud():
+    repo = _repo()
     store = GatewayStore(repo)
-    store.create_agent("A", "B", ["web.scrape"], "agent-sb-01", instructions="hi")
-    assert repo.count() == 1
-    assert store.get_agent("agent-sb-01").instructions == "hi"
+    aid = _new_id()
+    before = repo.count()
+    store.create_agent("A", "B", ["web.scrape"], aid, instructions="hi", owner_id="u-1")
+    assert repo.count() == before + 1
 
-    store.grant_tool("agent-sb-01", "datagov.search")
-    agent = store.get_agent("agent-sb-01")
+    got = store.get_agent(aid)
+    assert (got.instructions, got.owner_id, got.max_steps) == ("hi", "u-1", 10)
+    assert isinstance(got.max_steps, int) and isinstance(got.token_version, int)
+
+    store.grant_tool(aid, "datagov.search")
+    agent = store.get_agent(aid)
     assert agent.tool_grants == {"web.scrape", "datagov.search"}
     assert agent.token_version == 2
 
+    store.revoke_all(aid)
+    assert store.get_agent(aid).tool_grants == set()  # empty list survives the round trip
+    assert aid in {a.agent_id for a in store.list_agents()}
+
     with pytest.raises(KeyError):
-        store.grant_tool("agent-missing", "web.scrape")
+        store.grant_tool("agent-missing-x", "web.scrape")
 
 
-def test_supabase_repository_maps_unique_violation():
-    err = APIError({"code": "23505", "message": "duplicate key", "details": "", "hint": ""})
-    repo = SupabaseAgentRepository(FakeClient(error=err))
+def test_dynamo_repository_rejects_duplicate_id():
+    repo = _repo()
+    aid = _new_id()
+    repo.insert(AgentRecord(aid, "A", "B", set()))
     with pytest.raises(DuplicateAgentError):
-        repo.insert(AgentRecord("agent-dup-01", "A", "B", set()))
+        repo.insert(AgentRecord(aid, "Impostor", "B", set()))
+    assert repo.get(aid).name == "A"
+
+
+def test_dynamo_save_does_not_resurrect_missing_agent():
+    with pytest.raises(KeyError):
+        _repo().save(AgentRecord(_new_id(), "A", "B", set()))
+
+
+def test_seed_demo_agent_is_idempotent():
+    repo = _repo()
+    seed_demo_agent(repo)
+    assert seed_demo_agent(repo) is False
+    demo = repo.get("agent-comms-01")
+    assert demo.owner_id is None and "email.send" in demo.tool_grants
+
+
+def test_dynamo_list_paginates():
+    repo = _repo()
+    ids = {_new_id() for _ in range(5)}
+    for aid in ids:
+        repo.insert(AgentRecord(aid, "A", "B", set()))
+
+    # Force tiny pages to exercise LastEvaluatedKey handling.
+    real_scan = repo._table.scan
+    repo._table = type("T", (), {})()
+    repo._table.scan = lambda **kw: real_scan(Limit=2, **kw)
+    assert ids <= {a.agent_id for a in repo.list()}
+    assert repo.count() >= 5
+
+
+def test_api_against_dynamo_store():
+    """The full agent API, owner scoping included, on the DynamoDB repository."""
+    from identity_gateway import app as gateway
+
+    from tests.helpers import auth
+
+    saved = gateway.store._agents
+    gateway.store.use_agent_repository(_repo())
+    try:
+        alice = auth("00000000-0000-0000-0000-00000000a11c")
+        r = client.post("/api/v1/agents", json={"name": "Dyn", "agency": "X", "tool_grants": ["web.scrape"]}, headers=alice)
+        assert r.status_code == 201
+        aid = r.json()["agent_id"]
+        assert client.get(f"/api/v1/agents/{aid}", headers=alice).json()["owner_id"].endswith("a11c")
+        assert client.get(f"/api/v1/agents/{aid}", headers=auth()).status_code == 404
+        assert client.post(f"/api/v1/agents/{aid}/grants/web.scrape/revoke", headers=alice).status_code == 200
+        assert client.get(f"/api/v1/agents/{aid}", headers=alice).json()["tool_grants"] == []
+    finally:
+        gateway.store.use_agent_repository(saved)

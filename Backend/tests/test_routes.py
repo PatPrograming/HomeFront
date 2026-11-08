@@ -1,23 +1,15 @@
-import time
-
-import jwt
 import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.main import app
+from tests.helpers import user_token
 
 client = TestClient(app)
-SECRET = "test-secret-test-secret-test-secret"
 
 
 def _user_token() -> str:
-    claims = {
-        "sub": "00000000-0000-0000-0000-000000000001",
-        "aud": "authenticated",
-        "exp": int(time.time()) + 60,
-    }
-    return jwt.encode(claims, SECRET, algorithm="HS256")
+    return user_token("00000000-0000-0000-0000-000000000001")
 
 
 def test_home_is_public():

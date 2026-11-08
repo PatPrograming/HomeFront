@@ -1,4 +1,4 @@
-import { supabase } from "./supabase.js";
+import { getIdToken } from "./AuthProvider.jsx";
 
 // All backend routes live under /api/v1. In dev, Vite proxies /api to FastAPI (:8080).
 // In production set VITE_API_BASE to the deployed API origin + /api/v1.
@@ -17,8 +17,7 @@ async function request(path, { auth = true, method = "GET", body, headers } = {}
   const finalHeaders = { ...(body ? { "Content-Type": "application/json" } : {}), ...headers };
 
   if (auth) {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
+    const token = await getIdToken();
     if (token) finalHeaders.Authorization = `Bearer ${token}`;
   }
 

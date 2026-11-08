@@ -36,7 +36,7 @@ from .store import (
     GatewayStore,
 )
 
-# Agents live in memory by default; the host app can swap in Supabase via
+# Agents live in memory by default; the host app can swap in DynamoDB via
 # store.use_agent_repository(...).
 store = GatewayStore()
 runs = RunStore()

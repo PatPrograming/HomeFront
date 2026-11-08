@@ -3,7 +3,7 @@ import Layout from "../components/Layout.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/AuthProvider.jsx";
 
-// First end-to-end check: browser -> Supabase JWT -> FastAPI /api/v1/me -> Postgres (RLS).
+// First end-to-end check: browser -> Cognito ID token -> FastAPI /api/v1/me -> DynamoDB.
 export default function Account() {
   const { user, signOut } = useAuth();
   const [profile, setProfile] = useState(null);

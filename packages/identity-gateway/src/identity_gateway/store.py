@@ -29,7 +29,7 @@ class AgentRecord:
     # None = use the runner's default model.
     model: str | None = None
     max_steps: int = DEFAULT_MAX_STEPS
-    # Supabase auth.users id. None = system/demo agent.
+    # Cognito user id (`sub`). None = system/demo agent.
     owner_id: str | None = None
     token_version: int = 1
     active: bool = True
@@ -103,7 +103,7 @@ class MemoryAgentRepository:
 
 
 def demo_agent() -> AgentRecord:
-    # Keep in sync with the seed row in supabase/migrations/*_create_agents.sql.
+    # Seeded into DynamoDB at startup by identity_gateway.dynamo_repo.seed_demo_agent.
     return AgentRecord(
         agent_id="agent-comms-01",
         name="Agency Comms Agent",
@@ -240,7 +240,7 @@ class GatewayStore:
         if not tok or tok.expires_at < time.time():
             return None
         # Read the agent fresh on every call so a revoke (from any process,
-        # when backed by Supabase) applies to the very next tool call.
+        # when backed by DynamoDB) applies to the very next tool call.
         agent = self._agents.get(tok.agent_id)
         if not agent or not agent.active:
             return None

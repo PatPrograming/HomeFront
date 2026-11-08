@@ -1,14 +1,13 @@
 import json
-import time
 import uuid
 from types import SimpleNamespace
 
 import httpx2
-import jwt
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app  # puts packages/*/src on sys.path
+from tests.helpers import auth
 
 from identity_gateway import app as gateway  # noqa: E402
 from identity_gateway.runner import (  # noqa: E402
@@ -18,12 +17,10 @@ from identity_gateway.runner import (  # noqa: E402
 )
 
 client = TestClient(app)
-SECRET = "test-secret-test-secret-test-secret"
 
 
 def _auth(sub: str) -> dict[str, str]:
-    claims = {"sub": sub, "aud": "authenticated", "exp": int(time.time()) + 60}
-    return {"Authorization": f"Bearer {jwt.encode(claims, SECRET, algorithm='HS256')}"}
+    return auth(sub)
 
 
 # --- scripted fake model ---------------------------------------------------

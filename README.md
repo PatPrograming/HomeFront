@@ -2,7 +2,7 @@
 
 AWS × A10 Hackathon — **Prompt 1: Agentic Identity**
 
-Government-agency agents that email, post/reply on social, scrape the web, and query **api.data.gov** — behind **Supabase user auth** plus **agent workload identity**, fine-grained MCP tool grants, mid-task revoke, and **MITRE ATLAS** labels on every allow/deny.
+Government-agency agents that email, post/reply on social, scrape the web, and query **api.data.gov** — behind **Amazon Cognito user auth** (data in **DynamoDB**) plus **agent workload identity**, fine-grained MCP tool grants, mid-task revoke, and **MITRE ATLAS** labels on every allow/deny.
 
 ## What the demo shows
 
@@ -16,8 +16,8 @@ ATLAS data is **vendored** from [mitre-atlas/atlas-data](https://github.com/mitr
 ## Quick start
 
 ```bash
-# Optional: copy Backend/.env.example → Backend/.env and fill Supabase keys
-# (agent IAM demo works with defaults; /api/v1/me needs real Supabase)
+# Optional: copy Backend/.env.example → Backend/.env and fill in the Cognito values
+# (agent IAM demo works with defaults; /api/v1/me needs Cognito + DynamoDB, see below)
 
 chmod +x scripts/*.sh
 ./scripts/run-gateway.sh   # unified API on :8080
@@ -29,11 +29,23 @@ chmod +x scripts/*.sh
 
 - API docs: http://127.0.0.1:8080/docs  
 - Everything is under `/api/v1`; both frontends proxy `/api` to :8080  
-- User API: `/api/v1/home`, `/api/v1/health`, `/api/v1/me` (Supabase JWT)  
+- User API: `/api/v1/home`, `/api/v1/health`, `/api/v1/me` (Cognito ID token)  
 - Agent IAM: `/api/v1/auth/token`, `/api/v1/mcp/call`, `/api/v1/atlas/*`, `/api/v1/agents/...`  
-- Set `AGENT_ADMIN_REQUIRES_LOGIN=true` in `Backend/.env` to require a Supabase login for `/agents*`, `/auth/token` and `/audit`  
+- Set `AGENT_ADMIN_REQUIRES_LOGIN=true` in `Backend/.env` to require a Cognito login for `/agents*`, `/auth/token` and `/audit`  
 - Agents are owner-scoped: a signed-in user sees and manages only their own agents plus ownerless demo agents (like `agent-comms-01`). Without a login, only the demo agents are reachable  
-- Set `AGENT_STORE=supabase` to keep agents in `public.agents` instead of memory (apply `supabase/migrations/` first; needs `SUPABASE_SERVICE_ROLE_KEY`)  
+- Set `AGENT_STORE=dynamodb` to keep agents in the `<prefix>agents` DynamoDB table instead of memory  
+
+### AWS setup: Cognito + DynamoDB
+
+```bash
+AWS_REGION=us-east-1 ./infra/deploy.sh   # creates the user pool, app client, tables, IAM policy
+```
+
+It prints the lines to paste into `Backend/.env` and `Frontend/.env`, and the IAM policy to attach to the identity the backend runs as. The template is `infra/cloudformation/homefront.yaml`.
+
+**Local data without AWS:** `./scripts/run-dynamodb-local.sh` starts DynamoDB Local in Docker and creates the tables. Then set `DYNAMODB_ENDPOINT_URL=http://localhost:8000` in `Backend/.env`. Sign-in still needs a real Cognito pool (there's no local emulator); the free tier covers development.
+
+**Tests:** `pytest Backend/tests` uses an in-memory DynamoDB (moto). To run the same suite against DynamoDB Local: `TEST_DYNAMODB_ENDPOINT_URL=http://localhost:8000 pytest Backend/tests`.
 
 ### Running agents (Claude on Amazon Bedrock)
 
@@ -63,14 +75,14 @@ DATA_GOV_API_KEY=your_key_here
 ## Layout
 
 ```
-Backend/                   # FastAPI — Supabase auth + mounted agent IAM/ATLAS
-Frontend/                  # User-facing React app (supabase-js) — see Frontend/README
+Backend/                   # FastAPI — Cognito auth, DynamoDB, mounted agent IAM/ATLAS
+Frontend/                  # User-facing React app (Amplify Auth) — see Frontend/README
 packages/atlas-pack/       # vendored ATLAS Agentic pack + build script
 packages/atlas-enricher/   # local ATLAS lookup + annotate
 packages/identity-gateway/ # agent workload identity, grants, MCP authZ
 packages/mcp-tools/        # email / social / scrape / data.gov tools
 apps/demo-console/         # operator UI for the agent IAM demo
-supabase/migrations/       # profiles + RLS
+infra/                     # CloudFormation: Cognito, DynamoDB, IAM (deploy.sh)
 docs/ARCHITECTURE.md       # system design
 ```
 

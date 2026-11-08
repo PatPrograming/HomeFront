@@ -13,8 +13,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# SupabaseAgentRepository (identity_gateway.supabase_repo)
-supabase = ["supabase>=2.7"]
+# DynamoAgentRepository (identity_gateway.dynamo_repo)
+dynamodb = ["boto3>=1.43"]
 
 [tool.uv.sources]
 atlas-enricher = { path = "../atlas-enricher", editable = true }

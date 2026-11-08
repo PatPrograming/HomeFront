@@ -47,6 +47,3 @@ Thumbs.db
 .idea/
 *.swp
 
-# Supabase local
-supabase/.branches/
-supabase/.temp/

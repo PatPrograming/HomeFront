@@ -1,23 +1,20 @@
-import time
 import uuid
 
-import jwt
 import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.main import app
+from tests.helpers import OTHER_KEY, auth
 
 client = TestClient(app)
-SECRET = "test-secret-test-secret-test-secret"  # matches conftest.py
 
 ALICE = "00000000-0000-0000-0000-00000000a11c"
 BOB = "00000000-0000-0000-0000-000000000b0b"
 
 
-def _auth(sub: str, *, secret: str = SECRET, exp_in: int = 60) -> dict[str, str]:
-    claims = {"sub": sub, "aud": "authenticated", "exp": int(time.time()) + exp_in}
-    return {"Authorization": f"Bearer {jwt.encode(claims, secret, algorithm='HS256')}"}
+def _auth(sub: str, **kwargs) -> dict[str, str]:
+    return auth(sub, **kwargs)
 
 
 def _create_as(headers: dict[str, str] | None, **overrides) -> dict:
@@ -124,7 +121,7 @@ def test_anonymous_rejected_when_login_required(login_required):
         {"Authorization": "Bearer not-a-jwt"},
         {"Authorization": "Basic Zm9vOmJhcg=="},
         {"Authorization": "Bearer "},
-        _auth(ALICE, secret="wrong-secret-wrong-secret-wrong-secret"),
+        _auth(ALICE, key=OTHER_KEY),
         _auth(ALICE, exp_in=-60),
     ],
     ids=["garbage", "basic", "empty", "bad-signature", "expired"],
@@ -147,7 +144,7 @@ def test_owner_cannot_be_set_by_request_body():
 
 def test_agent_token_route_unaffected_by_user_auth():
     # /mcp/call is authenticated by the *agent* token; the user resolver must
-    # not try to parse it as a Supabase JWT.
+    # not try to parse it as a Cognito JWT.
     alice = _auth(ALICE)
     aid = _create_as(alice)["agent_id"]
     token = client.post("/api/v1/auth/token", json={"agent_id": aid}, headers=alice).json()[
