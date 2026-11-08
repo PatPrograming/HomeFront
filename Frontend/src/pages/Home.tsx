@@ -36,7 +36,7 @@ export default function Home() {
 
   return (
     <Layout>
-      <Hero mission={content.mission} buttons={content.buttons} />
+      <Hero mission={content.mission} />
 
       <section id="how-it-works" className="how">
         <div className="container">

@@ -14,7 +14,14 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/social-platform" element={<SocialPlatform />} />
+          <Route
+            path="/social-platform"
+            element={
+              <RequireAuth>
+                <SocialPlatform />
+              </RequireAuth>
+            }
+          />
           <Route
             path="/account"
             element={
