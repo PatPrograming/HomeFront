@@ -81,8 +81,10 @@ cp agent/.env.example agent/.env    # then paste COGNITO_AGENT_CLIENT_SECRET int
 agent/.venv/bin/python agent/agent.py --sid <session id>
 ```
 
-Chat mode: Maya talks to the agent in the console instead of it working the inbox once. Start
-it after Maya presses "Start assistant"; it answers the console chat until the session is revoked:
+Chat mode: Maya talks to the agent in the console instead of it working the inbox once. There is
+no "Start" button: Maya's first chat message starts the session through the broker (her Cognito
+login, an active staffer). Copy the session id the chat shows, then start the agent; it gets its
+mandate token with its own client credentials and answers the chat until the session is revoked:
 
 ```bash
 agent/.venv/bin/python agent/agent.py --sid <session id> --chat
@@ -118,6 +120,28 @@ sent", whatever the model says.
   console offers to let the agent send that category alone. Maya accepts or says "not now".
 - The rules live in `packages/identity-gateway/src/identity_gateway/autonomy.py`; the routes in
   `Backend/app/routers/assistant.py`.
+
+### Asking for permission (per-session grants)
+
+When something is held, the agent may ask Maya whether it can send that kind alone. Maya answers
+with the "Approve and allow for this session" button, which calls `POST /api/v1/sessions/{sid}/grants`
+with **her own Cognito login**. Nothing else can grant:
+
+- Chat text, or an email saying "Maya approves this", changes nothing: no route reads chat text
+  as a decision. The agent's mandate token is refused by the approve and grant routes.
+- A grant is a DynamoDB item `GRANT#<sid>` / `<category>`, for one session and one category. The
+  gateway reads it only after Cedar allowed the call, so it can skip the review queue but never a
+  `forbid` policy. Locked categories cannot be granted (403).
+- It ends with the session: a revoked or expired session is denied at step 2 before any grant is
+  read, and offboarding also deletes the staffer's grant items.
+- A denied call is never retried. The gateway's DENY text names the Cedar policy
+  (`DENIED (denied by policy, ATLAS AML.T0053) policy: forbid-bulk-export`), and `guard.py` adds
+  that line to the chat reply, so Maya sees the reason even if the model glosses over it.
+
+### Not built yet (future work)
+
+Onboarding questions, losing autonomy after edits, an undo window for sent mail, a daily summary,
+four trust levels, per-site rules, and hard rules for money, legal and attachments.
 
 ## Guardrail (WP5)
 

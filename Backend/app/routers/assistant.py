@@ -205,3 +205,30 @@ def snooze_suggestion(category: str, staff: StaffIdentity = Depends(require_staf
     item = item.model_copy(update={"snoozed_at": reviews(item)})
     get_gateway().store.put_autonomy(staff.username, category, item)
     return view(category, item).as_json()
+
+
+# --- per-session permission grants ----------------------------------------------
+# The agent asks in the chat ("may I send these alone?"); only this route, with the staffer's own
+# Cognito login, can say yes. Chat text never grants anything. The grant only skips the review
+# queue after Cedar has allowed the call, so a `forbid` policy can never be granted by anyone.
+
+
+class GrantIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    category: str
+
+
+@router.get("/sessions/{sid}/grants")
+def list_grants(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dict:
+    _own_active_session(sid, staff)
+    return {"grants": get_gateway().store.grants_for(sid)}
+
+
+@router.post("/sessions/{sid}/grants")
+def grant_for_session(sid: str, body: GrantIn, staff: StaffIdentity = Depends(require_staff)) -> dict:
+    _own_active_session(sid, staff)
+    _known_category(body.category)
+    if body.category in LOCKED:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This category always needs your review")
+    get_gateway().store.put_grant(sid, body.category, staff.username, datetime.now(timezone.utc).isoformat())
+    return {"sid": sid, "category": body.category, "label": LABELS[body.category], "scope": "this session only"}

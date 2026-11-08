@@ -68,6 +68,7 @@ export interface Draft {
   categoryLabel: string;
   args: Record<string, string>;
   createdAt: string;
+  sid?: string; // the session that drafted it; "Allow for this session" grants the category there
 }
 
 /** What the staffer may change before approving: the text, never the recipient or account. */
@@ -166,6 +167,12 @@ export const api = {
   sendMessage: (sid: string, text: string) =>
     request<ChatMessage>(`/sessions/${encodeURIComponent(sid)}/messages`, { method: "POST", body: { text } }),
   drafts: () => request<{ drafts: Draft[] }>("/drafts"),
+  // Let the agent send this category alone for one session (staffer's own login; chat text never grants)
+  grant: (sid: string, category: string) =>
+    request<{ sid: string; category: string; label: string; scope: string }>(`/sessions/${encodeURIComponent(sid)}/grants`, {
+      method: "POST",
+      body: { category },
+    }),
   approveDraft: (id: string, edits: DraftEdits) =>
     request<{ id: string; status: "sent"; edited: boolean }>(`/drafts/${encodeURIComponent(id)}/approve`, { method: "POST", body: edits }),
   rejectDraft: (id: string) =>

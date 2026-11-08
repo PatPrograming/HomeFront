@@ -322,7 +322,9 @@ def test_every_deny_event_carries_the_atlas_prompt_injection_id(gateway, store, 
 
 def test_deny_text_names_reason_and_atlas_ids(gateway, make_token):
     out = gateway.guarded("records_bulk_export", {"query": "all"}, make_token())
-    assert out.deny_text() == f"DENIED ({out.event.reason}, ATLAS {', '.join(out.event.atlas)})"
+    assert out.deny_text() == (
+        f"DENIED ({out.event.reason}, ATLAS {', '.join(out.event.atlas)}) policy: {', '.join(out.event.policy_ids)}"
+    )
     assert out.deny_text().startswith("DENIED (denied by policy, ATLAS AML.T0053")
 
 
@@ -468,3 +470,8 @@ def test_denied_call_is_not_scanned(gateway, store, scan_spy, make_token, world)
 def test_set_gateway_replaces_the_process_wide_instance(gateway):
     set_gateway(gateway)
     assert get_gateway() is gateway
+
+
+def test_deny_text_names_the_cedar_policy(gateway, make_token):
+    out = gateway.guarded("records_bulk_export", {"query": "all constituent cases rep-x"}, make_token())
+    assert not out.allowed and "policy: forbid-bulk-export" in out.deny_text()

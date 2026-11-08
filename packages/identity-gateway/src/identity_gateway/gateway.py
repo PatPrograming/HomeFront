@@ -69,7 +69,9 @@ class Outcome:
         return self.event.decision == "ALLOW"
 
     def deny_text(self) -> str:
-        return f"DENIED ({self.event.reason}, ATLAS {', '.join(self.event.atlas)})"
+        text = f"DENIED ({self.event.reason}, ATLAS {', '.join(self.event.atlas)})"
+        # Name the Cedar policy, so the agent can tell the staffer exactly which rule said no.
+        return f"{text} policy: {', '.join(self.event.policy_ids)}" if self.event.policy_ids else text
 
 
 class Gateway:
@@ -142,8 +144,13 @@ class Gateway:
             #     may send it without review. Until then the gateway keeps a draft and sends nothing.
             if tool in OUTBOUND_TOOLS:
                 category = self._outbound_category(tool, params)
-                # A locked category is held even if its stored level says "auto".
-                if category in LOCKED or self.store.get_autonomy(claims.act, category).level != "auto":
+                # A locked category is held even if its stored level says "auto" or a grant exists.
+                # Otherwise it runs if the staffer set it to "auto", or granted it for this session.
+                allowed_alone = (
+                    self.store.get_autonomy(claims.act, category).level == "auto"
+                    or self.store.has_grant(claims.sid, category)
+                )
+                if category in LOCKED or not allowed_alone:
                     held = self._hold(claims, tool, category, params)
                     return self._record(
                         claims, tool, resource, "ALLOW", "held for staff review", decision.policy_ids, result=held

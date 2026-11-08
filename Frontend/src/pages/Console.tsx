@@ -8,7 +8,8 @@ import ReviewQueue from "../components/ReviewQueue";
 import { api, type SessionCard } from "../lib/api";
 import { useSession } from "../lib/AuthProvider";
 import { sessionEvents } from "../lib/events";
-import { useChat } from "../lib/useChat";
+import { needsNewSession, sendInSession } from "../lib/chatSession";
+import { useChat, type Chat } from "../lib/useChat";
 import { useEventFeed } from "../lib/useEventFeed";
 import { useReview } from "../lib/useReview";
 import { useSessionRevoked } from "../lib/useSessionRevoked";
@@ -27,13 +28,11 @@ function loadCard(username: string): SessionCard | null {
   }
 }
 
-// Staff view: start the assistant (demo step 1), chat with it, review what the gateway held for you, decide what
+// Staff view: chat with the assistant (the first message starts the session: demo step 1), review what the gateway held for you, decide what
 // it may send alone, and watch every ALLOW / DENY this session gets (steps 2 and 4).
 export default function Console() {
   const session = useSession();
   const [card, setCard] = useState<SessionCard | null>(() => loadCard(session.username));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const feed = useEventFeed({ limit: 100 });
   const events = sessionEvents(feed.events, card?.sid ?? null); // the admin Audit log shows every session
   const revoked = useSessionRevoked(card?.sid ?? null) || events.some((e) => e.reason === REVOKED);
@@ -46,19 +45,18 @@ export default function Console() {
     reloadReview();
   }, [chat.messages.length, reloadReview]);
 
-  async function start() {
-    setBusy(true);
-    setError(null);
-    try {
-      const next = await api.startSession();
-      sessionStorage.setItem(CARD_KEY, JSON.stringify(next));
-      setCard(next);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
+  // No "Start" button: the first message (or the first after the session expired) starts one.
+  // Errors, such as the broker refusing an offboarded staffer, show under the chat box.
+  async function send(text: string) {
+    if (card && !needsNewSession(card, Date.now())) return chat.send(text);
+    const next = await sendInSession(card, text, Date.now(), api);
+    if (next.card.sid !== card?.sid) {
+      sessionStorage.setItem(CARD_KEY, JSON.stringify(next.card));
+      setCard(next.card);
     }
   }
+  const chatWithSession: Chat = { ...chat, send };
+  const locked = new Set(review.categories.filter((c) => c.locked).map((c) => c.category));
 
   return (
     <Layout>
@@ -71,28 +69,12 @@ export default function Console() {
               your office allows, for 15 minutes at a time.
             </p>
           </div>
-          <button type="button" className="btn-primary" onClick={start} disabled={busy}>
-            {busy ? "Starting…" : card ? "Start a new session" : "Start assistant"}
-          </button>
         </header>
 
-        {error && (
-          <p className="alert" role="alert">
-            Could not start the assistant: {error}
-          </p>
-        )}
-
         <div className="assistant-grid">
-          {card ? (
-            <ChatPanel chat={chat} sid={card.sid} disabled={revoked} />
-          ) : (
-            <section className="panel identity-empty">
-              <h2>No assistant running</h2>
-              <p>Start the assistant to chat with it. You get its identity card and the session id to hand to the agent.</p>
-            </section>
-          )}
+          <ChatPanel chat={chatWithSession} sid={card?.sid ?? null} disabled={revoked} />
           <div className="assistant-side">
-            <ReviewQueue drafts={review.drafts} onDone={review.reload} />
+            <ReviewQueue drafts={review.drafts} locked={locked} onDone={review.reload} />
             <AutonomyPanel categories={review.categories} onChange={review.reload} />
           </div>
         </div>
@@ -112,7 +94,7 @@ export default function Console() {
             emptyText={
               card
                 ? "No tool calls yet. They appear here within a second."
-                : "No assistant running. Its tool calls appear here once you start it."
+                : "No session yet. Send the assistant a message to start one; its tool calls appear here."
             }
           />
         </section>

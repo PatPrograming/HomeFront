@@ -68,8 +68,9 @@ def _text(text: str, *, error: bool = False) -> CallToolResult:
     return CallToolResult(content=[TextContent(type="text", text=text)], isError=error)
 
 
-def _denied(reason: str, atlas: str) -> CallToolResult:
-    return _text(f"DENIED ({reason}, ATLAS {atlas})", error=True)
+def _denied(reason: str, atlas: str, policy: str = "") -> CallToolResult:
+    """Like the gateway, name the Cedar policy when one decided."""
+    return _text(f"DENIED ({reason}, ATLAS {atlas})" + (f" policy: {policy}" if policy else ""), error=True)
 
 
 def create_stub(state: StubState | None = None, secret: str | None = None):
@@ -142,7 +143,7 @@ def create_stub(state: StubState | None = None, secret: str | None = None):
         return guarded("social_post", {"account": account, "text": text}, rule)
 
     def records_bulk_export(query: str) -> CallToolResult:
-        return guarded("records_bulk_export", {"query": query}, lambda: _denied("denied by policy", "AML.T0086"))
+        return guarded("records_bulk_export", {"query": query}, lambda: _denied("denied by policy", "AML.T0086", "forbid-bulk-export"))
 
     handlers = [inbox_read, case_read, datagov_search, web_scrape, email_send, social_post, records_bulk_export]
     tools = []

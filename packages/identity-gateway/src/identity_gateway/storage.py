@@ -120,6 +120,7 @@ class MandateStore:
                 ExpressionAttributeNames={"#s": "status"},
                 ExpressionAttributeValues={":r": "revoked"},
             )
+        self.delete_grants_for(staffer_id)
         return len(active)
 
     # --- casework data -----------------------------------------------------
@@ -175,6 +176,29 @@ class MandateStore:
 
     def put_autonomy(self, staffer_id: str, category: str, item: AutonomyItem) -> None:
         self._put(autonomy_key(staffer_id, category), item)
+
+    # --- per-session grants -------------------------------------------------
+    # "You may send these alone, for this session only." Keyed by session, so a grant can never
+    # outlive it: a revoked or expired session is denied at step 2 before any grant is read, and
+    # offboarding deletes the items too.
+
+    def put_grant(self, sid: str, category: str, staffer_id: str, granted_at: str) -> None:
+        self.table.put_item(
+            Item={"pk": f"GRANT#{sid}", "sk": category, "actingFor": staffer_id, "grantedAt": granted_at}
+        )
+
+    def has_grant(self, sid: str, category: str) -> bool:
+        return self._get({"pk": f"GRANT#{sid}", "sk": category}) is not None
+
+    def grants_for(self, sid: str) -> list[str]:
+        page = self.table.query(KeyConditionExpression=Key("pk").eq(f"GRANT#{sid}"), ConsistentRead=True)
+        return [item["sk"] for item in page.get("Items", [])]
+
+    def delete_grants_for(self, staffer_id: str) -> int:
+        grants = self._scan("GRANT#", Attr("actingFor").eq(staffer_id))
+        for item in grants:
+            self.table.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})
+        return len(grants)
 
     # --- console chat ------------------------------------------------------
 

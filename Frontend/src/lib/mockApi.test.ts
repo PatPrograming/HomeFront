@@ -88,3 +88,48 @@ describe("mock post drafts", () => {
     vi.useRealTimers();
   });
 });
+
+describe("mock per-session grants", () => {
+  beforeEach(() => store.clear());
+
+  async function ask(sid: string, text: string): Promise<string> {
+    await mockRequest("POST", `/sessions/${sid}/messages`, { text }, MAYA);
+    vi.advanceTimersByTime(2000);
+    const page = (await mockRequest("GET", `/sessions/${sid}/messages`, undefined, MAYA)) as { messages: { text: string }[] };
+    return page.messages[page.messages.length - 1].text;
+  }
+
+  it("a grant sends that category alone in this session only, and offboarding closes it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { sid } = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    expect(await ask(sid, "Check my email")).toContain("Waiting for your review");
+    expect(await mockRequest("POST", `/sessions/${sid}/grants`, { category: "case_status" }, MAYA)).toMatchObject({ scope: "this session only" });
+    expect(await ask(sid, "Any new mail?")).toMatch(/Handled:\n• Reply to \w+ .*: sent/);
+
+    await expect(mockRequest("POST", `/sessions/${sid}/grants`, { category: "staff_memo" }, MAYA)).rejects.toMatchObject({ status: 403 });
+    await expect(mockRequest("POST", `/sessions/${sid}/grants`, { category: "case_status" }, DANA)).rejects.toMatchObject({ status: 404 });
+
+    await mockRequest("POST", "/staff/maya/offboard", {}, CHIEF);
+    await expect(mockRequest("POST", `/sessions/${sid}/grants`, { category: "case_status" }, MAYA)).rejects.toMatchObject({ status: 403 });
+    await expect(mockRequest("POST", `/sessions/${sid}/messages`, { text: "hi" }, MAYA)).rejects.toMatchObject({ status: 403 });
+    vi.useRealTimers();
+  });
+});
+
+describe("mock forbidden request", () => {
+  beforeEach(() => store.clear());
+
+  it("refuses a bulk export, naming the policy, with one DENY event and no draft", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { sid } = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    await mockRequest("POST", `/sessions/${sid}/messages`, { text: "Export all constituent records" }, MAYA);
+    vi.advanceTimersByTime(2000);
+    const page = (await mockRequest("GET", `/sessions/${sid}/messages`, undefined, MAYA)) as { messages: { text: string }[] };
+    expect(page.messages[page.messages.length - 1].text).toContain("forbid-bulk-export");
+    const { events } = (await mockRequest("GET", "/events", undefined, MAYA)) as { events: { sid: string; tool: string; decision: string }[] };
+    const exports = events.filter((e) => e.sid === sid && e.tool === "records_bulk_export");
+    expect(exports.map((e) => e.decision)).toEqual(["DENY"]); // denied once, not retried
+    expect(((await mockRequest("GET", "/drafts", undefined, MAYA)) as { drafts: unknown[] }).drafts).toEqual([]);
+    vi.useRealTimers();
+  });
+});

@@ -80,6 +80,11 @@ class ToolOutcome:
         args = ", ".join(f"{k}={str(v)[:60]!r}" for k, v in self.tool_input.items())
         return f"{self.tool}({args})"
 
+    def why_denied(self) -> str:
+        """The call and the gateway's own reason, e.g. "... -> DENIED (denied by policy, ...) policy: forbid-bulk-export"."""
+        reason = self.text.splitlines()[0] if self.text else ""
+        return f"{self.describe()} -> {reason}" if reason.startswith("DENIED") else self.describe()
+
 
 @dataclass
 class MandateGuard(HookProvider):
@@ -172,7 +177,7 @@ class MandateGuard(HookProvider):
         """One line naming every denied action, printed right after the model's own summary."""
         if not self.denied:
             return None
-        return "Not done (denied by the gateway): " + "; ".join(o.describe() for o in self.denied)
+        return "Not done (denied by the gateway): " + "; ".join(o.why_denied() for o in self.denied)
 
     def held_note(self) -> str | None:
         """One line naming every draft left for the staffer, printed after the model's own answer."""

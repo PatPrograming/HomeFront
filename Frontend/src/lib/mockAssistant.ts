@@ -29,6 +29,7 @@ export interface AssistantState {
   drafts: Record<string, Draft & { actingFor: string; sid: string }>;
   autonomy: Record<string, Record<string, Stats>>; // username → category → stats
   answered: Record<string, string[]>; // username → inbox email ids already handled
+  grants?: Record<string, string[]>; // sid → categories the staffer let the agent send alone in that session
 }
 
 export interface MockSessionRef {
@@ -87,7 +88,9 @@ export function mergeAssistantState(saved: AssistantState, mine: AssistantState)
   }
   const answered = { ...saved.answered };
   for (const [user, ids] of Object.entries(mine.answered)) answered[user] = [...new Set([...(answered[user] ?? []), ...ids])];
-  return { chats, drafts, autonomy: { ...saved.autonomy, ...mine.autonomy }, answered };
+  const grants = { ...saved.grants };
+  for (const [sid, categories] of Object.entries(mine.grants ?? {})) grants[sid] = [...new Set([...(grants[sid] ?? []), ...categories])];
+  return { chats, drafts, autonomy: { ...saved.autonomy, ...mine.autonomy }, answered, grants };
 }
 
 const reviews = (s: Stats) => s.approvedUnchanged + s.edited + s.rejected;
@@ -108,8 +111,9 @@ function view(category: string, s: Stats): AutonomyCategory {
   return { category, label: LABELS[category], locked: LOCKED.has(category), suggestAuto, ...s };
 }
 
-function canSendAlone(state: AssistantState, user: string, category: string): boolean {
-  return !LOCKED.has(category) && stats(state, user, category).level === "auto";
+function canSendAlone(state: AssistantState, session: MockSessionRef, category: string): boolean {
+  if (LOCKED.has(category)) return false;
+  return stats(state, session.actingFor, category).level === "auto" || Boolean(state.grants?.[session.sid]?.includes(category));
 }
 
 function event(session: MockSessionRef, tool: string, resource: string, reason: DecisionEvent["reason"], now: number): DecisionEvent {
@@ -146,7 +150,7 @@ function outbound(
   now: number,
 ): "sent" | "held" {
   const resource = tool === "email_send" ? args.to : args.account;
-  if (canSendAlone(state, session.actingFor, category)) {
+  if (canSendAlone(state, session, category)) {
     events.push(event(session, tool, resource, "allowed", now));
     return "sent";
   }
@@ -205,7 +209,24 @@ function makePost(state: AssistantState, events: DecisionEvent[], session: MockS
     : `I drafted the post for the official account. It is waiting in your review queue and has NOT been posted:\n\n"${postText}"`;
 }
 
+// A bulk export is forbidden for everyone (Cedar `forbid-bulk-export`): the gateway says DENY, the assistant
+// says why and does not retry or offer to ask for permission, because nobody can grant a forbid.
+function refuseExport(events: DecisionEvent[], session: MockSessionRef, now: number): string {
+  events.push({
+    ...event(session, "records_bulk_export", "all constituents", "denied by policy", now),
+    decision: "DENY",
+    policyIds: ["forbid-bulk-export"],
+    atlas: ["AML.T0053"],
+  });
+  return (
+    "I can't do that. The office's access policy forbids bulk exports of constituent records for everyone " +
+    "(policy forbid-bulk-export), so the gateway denied it and nobody can grant it. I did not retry. " +
+    "I can look up a specific case for you instead."
+  );
+}
+
 function reply(state: AssistantState, events: DecisionEvent[], session: MockSessionRef, text: string, now: number): string {
+  if (/\bexport\b|\bbulk\b|all (constituent )?records/i.test(text)) return refuseExport(events, session, now);
   if (/\bpost\b|tweet|announce/i.test(text)) return makePost(state, events, session, text, now);
   if (/mail|inbox/i.test(text)) return workInbox(state, events, session, now);
   return "I can work the office inbox or draft a post for the official account. Try \"Check my email\".";
@@ -243,6 +264,20 @@ export function assistantRoute(
     const messages = (state.chats[session.sid] ?? []).filter((m) => !after || `${m.ts}#${m.id}` > after);
     const last = messages[messages.length - 1];
     return { messages, next: last ? `${last.ts}#${last.id}` : after };
+  }
+
+  // "Allow for this session": only the staffer's own login, never chat text; locked categories never.
+  const grantPath = pathname.match(/^\/sessions\/([^/]+)\/grants$/);
+  if (grantPath && method === "POST") {
+    const session = sessions[decodeURIComponent(grantPath[1])];
+    if (!session || session.actingFor !== user) throw new MockError(404, "Unknown session");
+    if (revoked(session)) throw new MockError(403, "Session revoked or staffer inactive");
+    const category = (body as { category: string }).category;
+    if (!(category in LABELS)) throw new MockError(404, "Unknown category");
+    if (LOCKED.has(category)) throw new MockError(403, "This category always needs your review");
+    const granted = ((state.grants ??= {})[session.sid] ??= []);
+    if (!granted.includes(category)) granted.push(category);
+    return { sid: session.sid, category, label: LABELS[category], scope: "this session only" };
   }
 
   if (method === "GET" && pathname === "/drafts") {

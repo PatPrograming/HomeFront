@@ -4,7 +4,7 @@ import { api, type Draft, type DraftEdits } from "../lib/api";
 // Only the text can change; the recipient or account is what the gateway's policy already checked.
 const EDITABLE: Record<Draft["tool"], (keyof DraftEdits)[]> = { email_send: ["subject", "body"], social_post: ["text"] };
 
-function DraftCard({ draft, onDone }: { draft: Draft; onDone: () => Promise<void> }) {
+function DraftCard({ draft, locked, onDone }: { draft: Draft; locked: boolean; onDone: () => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<DraftEdits>({});
   const [busy, setBusy] = useState(false);
@@ -58,6 +58,20 @@ function DraftCard({ draft, onDone }: { draft: Draft; onDone: () => Promise<void
         <button type="button" className="btn-danger-outline" disabled={busy} onClick={() => decide(() => api.rejectDraft(draft.id))}>
           Reject
         </button>
+        {draft.sid && !locked && (
+          <button
+            type="button"
+            className="btn-plain"
+            disabled={busy}
+            title={`Send "${draft.categoryLabel}" without review until this session ends`}
+            onClick={() => decide(async () => {
+              await api.grant(draft.sid!, draft.category);
+              await api.approveDraft(draft.id, edits);
+            })}
+          >
+            Approve and allow for this session
+          </button>
+        )}
       </div>
       {error && (
         <p className="alert" role="alert">
@@ -69,7 +83,15 @@ function DraftCard({ draft, onDone }: { draft: Draft; onDone: () => Promise<void
 }
 
 // Drafts the gateway held because the staffer has not let the agent send that kind alone.
-export default function ReviewQueue({ drafts, onDone }: { drafts: Draft[]; onDone: () => Promise<void> }) {
+export default function ReviewQueue({
+  drafts,
+  locked,
+  onDone,
+}: {
+  drafts: Draft[];
+  locked: Set<string>; // categories that always need review: no "allow for this session" offer
+  onDone: () => Promise<void>;
+}) {
   return (
     <section className="panel" aria-labelledby="review-title">
       <div className="panel-head">
@@ -81,7 +103,7 @@ export default function ReviewQueue({ drafts, onDone }: { drafts: Draft[]; onDon
       ) : (
         <ul className="drafts">
           {drafts.map((d) => (
-            <DraftCard key={d.id} draft={d} onDone={onDone} />
+            <DraftCard key={d.id} draft={d} locked={locked.has(d.category)} onDone={onDone} />
           ))}
         </ul>
       )}

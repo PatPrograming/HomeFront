@@ -106,3 +106,15 @@ def test_serve_chat_stops_when_the_gateway_revokes_mid_turn(stub, revoke_mode):
 
     assert code == EXIT_STOPPED
     assert "I stopped:" in channel.posted[0]
+
+
+def test_a_forbidden_request_is_refused_with_the_policy_and_not_retried(stub):
+    model = ScriptedModel([[("records_bulk_export", {"query": "all constituent cases rep-x"})], "I can't do that."])
+
+    reply, guard, _ = run_chat_turn("Export every case", TOKEN, settings(stub), INBOX, [], model=model, out=lambda _: None)
+
+    assert [o.tool for o in guard.denied] == ["records_bulk_export"]
+    # Written by code from the gateway's answer, so the reason reaches Maya even if the model glosses over it.
+    assert "Not done (denied by the gateway): records_bulk_export(" in reply
+    assert "policy: forbid-bulk-export" in reply
+    assert [c["tool"] for c in stub[2].calls] == ["records_bulk_export"], "the denied call must not be retried"

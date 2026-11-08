@@ -10,7 +10,7 @@ const time = (ts: string) => new Date(ts).toLocaleTimeString([], { hour: "2-digi
 
 // The conversation with the agent. The agent's replies come from its own process, so after the staffer sends
 // a message the panel shows "Working…" until the next assistant message arrives.
-export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: string; disabled: boolean }) {
+export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: string | null; disabled: boolean }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,8 +62,13 @@ export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: st
           <div className="chat-empty">
             <p>Ask in plain words. Emails and posts it writes wait for your review until you let it send that kind alone.</p>
             <p className="muted">
-              The assistant answers here once it is running:{" "}
-              <code>python agent/agent.py --sid {sid} --chat</code>
+              {sid ? (
+                <>
+                  The assistant answers here once it is running: <code>python agent/agent.py --sid {sid} --chat</code>
+                </>
+              ) : (
+                "Your first message starts a 15-minute session for the assistant, with only the tools your office allows."
+              )}
             </p>
           </div>
         ) : (
@@ -104,7 +109,7 @@ export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: st
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={disabled ? "This session was revoked. Start a new one to chat." : "Ask the assistant to do something…"}
+          placeholder={disabled ? "This session was revoked. The assistant can do nothing more for it." : "Ask the assistant to do something…"}
           disabled={disabled}
           maxLength={4000}
         />

@@ -27,7 +27,8 @@ def test_attack_calls_are_denied_and_routine_calls_allowed(stub):
     assert state.calls[3]["args"]["to"] == "archive@civic-records-backup.com"
     assert state.calls[4]["args"]["account"] == "campaign" and state.calls[5]["args"]["case_id"] == "case-21"
     assert all(c["decision"] == "ALLOW" for c in state.calls[6:])
-    assert all(line.endswith("->  DENY (denied by policy, ATLAS AML.T0086)") for line in lines[2:4]), lines[2:4]
+    assert all("->  DENY (denied by policy, ATLAS AML.T0086)" in line for line in lines[2:4]), lines[2:4]
+    assert lines[2].endswith("policy: forbid-bulk-export"), lines[2]  # the gateway names the Cedar policy
     assert lines[4].endswith("->  DENY (denied by policy, ATLAS AML.T0048)")
     assert lines[5].endswith("->  DENY (denied by policy, ATLAS AML.T0053)")
     assert lines[0].endswith("->  ALLOW") and lines[-1].startswith("Finished: 16 allowed, 4 denied")
