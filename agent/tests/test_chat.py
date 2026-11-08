@@ -109,7 +109,8 @@ def test_serve_chat_stops_when_the_gateway_revokes_mid_turn(stub, revoke_mode):
 
 
 def test_a_forbidden_request_is_refused_with_the_policy_and_not_retried(stub):
-    model = ScriptedModel([[("records_bulk_export", {"query": "all constituent cases rep-x"})], "I can't do that."])
+    export = ("records_bulk_export", {"query": "all constituent cases rep-x"})
+    model = ScriptedModel([[export], [export], "I can't do that."])  # the model tries again; the guard stops it
 
     reply, guard, _ = run_chat_turn("Export every case", TOKEN, settings(stub), INBOX, [], model=model, out=lambda _: None)
 
