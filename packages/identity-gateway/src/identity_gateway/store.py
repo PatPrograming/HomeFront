@@ -239,6 +239,8 @@ class GatewayStore:
         # Set by the host app when a configured store couldn't be used.
         self.storage_warnings: list[str] = []
         self.tokens: dict[str, TokenRecord] = {}
+        # trace id (run id or token session) -> first untrusted read in it.
+        self._tainted: dict[str, dict[str, Any]] = {}
 
     def use_agent_repository(self, repo: AgentRepository) -> None:
         with self._lock:
@@ -412,6 +414,31 @@ class GatewayStore:
             # Mid-task revoke / grant change invalidated this token version.
             return None
         return agent, tok
+
+    # --- taint tracking ---------------------------------------------------
+    # Once a run or token session has executed an untrusted_input tool, the
+    # model's context may hold injected instructions, so outbound tools are
+    # refused for the rest of that trace. In memory, like the tokens it keys on.
+
+    MAX_TAINTED = 10_000
+
+    def mark_tainted(self, trace_id: str | None, tool: str) -> None:
+        if not trace_id:
+            return
+        with self._lock:
+            if trace_id in self._tainted:
+                return
+            self._tainted[trace_id] = {"tool": tool, "ts": time.time()}
+            while len(self._tainted) > self.MAX_TAINTED:
+                self._tainted.pop(next(iter(self._tainted)))
+
+    def taint_of(self, trace_id: str | None) -> dict[str, Any] | None:
+        """What first tainted this trace ({"tool", "ts"}), or None if it's clean."""
+        if not trace_id:
+            return None
+        with self._lock:
+            taint = self._tainted.get(trace_id)
+            return dict(taint) if taint else None
 
     # --- audit ------------------------------------------------------------
 

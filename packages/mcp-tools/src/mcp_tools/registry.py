@@ -14,6 +14,9 @@ class ToolDefinition:
     requires_hitl: bool = False
     holds_secrets: bool = False
     untrusted_input: bool = False
+    # Sends data outside the agency (email, social). Denied in a run or session
+    # that has already read untrusted content (taint tracking, AML.M0030).
+    outbound: bool = False
     # JSON Schema for the tool's arguments, as offered to the model. Every
     # property is required and no extras are allowed, so it works with strict
     # tool use (schema-valid arguments guaranteed).
@@ -37,6 +40,7 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
         atlas_techniques=["AML.T0086", "AML.T0048"],
         atlas_mitigations=["AML.M0028", "AML.M0029", "AML.M0024"],
         requires_hitl=True,
+        outbound=True,
         input_schema=_schema(
             to={"type": "string", "description": "Recipient email address."},
             subject={"type": "string", "description": "Subject line."},
@@ -53,6 +57,7 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
         atlas_techniques=["AML.T0086", "AML.T0048"],
         atlas_mitigations=["AML.M0028", "AML.M0029", "AML.M0024"],
         requires_hitl=True,
+        outbound=True,
         input_schema=_schema(
             subject={"type": "string", "description": "Subject line."},
             body={"type": "string", "description": "Plain-text email body."},
@@ -65,6 +70,7 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
         atlas_techniques=["AML.T0086", "AML.T0048"],
         atlas_mitigations=["AML.M0028", "AML.M0029", "AML.M0024"],
         requires_hitl=True,
+        outbound=True,
         input_schema=_schema(
             platform={"type": "string", "description": "Platform, e.g. 'x' or 'facebook'."},
             text={"type": "string", "description": "Post text."},
@@ -77,6 +83,7 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
         atlas_techniques=["AML.T0086", "AML.T0051.001"],
         atlas_mitigations=["AML.M0028", "AML.M0030", "AML.M0024"],
         requires_hitl=True,
+        outbound=True,
         untrusted_input=True,
         input_schema=_schema(
             platform={"type": "string", "description": "Platform, e.g. 'x' or 'facebook'."},
@@ -179,6 +186,7 @@ def tool_public_view(tool: ToolDefinition) -> dict[str, Any]:
         "requires_hitl": tool.requires_hitl,
         "holds_secrets": tool.holds_secrets,
         "untrusted_input": tool.untrusted_input,
+        "outbound": tool.outbound,
         "input_schema": tool.input_schema,
         # Explicitly never expose credential material.
         "credentials_visible_to_agent": False,

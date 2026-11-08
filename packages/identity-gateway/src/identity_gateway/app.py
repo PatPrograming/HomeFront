@@ -948,6 +948,51 @@ def call_tool(
             },
         )
 
+    trace_id = run_id or getattr(tok, "session_id", None)
+
+    # Information-flow control: after this run/session read untrusted content,
+    # nothing may leave the agency, whatever the agent's type or grants.
+    taint = store.taint_of(trace_id) if tool.outbound else None
+    if taint:
+        atlas = enricher.annotate(
+            AnnotateRequest(
+                event=AnnotateEvent.tainted_session,
+                tool=tool_name,
+                agent_id=agent.agent_id,
+                reason=f"{taint['tool']} returned untrusted content earlier in this trace",
+            )
+        )
+        event = store.append_audit(
+            {
+                "type": "tool_call",
+                "run_id": run_id,
+                "trace_id": trace_id,
+                "actor": f"agent:{agent.agent_id}",
+                "decision": "deny",
+                "reason": "tainted_session",
+                "agent_id": agent.agent_id,
+                "tool": tool_name,
+                "tainted_by": taint["tool"],
+                "args_hash": _hash_args(arguments),
+                "atlas": atlas.model_dump(),
+                "detail": f"Blocked: this trace read untrusted content via {taint['tool']}",
+            }
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "tainted_session",
+                "message": (
+                    f"Blocked {tool_name}: this run already read untrusted content via "
+                    f"{taint['tool']}, so outbound tools are disabled for it (AML.M0030). "
+                    "Start a new run to send, or hand off to a person."
+                ),
+                "tainted_by": taint["tool"],
+                "atlas": atlas.model_dump(),
+                "audit_id": event["id"],
+            },
+        )
+
     # Outbound email only reaches the agent's mailing list. Checked before
     # queuing so an injected recipient never even reaches a reviewer.
     problem = _recipient_problem(agent, tool_name, arguments)
@@ -1012,10 +1057,13 @@ def call_tool(
         # Who is calling comes from the workload token, never from arguments.
         run_args.update(
             agent_id=agent.agent_id,
-            trace_id=run_id or getattr(tok, "session_id", None),
+            trace_id=trace_id,
             run_id=run_id,
         )
     result = _run_handler(tool, tool_name, run_args)
+    if tool.untrusted_input:
+        # Taint even if the handler refused the URL: conservative and simple.
+        store.mark_tainted(trace_id, tool_name)
 
     event = store.append_audit(
         {
@@ -1253,6 +1301,11 @@ def approve(
         raise HTTPException(status_code=400, detail="Credentials can't be passed as tool arguments")
 
     # Re-check authorization at approval time: a revoke after the request wins.
+    # Taint is deliberately not re-checked: a request can only exist if its
+    # trace was clean when the agent made it, so its arguments were written
+    # before any untrusted content entered the context, and a person reviews
+    # (and may edit) them now. Untrusted reads later in the same run don't
+    # change what was queued.
     blocked_reason = None
     if not agent.active:
         blocked_reason = "the agent is inactive"

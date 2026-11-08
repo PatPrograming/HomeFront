@@ -15,6 +15,7 @@ class AnnotateEvent(str, Enum):
     discover = "discover"
     secret_probe = "secret_probe"
     untrusted_input = "untrusted_input"
+    tainted_session = "tainted_session"
 
 
 # Static gateway-event → ATLAS ID map (config, not LLM).
@@ -48,6 +49,14 @@ EVENT_MAP: dict[AnnotateEvent, dict[str, Any]] = {
         "technique_ids": ["AML.T0051.001"],
         "mitigation_ids": ["AML.M0030", "AML.M0033", "AML.M0024"],
         "narrative": "Untrusted scrape/social content gated before further tool chaining.",
+    },
+    AnnotateEvent.tainted_session: {
+        "technique_ids": ["AML.T0051.001", "AML.T0086"],
+        "mitigation_ids": ["AML.M0030", "AML.M0024"],
+        "narrative": (
+            "Blocked an outbound tool after this run read untrusted content: indirect "
+            "prompt injection could steer it into exfiltration."
+        ),
     },
 }
 
