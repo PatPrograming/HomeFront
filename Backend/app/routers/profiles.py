@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import CurrentUser, get_current_user
-from app.schemas.profile import FormKind, FormSaved, FormSubmission, Profile, ProfileUpdate
+from app.schemas.profile import Profile, ProfileUpdate
 from app.services import profiles as service
 
 router = APIRouter(prefix="/me", tags=["profiles"])
@@ -21,9 +21,3 @@ def update_me(changes: ProfileUpdate, user: CurrentUser = Depends(get_current_us
         raise HTTPException(409, "Username is already taken")
     except service.ProfileConflict:
         raise HTTPException(409, "Profile changed concurrently, please retry")
-
-
-@router.put("/forms/{kind}", response_model=FormSaved)
-def save_form(kind: FormKind, body: FormSubmission, user: CurrentUser = Depends(get_current_user)):
-    """Store the caller's answers for one outreach form on their own profile row."""
-    return service.save_form(user, kind, body.data)

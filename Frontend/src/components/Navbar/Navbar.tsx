@@ -33,13 +33,11 @@ export default function Navbar() {
               {l.label}
             </NavLink>
           ))}
-          <Link
-            to={user ? "/account" : "/login"}
-            className="nav-cta"
-            onClick={close}
-          >
-            {user ? "Account" : "Sign in"}
-          </Link>
+          {!user && (
+            <Link to="/login" className="nav-cta" onClick={close}>
+              Sign in
+            </Link>
+          )}
         </nav>
       </div>
     </header>

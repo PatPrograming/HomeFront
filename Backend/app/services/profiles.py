@@ -152,27 +152,3 @@ def update_profile(user: CurrentUser, changes: ProfileUpdate) -> dict:
             raise UsernameTaken(new_username) from exc
         raise ProfileConflict() from exc
     return get_profile(user.id)
-
-
-def save_form(user: CurrentUser, kind: str, data: dict[str, Any]) -> dict:
-    """Save one form's answers under profiles[<sub>].forms.<kind> (latest submission wins)."""
-    get_or_create_profile(user)
-    now = _now()
-    key = {"id": user.id}
-    profiles = table("profiles")
-    # DynamoDB can't set a nested key inside a map that doesn't exist yet.
-    profiles.update_item(
-        Key=key,
-        UpdateExpression="SET #forms = if_not_exists(#forms, :empty)",
-        ExpressionAttributeNames={"#forms": "forms"},
-        ExpressionAttributeValues={":empty": {}},
-        ConditionExpression="attribute_exists(id)",
-    )
-    profiles.update_item(
-        Key=key,
-        UpdateExpression="SET #forms.#kind = :v, #updated_at = :now",
-        ExpressionAttributeNames={"#forms": "forms", "#kind": kind, "#updated_at": "updated_at"},
-        ExpressionAttributeValues={":v": {"data": data, "saved_at": now}, ":now": now},
-        ConditionExpression="attribute_exists(id)",
-    )
-    return {"kind": kind, "saved_at": now}

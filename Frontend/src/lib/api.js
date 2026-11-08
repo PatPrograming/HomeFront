@@ -64,9 +64,6 @@ export const api = {
   // signed-in user
   me: () => request("/me"),
   updateMe: (changes) => request("/me", { method: "PATCH", body: changes }),
-  // kind: "emails" | "social". Stores the answers on the caller's profile.
-  saveForm: (kind, data) =>
-    request(`/me/forms/${encodeURIComponent(kind)}`, { method: "PUT", body: { data } }),
 
   // agent management (needs login when AGENT_ADMIN_REQUIRES_LOGIN=true)
   agents: () => request("/agents"),
