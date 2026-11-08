@@ -27,7 +27,11 @@ function countdown(ms: number): string {
 // The agent's delegated identity, as returned by POST /api/v1/sessions. The countdown is the session's
 // one-hour lifetime (mandate tokens inside it last 15 minutes each).
 // `revoked` is true once GET /sessions/{sid} says revoked, or the feed shows a "session revoked" DENY.
-export default function IdentityCard({ card, revoked }: { card: SessionCard; revoked: boolean }) {
+// Who cut access: the staffer who stopped this task, or else the Chief of Staff (offboarding).
+export const revokedText = (stopped = false) =>
+  stopped ? "Revoked: you stopped this task" : "Revoked: access was removed by the Chief of Staff";
+
+export default function IdentityCard({ card, revoked, stopped }: { card: SessionCard; revoked: boolean; stopped?: boolean }) {
   const now = useNow(revoked);
   const [copied, setCopied] = useState(false);
   const left = expiryMs(card.expiresAt) - now;
@@ -51,7 +55,7 @@ export default function IdentityCard({ card, revoked }: { card: SessionCard; rev
         </h2>
         <p className={`expiry ${left <= 0 || revoked ? "deny-text" : ""}`} aria-live={revoked ? "polite" : "off"}>
           {revoked ? (
-            <strong>Revoked: access was removed by the Chief of Staff</strong>
+            <strong>{revokedText(stopped)}</strong>
           ) : left > 0 ? (
             <>
               Session expires in <strong className="figure">{countdown(left)}</strong>

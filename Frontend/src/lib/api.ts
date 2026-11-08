@@ -158,6 +158,12 @@ export const api = {
   // HomeFront console (lane B contract, docs/LANES.md)
   startSession: () => request<SessionCard>("/sessions", { method: "POST", body: {} }),
   sessionStatus: (sid: string) => request<SessionStatus>(`/sessions/${encodeURIComponent(sid)}`),
+  // The staffer stops their own task: the session is revoked, so the agent's next tool call is denied.
+  revokeSession: (sid: string) =>
+    request<{ sid: string; status: "revoked"; alreadyRevoked: boolean }>(`/sessions/${encodeURIComponent(sid)}/revoke`, {
+      method: "POST",
+      body: {},
+    }),
   events: (cursor?: string | null) => request<EventPage>(eventsPath(cursor)),
   offboard: (stafferId: string) =>
     request<OffboardResult>(`/staff/${encodeURIComponent(stafferId)}/offboard`, { method: "POST", body: {} }),

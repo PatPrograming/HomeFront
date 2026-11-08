@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Chat } from "../lib/useChat";
+import { isStopPhrase, STOPPED_TEXT } from "../lib/stopTask";
 import ChatPanel, { isStalled, STALL_MS } from "./ChatPanel";
 
 const chatWith = (ts: string): Chat =>
@@ -38,4 +39,50 @@ describe("ChatPanel: no endless 'Working…'", () => {
     const empty = { messages: [], error: null, send: async () => {} } as unknown as Chat;
     expect(renderToStaticMarkup(<ChatPanel chat={empty} sid={null} disabled={false} />)).not.toMatch(/15-minute/);
   });
+});
+
+describe("ChatPanel: Stop this task", () => {
+  const stop = (stopped: boolean) => ({ stopped, onStop: vi.fn(async () => {}), onNewConversation: vi.fn() });
+
+  it("shows Stop this task while the assistant is working", () => {
+    const html = renderToStaticMarkup(
+      <ChatPanel chat={chatWith(new Date().toISOString())} sid="sid-1" disabled={false} stop={stop(false)} />,
+    );
+    expect(html).toContain("Stop this task");
+    expect(html).not.toContain(STOPPED_TEXT);
+  });
+
+  it("after a stop it confirms in the chat and offers a new conversation", () => {
+    const s = stop(true);
+    const html = renderToStaticMarkup(<ChatPanel chat={chatWith(new Date().toISOString())} sid="sid-1" disabled stop={s} />);
+    expect(html).toContain("Stopped. The assistant can do nothing more in this conversation.");
+    expect(html).toContain("Start a new conversation");
+    expect(html).not.toContain(">Stop this task<");
+    expect(s.onStop).not.toHaveBeenCalled();
+  });
+
+  it("an agent reply saying stop does not stop anything", () => {
+    const s = stop(false);
+    const ts = new Date().toISOString();
+    const chat = {
+      messages: [
+        { id: "u1", ts, role: "user", text: "Check my email" },
+        { id: "a1", ts, role: "assistant", text: "stop" },
+      ],
+      error: null,
+      send: vi.fn(async () => {}),
+    } as unknown as Chat;
+    renderToStaticMarkup(<ChatPanel chat={chat} sid="sid-1" disabled={false} stop={s} />);
+    expect(s.onStop).not.toHaveBeenCalled();
+    expect(chat.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("isStopPhrase: only a whole message counts", () => {
+  it.each(["stop", "Stop.", "cancel", "CANCEL!", "revoke this task", "stop this task", " cancel   this task "])("%j stops", (t) =>
+    expect(isStopPhrase(t)).toBe(true),
+  );
+  it.each(["stop emailing Jane", "don't stop", "cancel the town hall post", "", "stopp"])("%j does not", (t) =>
+    expect(isStopPhrase(t)).toBe(false),
+  );
 });
