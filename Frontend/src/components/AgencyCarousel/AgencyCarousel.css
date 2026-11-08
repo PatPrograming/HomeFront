@@ -1,0 +1,53 @@
+.agency-carousel {
+  background: var(--blue-700);
+  border-bottom: 1px solid var(--blue-800);
+  overflow: hidden;
+  padding-block: 24px;
+}
+
+.agency-track {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  width: max-content;
+  margin: 0;
+  padding: 0 18px;
+  list-style: none;
+  animation: agency-scroll 70s linear infinite;
+}
+
+.agency-carousel:hover .agency-track {
+  animation-play-state: paused;
+}
+
+.agency-track li {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  padding: 3px;
+  background: #fff;
+  border-radius: 50%;
+}
+
+.agency-track img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+@keyframes agency-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agency-track {
+    animation: none;
+  }
+  .agency-carousel {
+    overflow-x: auto;
+  }
+}

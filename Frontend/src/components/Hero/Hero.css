@@ -10,7 +10,7 @@
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   align-items: center;
   gap: 64px;
-  padding-block: 88px 96px;
+  padding-block: 48px 96px;
 }
 
 .hero-text {
@@ -62,6 +62,7 @@
   align-items: stretch;
   flex: 0 1 auto;
   min-width: 200px; /* wider than the label alone to make room for the hamburger */
+  position: relative; /* anchors the floating menu */
 }
 
 .hero-buttons .reach-toggle {
@@ -71,6 +72,13 @@
 }
 
 .reach-menu {
+  /* Float over the page so opening it doesn't change the hero's height
+     (which would shift the vertically-centered demo box). */
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
   margin: 6px 0 0;
   padding: 0;
   list-style: none;
@@ -205,7 +213,7 @@
   .hero-grid {
     grid-template-columns: 1fr;
     gap: 48px;
-    padding-block: 56px 64px;
+    padding-block: 32px 64px;
   }
 
   .demo-box {

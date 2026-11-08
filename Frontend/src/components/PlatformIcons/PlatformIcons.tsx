@@ -59,6 +59,4 @@ export const PLATFORMS: { id: PlatformId; name: string; note: string; color: str
   { id: "x", name: "X", note: "Posts and replies", color: "#000000" },
   { id: "bluesky", name: "Bluesky", note: "Posts and replies", color: "#1185fe" },
   { id: "reddit", name: "Reddit", note: "Posts", color: "#ff4500" },
-  { id: "facebook", name: "Facebook", note: "Link shares", color: "#1877f2" },
-  { id: "linkedin", name: "LinkedIn", note: "Link shares", color: "#0a66c2" },
 ];

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Layout from "../components/Layout";
+import AgencyCarousel from "../components/AgencyCarousel/AgencyCarousel";
 import Hero from "../components/Hero/Hero";
 import { api } from "../lib/api";
 import "./Home.css";
@@ -64,6 +65,7 @@ export default function Home() {
 
   return (
     <Layout>
+      <AgencyCarousel />
       <Hero mission={content.mission} buttons={content.buttons} />
 
       <section id="how-it-works" className="how">
