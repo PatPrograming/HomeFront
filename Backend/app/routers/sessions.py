@@ -33,7 +33,7 @@ SESSION_TTL_SECONDS = 60 * 60  # a session can mint 15-minute mandate tokens for
 ALLOWED_TOOLS = [name for name, spec in TOOLS.items() if not spec.always_denied]
 
 
-def _iso(epoch: int) -> str:
+def _iso(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, timezone.utc).isoformat()
 
 
@@ -52,7 +52,6 @@ def create_session(staff: StaffIdentity = Depends(require_staff)) -> dict:
     if staffer is None or not staffer.active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Staffer is not active")
     started = time.time()
-    now = int(started)
     sid = str(uuid.uuid4())
     session = SessionItem(
         status="active",
@@ -70,7 +69,7 @@ def create_session(staff: StaffIdentity = Depends(require_staff)) -> dict:
         "office": session.office,
         "mode": session.mode,
         "allowedTools": ALLOWED_TOOLS,
-        "expiresAt": _iso(now + SESSION_TTL_SECONDS),
+        "expiresAt": _iso(started + SESSION_TTL_SECONDS),
     }
 
 
@@ -107,7 +106,7 @@ def list_sessions(staff: StaffIdentity = Depends(require_staff)) -> dict:
                 "sid": sid,
                 "title": _title(sid),
                 "createdAt": session.created_at,
-                "expiresAt": _iso(int(_created_epoch(session.created_at)) + SESSION_TTL_SECONDS),
+                "expiresAt": _iso(_created_epoch(session.created_at) + SESSION_TTL_SECONDS),
                 "status": _status(session, active, now),
                 "waitingDrafts": waiting[sid],
             }
@@ -131,7 +130,7 @@ def read_session(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dic
         "status": "active" if active else "revoked",
         "actingFor": session.acting_for,
         "office": session.office,
-        "expiresAt": _iso(int(_created_epoch(session.created_at)) + SESSION_TTL_SECONDS),
+        "expiresAt": _iso(_created_epoch(session.created_at) + SESSION_TTL_SECONDS),
     }
 
 
