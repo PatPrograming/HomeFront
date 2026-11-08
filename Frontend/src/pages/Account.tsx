@@ -4,14 +4,12 @@ import { api } from "../lib/api.js";
 import { useAuth } from "../lib/AuthProvider";
 import "./Auth.css";
 
-// First end-to-end check: browser -> Cognito ID token -> FastAPI /api/v1/me -> DynamoDB.
 export default function Account() {
   const { user, signOut } = useAuth();
-  const [profile, setProfile] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    api.me().then(setProfile).catch((e) => setError(e.message));
+    api.me().catch((e) => setError(e.message));
   }, []);
 
   return (
@@ -23,7 +21,6 @@ export default function Account() {
             Signed in as <strong>{user?.email}</strong>
           </p>
           {error && <p role="alert" className="alert alert-error">Backend: {error}</p>}
-          {profile && <pre className="auth-pre">{JSON.stringify(profile, null, 2)}</pre>}
           <button className="btn btn-outline" onClick={signOut}>
             Sign out
           </button>
