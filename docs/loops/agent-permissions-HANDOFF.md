@@ -1,5 +1,7 @@
 # Handoff: agent-permissions (Lane H)
 
+**Resolved 2026-11-08 after the reset.** The trial finished (judge: INSUFFICIENT EVIDENCE); see the loop file's Round 2. b1d630c's fixture is replaced by d28504e. The probes are removed. Kept as the record.
+
 Written 2026-11-08 because the shared 5-hour limit hit the lead's 85% stop line (resets 14:50 UTC).
 
 Resume prompt:

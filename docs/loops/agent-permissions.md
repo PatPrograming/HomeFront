@@ -1,8 +1,8 @@
 # Loop: agent-permissions
 
-Status: REVIEWING
+Status: NEEDS_HUY (trial INSUFFICIENT EVIDENCE: the open items need a live model, a browser with Agents-tab endpoints, or Huy's reading)
 Profile: feature (security: trial full)
-Round: 1 / 4
+Round: 2 / 4
 Base commit: 78824f6 (origin/main 23fa467 + Lane G roles merge f17833b + main-breakage fix)
 Branch: Agent-Permissions-Huy
 
@@ -409,6 +409,36 @@ Parallel groups (disjoint files):
 - Trial (full): falsifier and advocate launched; judge not run (usage stop at 85%). See
   `agent-permissions-HANDOFF.md`.
 - Gap list: (1) task 17 screenshots at 375px/1280px not taken; (2) trial verdict pending.
+
+### Round 2 (2026-11-08, after the usage reset)
+
+- Scoreboard: Round 2: 14/14 outcome checks pass (fixed none, regressed none).
+- Trial (full, BASE 78824f6):
+  - The first falsifier hit its turn limit without a report. The re-run came back INCONCLUSIVE: nothing
+    falsified, and all 6 mutations were caught.
+  - The advocate came back PARTIAL, with 9/9 mutations caught.
+  - **Judge: INSUFFICIENT EVIDENCE.** The server side holds. b1d630c weakens nothing: the gate sits after
+    every Cedar and role check, so turning it off cannot turn a deny into an allow.
+  - Claims audit: all 6 builder claims BACKED.
+- Lead follow-up: Lane I's own judge rejected a blanket gate-off fixture, so d28504e replaces b1d630c's
+  autouse fixture. Each of the 18 older send-path tests now names its world:
+  - `office_ses` for email sends;
+  - `all_connected` for role and Cedar tests;
+  - an explicit no-module world for the simulated case;
+  - bluesky for the share-link handler check.
+- Merge probe 2 (HEAD d28504e + Lane I 60d9e34, no blanket fixture): clean merge. Every suite passes:
+  Backend 1064 passed, 3 skipped; gateway 964; agent and guardrail 122; Frontend 143. Lane I's
+  `test_e2e_real_connections.py` passes 8/8 (not committed here; it lands with the integration merge).
+- Gap list (none fixable inside this lane offline):
+  1. The New Agent picker and side panel need screenshots at 375px and 1280px (judge, task 17). The mock API
+     returns 404 for Agents-tab routes, and the real page needs a Cognito login. Needs a local backend or
+     mock Agents endpoints, which are an out-of-row `mockApi.ts` edit.
+  2. One live Bedrock session (a social post and an email) should show the model following ask, research,
+     one draft, revise. Huy, live.
+  3. Huy should confirm that the assistant calling the research tools itself satisfies "run a research
+     agent". The alternative is to start an Agents-tab research agent.
+  4. After the integration merge, check Lane F's draft card and Lane I's Connect button against these
+     APIs.
 
 ## Decisions
 
