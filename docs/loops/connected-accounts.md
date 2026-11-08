@@ -2,7 +2,7 @@
 
 Status: BUILDING
 Profile: feature (trial depth: full, because this handles OAuth and provider tokens)
-Round: 1 / 4
+Round: 2 / 4
 Base commit: 23fa467
 Branch: Connected-Accounts-Huy (worktree `.claude/worktrees/connections`)
 
@@ -170,11 +170,25 @@ has none; cached per `sub`; any failure means `email: null`.
 | 2 | connections.py + router + offboard hook + /me email + guarded wiring | team-implementer | `packages/identity-gateway/src/identity_gateway/connections.py`, `Backend/app/routers/connections.py`, `Backend/app/main.py`, `Backend/app/routers/staff.py`, `Backend/app/routers/profiles.py`, `Backend/app/core/config.py`, `packages/identity-gateway/README.md` | C1 C2 C3 C4 | 1 | pending |
 | 3 | Infra script | team-implementer | `Backend/infra/connections.sh`, `Backend/infra/README.md` | C8 | — | pending |
 | 4 | Frontend tests first | team-test-author | `Frontend/src/pages/Account.test.tsx`, `Frontend/src/components/ConnectPrompt.test.tsx`, `Frontend/src/pages/ConnectCallback.test.tsx` | fail for missing code | — | pending |
+| 6 | Round-2 tests for G1–G9 + M4 | team-test-author | the three connections test files | fail for the gaps | 2, 5 | in progress |
+| 7 | Round-2 fixes G1–G9 | team-implementer | connections.py, staff.py, profiles.py, ConnectPrompt.tsx, connections.ts | C2 C3 C6 + new tests | 6 | pending |
 | 5 | Frontend build | team-implementer | `Frontend/src/lib/connections.ts`, `Frontend/src/pages/Account.tsx`, `Frontend/src/pages/ConnectCallback.tsx`, `Frontend/src/components/ConnectPrompt.tsx`, `Frontend/src/pages/Account.css`, `Frontend/src/App.tsx` (route only), `Frontend/src/lib/mockApi.ts` (one hook) | C5 C6 C7 C9 | 4, 2 (API shape) | pending |
 
 ## Rounds
 
+### Round 1 — 2026-11-08
+- Built: tasks 1–5, commits 489ae28 5716eee 3d0c73a 085ff81 18731fe
+- Outcome checks: 9/9 pass; fixed [C1, C2, C3, C4, C6, C8, C9], regressed [] (scoreboard: docs/loops/connected-accounts.rounds/round-1.json)
+- Verifier: PASS (Python 799 passed / 66 baseline failures / 0 new; vitest 94; build; mock UI at 375px and ~800px: list, connect, disconnect, ?connect=x highlight, no console errors). Gaps: no numeric scrollWidth, no >800px.
+- Review: CHANGES REQUESTED — M1 refresh update_item resurrects a disconnected row / parallel refresh deletes the winner's row; M2 disconnect/offboard abort on non-ClientError (offboard skips stop_staffer); M3 granted scopes not checked, missing token fields → 500. Lows: process-wide logger level, base64 ciphertext undocumented, grants left open on failure paths, ConnectPrompt trusts agent label/provider, cache TTL, type nits.
+- Trial (full): falsifier FALSIFIED requirement 3 — ConnectPrompt is mounted nowhere and guarded() doesn't call the helper yet (Lane H wiring + chat mount pending); mutation probes 5/6 killed, M4 (parser ignores status) survived. Advocate hit its turn limit; judge not run (verdict would be REJECT on requirement 3).
+- Gap list for next round: G1–G9 from review + M4 (tests in round 2, task 6); G10 requirement 3 end-to-end — needs lead ruling on the chat message field and the ChatPanel/ReviewQueue mount (asked 2026-11-08).
+- Decision: next round because 7 checks were fixed this round and gaps remain.
+
+
 ## Decisions
+
+- 2026-11-08: Ciphertext stored as a base64 string (not DynamoDB Binary): same KMS ciphertext and context binding; avoids Binary serialisation quirks. Disconnect revokes the refresh token (ends the whole grant at Google and X).
 
 - 2026-11-08: Lead approved the contract with edits: Lane H owns gateway.py wiring; scopes exactly gmail.send (+openid email) and tweet.write tweet.read users.read offline.access; refresh tokens encrypted like access tokens and a failed refresh = needs_connection; KMS/script dry-run unless --apply; out-of-row edits approved, minimal.
 - 2026-11-08: provider_for_tool returns None for bluesky/linkedin/facebook so Lane H keeps the share-link handler there (agreed with Lane H).
