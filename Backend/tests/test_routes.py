@@ -1,6 +1,3 @@
-import time
-
-import jwt
 import pytest
 from fastapi.testclient import TestClient
 
@@ -8,16 +5,25 @@ from app.core.config import get_settings
 from app.main import app
 
 client = TestClient(app)
-SECRET = "test-secret-test-secret-test-secret"
 
 
-def _user_token() -> str:
-    claims = {
-        "sub": "00000000-0000-0000-0000-000000000001",
-        "aud": "authenticated",
-        "exp": int(time.time()) + 60,
-    }
-    return jwt.encode(claims, SECRET, algorithm="HS256")
+STAFF_TOKEN = "staff-token"
+
+
+@pytest.fixture
+def staff_login(monkeypatch):
+    """Accept STAFF_TOKEN as Maya's login; real Cognito checks live in test_cognito.py."""
+    from fastapi import HTTPException
+
+    from app.core import auth
+    from app.core.cognito import StaffIdentity
+
+    def fake_verify(token: str) -> StaffIdentity:
+        if token != STAFF_TOKEN:
+            raise HTTPException(401)
+        return StaffIdentity(username="maya", sub="sub-maya", email=None, groups=frozenset({"staffer"}))
+
+    monkeypatch.setattr(auth, "verify_staff_token", fake_verify)
 
 
 def test_home_is_public():
@@ -46,7 +52,7 @@ def admin_login_required():
     settings.agent_admin_requires_login = False
 
 
-def test_admin_routes_need_user_login_when_enabled(admin_login_required):
+def test_admin_routes_need_user_login_when_enabled(admin_login_required, staff_login):
     assert client.get("/api/v1/agents").status_code == 401
     assert client.get("/api/v1/audit").status_code == 401
     assert client.post("/api/v1/auth/token", json={"agent_id": "agent-comms-01"}).status_code == 401
@@ -54,12 +60,12 @@ def test_admin_routes_need_user_login_when_enabled(admin_login_required):
         client.post("/api/v1/agents/agent-comms-01/grants/email.send/revoke").status_code == 401
     )
 
-    headers = {"Authorization": f"Bearer {_user_token()}"}
+    headers = {"Authorization": f"Bearer {STAFF_TOKEN}"}
     assert client.get("/api/v1/agents", headers=headers).status_code == 200
 
 
-def test_agent_token_routes_stay_open_to_agents(admin_login_required):
-    headers = {"Authorization": f"Bearer {_user_token()}"}
+def test_agent_token_routes_stay_open_to_agents(admin_login_required, staff_login):
+    headers = {"Authorization": f"Bearer {STAFF_TOKEN}"}
     token = client.post(
         "/api/v1/auth/token", json={"agent_id": "agent-comms-01"}, headers=headers
     ).json()["access_token"]

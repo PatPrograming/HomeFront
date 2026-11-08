@@ -1,49 +1,33 @@
-"""Supabase JWT verification as a FastAPI dependency."""
-from dataclasses import dataclass
-from functools import lru_cache
+"""User login for routes, backed by Amazon Cognito (see app/core/cognito.py).
 
-import jwt
+Kept as a thin wrapper so older imports (`CurrentUser`, `bearer`, `get_current_user`)
+keep working. New routes should use `require_staff` / `require_admin` directly.
+"""
+from dataclasses import asdict, dataclass
+
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 
-from app.core.config import get_settings
+from app.core.cognito import INVALID_TOKEN, bearer, verify_staff_token
 
-bearer = HTTPBearer(auto_error=False)
+__all__ = ["CurrentUser", "bearer", "get_current_user"]
 
 
 @dataclass(frozen=True)
 class CurrentUser:
-    id: str
+    id: str  # Cognito username, e.g. "maya" (the staffer id used across HomeFront)
     email: str | None
-    token: str  # raw JWT, forwarded to Supabase so RLS applies
+    token: str  # raw access token
     claims: dict
-
-
-@lru_cache
-def _jwks_client() -> jwt.PyJWKClient:
-    url = f"{get_settings().supabase_url}/auth/v1/.well-known/jwks.json"
-    return jwt.PyJWKClient(url, cache_keys=True)
-
-
-def _decode(token: str) -> dict:
-    settings = get_settings()
-    if settings.supabase_jwt_secret:
-        return jwt.decode(
-            token, settings.supabase_jwt_secret, algorithms=["HS256"], audience="authenticated"
-        )
-    key = _jwks_client().get_signing_key_from_jwt(token).key
-    return jwt.decode(token, key, algorithms=["ES256", "RS256"], audience="authenticated")
 
 
 def get_current_user(
     creds: HTTPAuthorizationCredentials | None = Depends(bearer),
 ) -> CurrentUser:
+    """Any valid staff-web access token; no group check (use require_staff for that)."""
     if creds is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
-    try:
-        claims = _decode(creds.credentials)
-    except (jwt.PyJWTError, jwt.PyJWKClientError):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, INVALID_TOKEN)
+    identity = verify_staff_token(creds.credentials)
     return CurrentUser(
-        id=claims["sub"], email=claims.get("email"), token=creds.credentials, claims=claims
+        id=identity.username, email=identity.email, token=creds.credentials, claims=asdict(identity)
     )
