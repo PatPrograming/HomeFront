@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import anyio
-import mcp_types as types
+from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
@@ -28,32 +28,32 @@ from .tokens import InvalidToken, verify_mandate_token
 
 PATH = "/mcp"
 
+server = Server("mandate-gateway")
+
 
 def _bearer(headers: Any) -> str:
     value = headers.get("authorization") or ""
     return value[len("Bearer ") :].strip() if value.startswith("Bearer ") else ""
 
 
-async def list_tools(ctx: Any, params: Any) -> types.ListToolsResult:
-    return types.ListToolsResult(
-        tools=[types.Tool(name=t.name, description=t.description, input_schema=input_schema(t.name)) for t in TOOLS.values()]
-    )
+@server.list_tools()
+async def list_tools() -> list[types.Tool]:
+    return [types.Tool(name=t.name, description=t.description, inputSchema=input_schema(t.name)) for t in TOOLS.values()]
 
 
-async def call_tool(ctx: Any, params: types.CallToolRequestParams) -> types.CallToolResult:
-    token = _bearer(ctx.request.headers)
+# validate_input=False: bad arguments must reach guarded() so they become a logged DENY.
+@server.call_tool(validate_input=False)
+async def call_tool(name: str, arguments: dict[str, Any]) -> types.CallToolResult:
+    token = _bearer(server.request_context.request.headers)
     gateway = get_gateway()
     try:
         # guarded() talks to DynamoDB and AVP with blocking calls, so run it in a thread.
-        outcome = await anyio.to_thread.run_sync(gateway.guarded, params.name, params.arguments or {}, token)
+        outcome = await anyio.to_thread.run_sync(gateway.guarded, name, arguments or {}, token)
     except InvalidToken:
-        return types.CallToolResult(content=[types.TextContent(text="DENIED (invalid token)")], is_error=True)
+        return types.CallToolResult(content=[types.TextContent(type="text", text="DENIED (invalid token)")], isError=True)
     if not outcome.allowed:
-        return types.CallToolResult(content=[types.TextContent(text=outcome.deny_text())], is_error=True)
-    return types.CallToolResult(content=[types.TextContent(text=json.dumps(outcome.result))], is_error=False)
-
-
-server = Server("mandate-gateway", on_list_tools=list_tools, on_call_tool=call_tool)
+        return types.CallToolResult(content=[types.TextContent(type="text", text=outcome.deny_text())], isError=True)
+    return types.CallToolResult(content=[types.TextContent(type="text", text=json.dumps(outcome.result))], isError=False)
 
 
 def _security() -> TransportSecuritySettings:
