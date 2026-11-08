@@ -1,0 +1,77 @@
+{
+  "round": 0,
+  "at": "2026-11-08T12:03:25.020Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/deploy",
+  "passed": [],
+  "failed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5"
+  ],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Templates lint clean",
+      "command": "/private/tmp/claude-501/-Users-tranquanghuy-Projects-aws-a10-hack-2026/84011187-45c8-4436-868e-23188cf55860/scratchpad/cfn/bin/cfn-lint deploy/aws/foundation.yaml deploy/aws/app.yaml",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 2,
+      "ms": 1292,
+      "note": "",
+      "stdoutTail": "E0003 deploy/aws/foundation.yaml could not be processed by glob.glob\nNone:1:1",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Policy, secrets and dry-run tests pass (fake `aws` CLI records every call; no write call without `--apply`)",
+      "command": ".venv/bin/python -m pytest -q deploy/aws/tests",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 4,
+      "ms": 535,
+      "note": "",
+      "stdoutTail": "no tests ran in 0.00s",
+      "stderrTail": "ERROR: file or directory not found: deploy/aws/tests"
+    },
+    {
+      "id": "C3",
+      "check": "Container builds and answers its health check with AWS credentials stripped",
+      "command": "deploy/aws/local-test.sh",
+      "passWhen": "stdout contains `HEALTH OK`",
+      "pass": false,
+      "exit": 127,
+      "ms": 4,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": "bash: deploy/aws/local-test.sh: No such file or directory"
+    },
+    {
+      "id": "C4",
+      "check": "Agent children get the task role's credentials (container credential variables pass the allowlist)",
+      "command": "PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src:packages/guardrail-scanner/src .venv/bin/python -m pytest -q Backend/tests/test_agent_autostart.py -k container",
+      "passWhen": "stdout matches /[1-9]\\d* passed/",
+      "pass": false,
+      "exit": 5,
+      "ms": 7199,
+      "note": "",
+      "stdoutTail": "=============================== warnings summary ===============================\n.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/deploy/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n24 deselected, 1 warning in 4.09s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C5",
+      "check": "Backend suite still green",
+      "command": "PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src:packages/guardrail-scanner/src .venv/bin/python -m pytest -q Backend/tests",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 86437,
+      "note": "",
+      "stdoutTail": "\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED Backend/tests/test_agent_requests.py::test_the_form_reaches_the_agent_as_a_chat_message\nFAILED Backend/tests/test_agent_requests.py::test_send_and_draft_need_a_recipient_but_reading_does_not\nFAILED Backend/tests/test_agent_requests.py::test_a_malformed_recipient_is_refused[not-an-address]\nFAILED Backend/tests/test_agent_requests.py::test_a_malformed_recipient_is_refused[a@b]\nFAILED Backend/tests/test_agent_requests.py::test_a_malformed_recipient_is_refused[two words@x.gov]\nFAILED Backend/tests/test_agent_requests.py::test_a_malformed_recipient_is_refused[<x@y.gov>]\nFAILED Backend/tests/test_agent_requests.py::test_a_malformed_recipient_is_refused[a@b.gov, c@d.gov]\nFAILED Backend/tests/test_agent_requests.py::test_an_outside_address_is_not_refused_here_so_cedar_can_deny_it_visibly\nFAILED Backend/tests/test_agent_requests.py::test_only_the_social_form_type_is_not_accepted_yet\nFAILED Backend/tests/test_agent_requests.py::test_an_empty_message_is_refused\nFAILED Backend/tests/test_agent_requests.py::test_a_revoked_session_takes_no_request\n11 failed, 536 passed, 3 skipped, 1 warning in 85.29s (0:01:25)",
+      "stderrTail": ""
+    }
+  ]
+}

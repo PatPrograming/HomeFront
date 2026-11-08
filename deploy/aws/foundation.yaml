@@ -1,0 +1,46 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  HomeFront foundation: the container registry for the gateway image and the runtime secret.
+  Deployed first, because the image must be pushed and the secret filled before the service starts.
+
+Parameters:
+  RepositoryName:
+    Type: String
+    Default: homefront-gateway
+  SecretName:
+    Type: String
+    Default: homefront/runtime
+
+Resources:
+  GatewayRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref RepositoryName
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+      EmptyOnDelete: true # teardown.sh can remove the stack without a manual image purge
+      LifecyclePolicy:
+        LifecyclePolicyText: >-
+          {"rules":[{"rulePriority":1,"description":"keep the last 5 images",
+          "selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},
+          "action":{"type":"expire"}}]}
+
+  # One JSON secret. CloudFormation generates MANDATE_SIGNING_SECRET here, so it never exists
+  # outside AWS. put-secrets.py adds COGNITO_AGENT_CLIENT_SECRET and the government API keys.
+  RuntimeSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Ref SecretName
+      Description: HomeFront gateway runtime secrets (mandate signing key, agent client secret, gov API keys)
+      GenerateSecretString:
+        SecretStringTemplate: "{}"
+        GenerateStringKey: MANDATE_SIGNING_SECRET
+        PasswordLength: 64
+        ExcludePunctuation: true
+
+Outputs:
+  RepositoryUri:
+    Value: !GetAtt GatewayRepository.RepositoryUri
+  SecretArn:
+    Value: !Ref RuntimeSecret

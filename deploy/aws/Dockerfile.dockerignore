@@ -1,0 +1,19 @@
+# Used by `docker build -f deploy/aws/Dockerfile .` (BuildKit reads <Dockerfile>.dockerignore).
+# Allow-list: only what the gateway and the agent need. Never any .env file.
+**
+!Backend/app
+!Backend/policy
+!Backend/requirements.txt
+!packages
+!agent
+!deploy/aws/entrypoint.sh
+
+**/.env
+**/.env.*
+**/.venv
+**/__pycache__
+**/*.pyc
+**/tests
+**/node_modules
+**/*.pem
+**/*.key
