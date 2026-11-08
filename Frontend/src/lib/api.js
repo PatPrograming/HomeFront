@@ -59,7 +59,7 @@ export const api = {
   // Who the API thinks you are: { username, sub, email, groups } from your Cognito token (lane A)
   me: () => request("/me"),
 
-  // Mandate console (lane B contract, docs/LANES.md)
+  // HomeFront console (lane B contract, docs/LANES.md)
   startSession: () => request("/sessions", { method: "POST", body: {} }),
   events: (cursor) => request(eventsPath(cursor)),
   offboard: (stafferId) =>

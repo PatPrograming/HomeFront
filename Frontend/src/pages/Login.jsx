@@ -42,7 +42,7 @@ export default function Login() {
     <Layout>
       <div className="mandate-console login">
         <section className="panel">
-          <h1>Sign in to Mandate</h1>
+          <h1>Sign in to HomeFront</h1>
           {MOCK ? (
             <>
               <p className="alert" role="note">

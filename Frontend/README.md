@@ -1,6 +1,6 @@
-# Frontend: the Mandate console
+# Frontend: the HomeFront console
 
-React 18 + Vite. The staff console and the Chief of Staff's admin page for Mandate (WP6). It shows the demo:
+React 18 + Vite. The staff console and the Chief of Staff's admin page for HomeFront (WP6). It shows the demo:
 Maya signs in and starts her AI assistant, every tool call shows up as ALLOW or DENY, the Chief of Staff
 offboards Maya, and the assistant's next call is denied.
 
