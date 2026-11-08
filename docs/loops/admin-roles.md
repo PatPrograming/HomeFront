@@ -1,8 +1,8 @@
 # Loop: admin-roles
 
-Status: BUILDING
+Status: REVIEWING
 Profile: feature (authorization: full trial)
-Round: 1 / 4
+Round: 2 / 4
 Base commit: 0799095 (Lane H, Agent-Permissions-Huy; contracts 404cdff). First built on Lane G 679f0ad (old tip a605f42), then replayed here on the lead's ruling.
 Branch: Admin-Roles-Huy
 
@@ -36,7 +36,7 @@ Every command strips AWS credentials (`scripts/offline-pytest.sh`). No check cal
 | C2 | People & roles API: admin only (real token check), list, assign, edit, preview words, audit, every escalation case | `scripts/offline-pytest.sh -q Backend/tests/test_people_roles.py` | exit 0 |
 | C3 | Contracts: role policies read principal.roleTools and match the files; validator rejects always-denied, locked, unknown, duplicate | `scripts/offline-pytest.sh -q packages/mandate-contracts/tests` | exit 0 |
 | C4 | setup.sh updates changed role policies only with `--update-role-policies`, dry run by default | `scripts/offline-pytest.sh -q Backend/tests/test_setup_role_policies.py` | exit 0 |
-| C5 | Backend and packages suite stays green (see Decisions: one Lane H test excluded) | `scripts/offline-pytest.sh -q Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests packages/identity-gateway/tests --deselect packages/identity-gateway/tests/test_gw_guarded.py::test_scan_runs_only_for_untrusted_output_tools` | exit 0 |
+| C5 | Gateway and contracts suites stay green (run per package: see Decisions) | `scripts/offline-pytest.sh -q packages/identity-gateway/tests && scripts/offline-pytest.sh -q packages/mandate-contracts/tests packages/atlas-enricher/tests` | exit 0 |
 | C6 | Agent suite stays green | `scripts/offline-pytest.sh -q agent/tests packages/guardrail-scanner/tests` | exit 0 |
 | C7 | Console: People page tests, typecheck, build, all tests | `cd Frontend && npx tsc --noEmit && npm run -s build && npx vitest run` | exit 0 |
 | C8 | Console has the People page test | `cd Frontend && npx vitest run src/pages/People.test.tsx` | exit 0 |
@@ -86,6 +86,26 @@ At round 0, C1, C2 and C8 fail because the files do not exist. C3 and C4 fail on
 | 7 | Docs | lead | docs/ROLES.md, Backend/infra/README.md | review | 4 | done |
 
 ## Rounds
+
+### Round 1
+
+- Outcome checks (re-run 2026-11-08 by the resumed lane session, C5 per package): 8/8 pass. C1 9, C2 63, C3 179,
+  C4 9, C5 identity-gateway 717 + contracts/enricher 182, C6 103, C7 vitest 113 + tsc + build, C8 7. The first run
+  (C5 as one combined pytest run, 202 failed from same-named module collisions) is kept as `round-1.first-run.json`.
+- Backend suite, HEAD 7c5e966 vs base 0799095: 193 failed / 636 passed vs 196 failed / 561 passed. No failure exists
+  only at HEAD; the shared ones are `test_agent_permissions_api.py` (77), `test_privilege_escalation.py` (115) and
+  `test_gateway_api.py::test_session_role_and_allowed_tools_come_from_the_staffer_item` (Lane H's base). HEAD fixes 3
+  `test_setup_role_policies.py` failures.
+- Integrity scan: 11 flags, all benign (fixture `noqa` imports, the console's dev-only mock module, logged output).
+- Full /trial: advocate PARTIAL (no mutation probes; stopped early). Falsifier FALSIFIED on one item, 7/7 mutations
+  caught.
+- Gap list:
+  1. (falsifier #8) The last-admin guard counted any enabled Cognito admin, but the admin routes also need an active
+     admin STAFFER item. The only working admin could demote themselves after promoting someone with no STAFFER item,
+     or while an offboarded admin stayed in Cognito, leaving nobody able to manage roles.
+- Decision: next round. Gap 1 fixed in 8d4bb4c (`_is_working_admin`, shared with `require_people_admin`), with
+  `test_an_admin_who_cannot_use_the_admin_routes_does_not_count_as_another_admin`; it fails with the new condition
+  removed.
 
 ## Decisions
 
