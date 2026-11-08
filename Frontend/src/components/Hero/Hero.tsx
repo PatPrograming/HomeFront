@@ -66,7 +66,7 @@ export default function Hero({ mission, buttons }: HeroProps) {
                     </Link>
                   </li>
                   <li role="none">
-                    <Link role="menuitem" to="/agents/new?kind=research" onClick={() => setOpen(false)}>
+                    <Link role="menuitem" to="/agents/new?kind=market_research" onClick={() => setOpen(false)}>
                       Research
                     </Link>
                   </li>
