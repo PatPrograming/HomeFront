@@ -9,6 +9,7 @@ Two different credentials are needed before any mandate token exists:
 import os
 import time
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -69,6 +70,48 @@ def create_session(staff: StaffIdentity = Depends(require_staff)) -> dict:
         "mode": session.mode,
         "allowedTools": ALLOWED_TOOLS,
         "expiresAt": _iso(now + SESSION_TTL_SECONDS),
+    }
+
+
+TITLE_CHARS = 60
+
+
+def _title(sid: str) -> str:
+    """The conversation's first message, on one line and cut to fit a tab."""
+    first = get_gateway().store.first_chat_message(sid)
+    if first is None:
+        return "New conversation"
+    text = " ".join(first.text.split())
+    return text if len(text) <= TITLE_CHARS else text[: TITLE_CHARS - 1].rstrip() + "…"
+
+
+def _status(session: SessionItem, staffer_active: bool, now: float) -> str:
+    if session.status != "active" or not staffer_active:
+        return "revoked"
+    return "expired" if now >= _created_epoch(session.created_at) + SESSION_TTL_SECONDS else "active"
+
+
+@router.get("/sessions")
+def list_sessions(staff: StaffIdentity = Depends(require_staff)) -> dict:
+    """The caller's own conversations, newest first. Nobody can list another staffer's."""
+    store = get_gateway().store
+    staffer = store.get_staffer(staff.username)
+    active = staffer is not None and staffer.active
+    waiting = Counter(draft.sid for _, draft in store.pending_drafts_for(staff.username))
+    now = time.time()
+    mine = sorted(store.sessions_for(staff.username), key=lambda pair: pair[1].created_at, reverse=True)
+    return {
+        "sessions": [
+            {
+                "sid": sid,
+                "title": _title(sid),
+                "createdAt": session.created_at,
+                "expiresAt": _iso(int(_created_epoch(session.created_at)) + SESSION_TTL_SECONDS),
+                "status": _status(session, active, now),
+                "waitingDrafts": waiting[sid],
+            }
+            for sid, session in mine
+        ]
     }
 
 

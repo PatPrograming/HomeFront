@@ -156,8 +156,9 @@ def agent_send_message(body: MessageIn, claims: MandateClaims = Depends(require_
 
 
 @router.get("/drafts")
-def list_drafts(staff: StaffIdentity = Depends(require_staff)) -> dict:
-    drafts = get_gateway().store.pending_drafts_for(staff.username)
+def list_drafts(sid: str | None = None, staff: StaffIdentity = Depends(require_staff)) -> dict:
+    """Every draft waiting for the caller, or only one conversation's with `?sid=`."""
+    drafts = [pair for pair in get_gateway().store.pending_drafts_for(staff.username) if sid is None or pair[1].sid == sid]
     return {
         "drafts": [
             {"id": draft_id, **draft.model_dump(mode="json"), "categoryLabel": LABELS.get(draft.category, draft.category)}

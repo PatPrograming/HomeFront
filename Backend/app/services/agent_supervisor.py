@@ -36,6 +36,7 @@ REPO = Path(__file__).resolve().parents[3]
 AGENT_PYTHON = REPO / "agent" / ".venv" / "bin" / "python"
 AGENT_ENV_FILE = REPO / "agent" / ".env"
 MAX_STARTS_PER_SESSION = 3
+MAX_RUNNING_PER_STAFFER = 3  # open conversations with a live agent at once
 SWEEP_SECONDS = 15
 STOP_GRACE_SECONDS = 5
 
@@ -89,9 +90,15 @@ def launch(sid: str) -> Proc:
 
 
 class AgentSupervisor:
-    def __init__(self, launcher: Callable[[str], Proc] | None = None, max_starts: int = MAX_STARTS_PER_SESSION):
+    def __init__(
+        self,
+        launcher: Callable[[str], Proc] | None = None,
+        max_starts: int = MAX_STARTS_PER_SESSION,
+        max_running_per_staffer: int = MAX_RUNNING_PER_STAFFER,
+    ):
         self._launch = launcher or launch
         self._max_starts = max_starts
+        self._max_running = max_running_per_staffer
         self._running: dict[str, _Running] = {}
         self._starts: dict[str, int] = {}
         self._lock = threading.Lock()
@@ -108,6 +115,11 @@ class AgentSupervisor:
             if time.time() >= ends_at:
                 raise AgentStartError("this session has expired; start a new conversation")
             starts = self._starts.get(sid, 0)
+            running = sum(1 for r in self._running.values() if r.staffer_id == staffer_id and r.proc.poll() is None)
+            if running >= self._max_running:
+                raise AgentStartError(
+                    f"too many conversations running ({running}); wait for one to finish or end, then try again"
+                )
             if starts >= self._max_starts:
                 raise AgentStartError(f"it stopped {starts} times in this session, so it is not restarted again")
             try:
