@@ -3,6 +3,7 @@
 Written 2026-11-08 at the lead's usage-limit ruling. The loop is DONE; nothing is mid-step.
 
 - Branch `Deploy-AWS-Huy`. Fix commit `90f4fd0`; this handoff and the round-4 notes are in the commit after it. Not pushed.
+- Round 5 (Haiku 4.5 for titles): commit fec0c18, 5/5 checks on the merge with Lane E c57abdf.
 - Uncommitted files: none.
 - Trial: lite, falsifier INCONCLUSIVE (no Docker; nothing failed) then judge ACCEPT. Details in `deploy-aws.md`, Round 4.
 - Probe worktree `../lane-l-probe` (merge with Lane E f93f328) was removed after the verdict.

@@ -76,6 +76,12 @@ The repo holds CloudFormation templates and dry-run-by-default scripts that, whe
 - Trial (lite): falsifier INCONCLUSIVE (no Docker, probes cut short, nothing failed) plus a scan flag (the deliberate skip), so the judge ran: ACCEPT. Judge re-ran C1-C5 itself incl. Docker, and 8 mutations each failed a test. Claim "HEALTH OK on Deploy-AWS-Huy alone" UNBACKED (not reproduced by the judge; irrelevant to the merged deploy). Known test gap: an `iam:PassRole` in a new, separately named inline policy would not be caught.
 - Decision: DONE.
 
+### Round 5 — 2026-11-08 (lead follow-up: Haiku 5.5 denied by the workshop allowlist)
+- Built (fec0c18): the gateway task role's titles-only grant names exactly `us.anthropic.claude-haiku-4-5-20251001-v1:0` and `anthropic.claude-haiku-4-5-20251001-v1:0`; the stack sets `HOMEFRONT_TITLE_MODEL_ID` to that profile; README updated. Same Sid, action and resource count, so the policy keeps its shape: no trial (lead's rule).
+- Outcome checks: 5/5 on a fresh probe merge with Lane E's tip c57abdf (C2 37, C4 54, C5 675 passed / 3 skipped, C3 HEALTH OK); probe removed. Mutations: widening the profile to `haiku-4-5*` and setting the env to Haiku 5.5 each fail the identity test.
+- `agent-role.sh` still lists Haiku 5.5: not a deploy problem (the supervisor's session policy narrows the agent to Sonnet 5, and titles run in the gateway); reported to the lead as a least-privilege cleanup for Lane E.
+- Decision: DONE.
+
 ## Decisions
 
 - 2026-11-08: Scope change from the lead (verbatim): "The gateway and the agent processes must not share an identity. Gateway task role: DynamoDB, Verified Permissions, Cognito admin calls, SES, Secrets Manager, and kms:Decrypt/Encrypt on Lane I's connected-accounts key (with the EncryptionContext condition). Agent role: Bedrock only (`bedrock:InvokeModel*` on the Sonnet 5 / Haiku 5.5 profiles, `bedrock:ApplyGuardrail` on `l74ju5pcrcdg`), assumed by the gateway per agent via `sts:AssumeRole` (env `HOMEFRONT_AGENT_ROLE_ARN`)." C4 rewritten to match (it previously required the opposite); commit 6243691 reverted.
