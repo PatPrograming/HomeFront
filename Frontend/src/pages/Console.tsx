@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
 import AutonomyPanel from "../components/AutonomyPanel";
 import ChatPanel from "../components/ChatPanel";
-import ConversationList from "../components/ConversationList";
 import EventFeed, { FeedSummary } from "../components/EventFeed";
 import IdentityCard from "../components/IdentityCard";
 import IdentityLine from "../components/IdentityLine";
 import ReviewPanel from "../components/ReviewPanel";
+import Sidebar from "../components/Sidebar";
 import WaitingList, { type WaitingScope } from "../components/WaitingList";
 import { api, type Draft, type SessionCard, type SessionSummary } from "../lib/api";
 import { connectionMessage } from "../lib/errors";
@@ -84,14 +84,15 @@ export default function Console() {
     reviewing.close();
   }
   // Switching conversations shows that session's chat, drafts and identity line (the listing carries its card).
-  function selectConversation(sid: string) {
-    const picked = conversations.sessions.find((c) => c.sid === sid);
-    if (!picked) return;
-    const { title: _title, status: _status, waiting: _waiting, createdAt: _createdAt, ...next } = picked;
+  function selectConversation(picked: SessionSummary) {
+    const { title: _t, status: _s, waiting: _w, createdAt: _c, pinned: _p, group: _g, archived: _a, ...next } = picked;
     showCard(next);
   }
   // A revoked session stays on screen as proof; this lets the staffer leave it and start over (the broker
   // still refuses if they are offboarded).
+  function openConversations() {
+    if (window.matchMedia("(max-width: 1279px)").matches) setConvOpen(true);
+  }
   function newConversation() {
     showCard(null);
   }
@@ -162,7 +163,7 @@ export default function Console() {
     <Layout>
       <div className="mandate-console assistant-page">
         <div className={`assistant-shell${openDraft ? " has-review" : ""}`}>
-          {/* The staffer's conversations: a left rail from 1280 px, a menu ("Conversations") below. */}
+          {/* The staffer's conversations: a left sidebar from 1280 px (collapsible), a drawer ("Conversations") below. */}
           <aside id="conversations" className={`conv-rail${convOpen ? " is-open" : ""}`}>
             <div className="rail-close-row conv-close-row">
               <button type="button" className="icon-btn" onClick={() => setConvOpen(false)} aria-label="Close conversations">
@@ -171,11 +172,14 @@ export default function Console() {
                 </svg>
               </button>
             </div>
-            <ConversationList
-              sessions={conversations.sessions}
+            <Sidebar
               currentSid={card?.sid ?? null}
+              forceExpanded={convOpen}
               onSelect={selectConversation}
               onNew={newConversation}
+              onChanged={conversations.reload}
+              onRemoved={newConversation}
+              onRequestOpen={openConversations}
             />
           </aside>
           {convOpen && <div className="rail-backdrop conv-backdrop" onClick={() => setConvOpen(false)} aria-hidden="true" />}

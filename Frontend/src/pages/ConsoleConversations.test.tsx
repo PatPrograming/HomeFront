@@ -12,7 +12,7 @@ vi.stubGlobal("sessionStorage", {
 
 const base = { agent: "agent-1", actingFor: "maya", office: "rep-x", mode: "official", allowedTools: ["inbox_read" as const] };
 const summary = (sid: string, title: string, waiting: number): SessionSummary => ({
-  ...base, sid, title, status: "active", waiting, createdAt: "2026-11-08T08:00:00Z", expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+  ...base, sid, title, status: "active", waiting, pinned: false, group: null, archived: false, createdAt: "2026-11-08T08:00:00Z", expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
 });
 const sessions = [summary("sid-a", "Check my email", 1), summary("sid-b", "Post the town hall", 1)];
 const draft = (id: string, sid: string, to: string): Draft => ({
@@ -26,7 +26,7 @@ const messages: ChatMessage[] = [
 ];
 const chatFor: string[] = [];
 // What the console hands its children, so a test can press their buttons (no DOM here).
-const captured: { onSelect?: (sid: string) => void; onNext?: () => void } = {};
+const captured: { onSelect?: (s: SessionSummary) => void; onNext?: () => void } = {};
 const opened: string[] = [];
 const nav = { openId: null as string | null };
 
@@ -46,10 +46,10 @@ vi.mock("../lib/api", () => ({ api: {} }));
 vi.mock("../lib/useOpenDraft", () => ({
   useOpenDraft: () => ({ openId: nav.openId, open: (id: string) => void opened.push(id), close: () => {} }),
 }));
-vi.mock("../components/ConversationList", () => ({
-  default: (props: { onSelect: (sid: string) => void; sessions: SessionSummary[] }) => {
+vi.mock("../components/Sidebar", () => ({
+  default: (props: { onSelect: (s: SessionSummary) => void }) => {
     captured.onSelect = props.onSelect;
-    return <div>{props.sessions.map((s) => s.title).join(" | ")} New conversation</div>;
+    return <div>{sessions.map((s) => s.title).join(" | ")} New conversation</div>;
   },
 }));
 vi.mock("../components/ReviewPanel", () => ({
@@ -102,7 +102,7 @@ describe("Console: switching and Next", () => {
   it("picking a conversation in the list makes this tab show it", () => {
     storage.set("mandate.card", JSON.stringify(card("sid-b")));
     renderToStaticMarkup(<Console />);
-    captured.onSelect!("sid-a");
+    captured.onSelect!(sessions[0]);
     expect(JSON.parse(storage.get("mandate.card")!)).toMatchObject({ sid: "sid-a", agent: "agent-1", office: "rep-x" });
     const html = renderToStaticMarkup(<Console />); // what the tab shows next
     expect(html).toContain("Reply to in-a@example.com");

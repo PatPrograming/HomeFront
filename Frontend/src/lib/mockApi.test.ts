@@ -186,3 +186,57 @@ describe("mock GET /sessions: several conversations", () => {
     expect(drafts[0].reason).toMatch(/Case status updates/);
   });
 });
+
+describe("mock sidebar routes", () => {
+  beforeEach(() => store.clear());
+  type List = { sessions: { sid: string; title: string; pinned: boolean; group: string | null; archived: boolean }[] };
+  const list = async (query = "") => ((await mockRequest("GET", `/sessions${query}`, undefined, MAYA)) as List).sessions;
+
+  it("names a conversation short, from what the staffer asked first", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const a = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    await mockRequest("POST", `/sessions/${a.sid}/messages`, { text: "Can you please check my email and answer what you can?" }, MAYA);
+    const title = (await list())[0].title;
+    expect(title.split(" ").length).toBeLessThanOrEqual(5);
+    expect(title).toMatch(/^Check my email/);
+    vi.useRealTimers();
+  });
+
+  it("renames, pins (pinned first), groups, searches, archives, restores and soft-deletes", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const a = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    vi.advanceTimersByTime(1000);
+    const b = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    await mockRequest("PATCH", `/sessions/${a.sid}`, { title: "Monroe pothole", pinned: true, group: "Roads" }, MAYA);
+    expect((await list())[0]).toMatchObject({ sid: a.sid, title: "Monroe pothole", pinned: true, group: "Roads" });
+    expect((await list("?q=monroe")).map((s) => s.sid)).toEqual([a.sid]);
+
+    await mockRequest("PATCH", `/sessions/${b.sid}`, { archived: true }, MAYA);
+    expect((await list()).map((s) => s.sid)).toEqual([a.sid]);
+    expect((await list("?archived=1")).map((s) => s.sid)).toEqual([b.sid]);
+    await mockRequest("PATCH", `/sessions/${b.sid}`, { archived: false }, MAYA);
+    expect((await list()).map((s) => s.sid).sort()).toEqual([a.sid, b.sid].sort());
+
+    await mockRequest("DELETE", `/sessions/${b.sid}`, undefined, MAYA);
+    expect((await list()).map((s) => s.sid)).toEqual([a.sid]);
+    expect(await list("?archived=1")).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it("only the owner can change a conversation", async () => {
+    const a = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    await expect(mockRequest("PATCH", `/sessions/${a.sid}`, { title: "x" }, DANA)).rejects.toMatchObject({ status: 404 });
+    await expect(mockRequest("DELETE", `/sessions/${a.sid}`, undefined, DANA)).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("mock sidebar auto titles", () => {
+  it.each([
+    ["Check my email, answer what you can and show me what I need to review.", "Check my email"],
+    ["Post on the official account: Town hall this Tuesday", "Post on the official account"],
+    ["Could you please look up case 7 about the Monroe pothole", "Look up case 7"],
+  ])("%s → %s", async (text, title) => {
+    const { autoTitle } = await import("./mockApi");
+    expect(autoTitle(text)).toBe(title);
+  });
+});

@@ -79,11 +79,17 @@ export interface Draft {
 /** GET /sessions: one of the caller's conversations (Lane E's route). Carries the card fields, so switching to
  * it can show the identity line without another call. */
 export interface SessionSummary extends SessionCard {
-  title: string;
+  title: string; // named by the server from what the staffer asked first; the staffer can rename it
   status: "active" | "revoked" | "expired";
   waiting: number;
   createdAt: string;
+  pinned: boolean;
+  group: string | null;
+  archived: boolean;
 }
+
+/** PATCH /sessions/{sid}: what the sidebar can change. Never the session's identity or permissions. */
+export type SessionPatch = { title?: string; pinned?: boolean; group?: string | null; archived?: boolean };
 
 /** What the staffer may change before approving: the text, never the recipient or account. */
 export type DraftEdits = { subject?: string; body?: string; text?: string };
@@ -105,7 +111,7 @@ export interface HomeContent {
   buttons: string[];
 }
 
-type Method = "GET" | "POST" | "PUT" | "PATCH";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 interface RequestOptions {
   auth?: boolean;
@@ -170,7 +176,15 @@ export const api = {
 
   // HomeFront console (lane B contract, docs/LANES.md)
   startSession: () => request<SessionCard>("/sessions", { method: "POST", body: {} }),
-  listSessions: () => request<{ sessions: SessionSummary[] }>("/sessions"),
+  // The caller's conversations, pinned first; `q` searches titles; `archived` lists only archived ones.
+  listSessions: (q = "", archived = false) => {
+    const params = new URLSearchParams({ ...(q.trim() ? { q: q.trim() } : {}), ...(archived ? { archived: "1" } : {}) }).toString();
+    return request<{ sessions: SessionSummary[] }>(`/sessions${params ? `?${params}` : ""}`);
+  },
+  updateSession: (sid: string, patch: SessionPatch) =>
+    request<SessionSummary>(`/sessions/${encodeURIComponent(sid)}`, { method: "PATCH", body: patch }),
+  // Soft delete: hidden from the staffer's lists; the office's audit record (events, drafts) is kept.
+  deleteSession: (sid: string) => request<{ sid: string; deleted: true }>(`/sessions/${encodeURIComponent(sid)}`, { method: "DELETE" }),
   sessionStatus: (sid: string) => request<SessionStatus>(`/sessions/${encodeURIComponent(sid)}`),
   events: (cursor?: string | null) => request<EventPage>(eventsPath(cursor)),
   offboard: (stafferId: string) =>
