@@ -62,6 +62,7 @@ def test_tool_list_matches_brief():
         "report_save",
         *research,
         "records_bulk_export",
+        "draft_revise",
     ]
     assert {n for n, t in TOOLS.items() if t.untrusted_output} == {
         "inbox_read",

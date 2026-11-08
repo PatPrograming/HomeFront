@@ -256,20 +256,20 @@ def test_email_send_list_is_chief_of_staff_only():
 
 
 def test_caseworker_is_current_plus_research_and_report_save():
-    assert set(ROLE_TOOLS["caseworker"]) == {*CURRENT["caseworker"], *RESEARCH, "report_save"}
+    assert set(ROLE_TOOLS["caseworker"]) == {*CURRENT["caseworker"], *RESEARCH, "report_save", "draft_revise"}
 
 
 def test_communications_director_adds_social_reply_research_and_report_save():
-    expected = {*CURRENT["communications_director"], "social_reply", *RESEARCH, "report_save"}
+    expected = {*CURRENT["communications_director"], "social_reply", *RESEARCH, "report_save", "draft_revise"}
     assert set(ROLE_TOOLS["communications_director"]) == expected
 
 
 def test_legislative_aide_adds_research_procurement_and_report_save():
-    expected = {*CURRENT["legislative_aide"], *RESEARCH, "usaspending_search", "sam_entity_lookup", "report_save"}
+    expected = {*CURRENT["legislative_aide"], *RESEARCH, "usaspending_search", "sam_entity_lookup", "report_save", "draft_revise"}
     assert set(ROLE_TOOLS["legislative_aide"]) == expected
 
 
-def test_intern_gets_exactly_the_six_listed_tools():
+def test_intern_gets_exactly_the_seven_listed_tools():
     assert set(ROLE_TOOLS["intern"]) == {
         "datagov_search",
         "web_scrape",
@@ -277,6 +277,7 @@ def test_intern_gets_exactly_the_six_listed_tools():
         "nasa_search",
         "nps_parks",
         "noaa_climate",
+        "draft_revise",
     }
 
 

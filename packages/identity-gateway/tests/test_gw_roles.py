@@ -108,8 +108,11 @@ def test_real_cedar_allows_exactly_the_roles_tool_list(role, tool):
 def test_the_intern_is_read_only():
     allowed = [t for t in TOOL_NAMES if CEDAR.is_authorized(_req(t, "intern")).allowed]
     assert sorted(allowed) == sorted(
-        ["datagov_search", "web_scrape", "census_query", "nasa_search", "nps_parks", "noaa_climate"]
+        ["datagov_search", "web_scrape", "census_query", "nasa_search", "nps_parks", "noaa_climate", "draft_revise"]
     )
+    # draft_revise only edits an existing pending draft; it sends nothing. No outbound tool for the intern.
+    outbound = {"email_send", "email_send_list", "social_post", "social_reply"}
+    assert not outbound & set(allowed)
 
 
 # ---- fail closed ---------------------------------------------------------------
@@ -300,7 +303,11 @@ CALLS = [  # (tool, args) for every tool, with the inputs that pass the starter 
     ("fec_search", {"q": "Smith"}),
     ("epa_search", {"q": "SANTA CLARA"}),
     ("fcc_search", {"q": "KQED"}),
+    ("draft_revise", {"draft_id": "no-such-draft", "body": "shorter"}),
 ]
+# draft_revise only ALLOWs on an existing pending draft of the same session, which this shared harness does not
+# seed; test_gw_draft_revise.py covers its allow path. Here only the role-deny side is asserted for it.
+NEEDS_SEEDED_DRAFT = {"draft_revise"}
 OUT_OF_BOUNDS = [  # inputs every role is refused, whatever it may otherwise do
     ("case_read", {"case_id": "case-2"}),  # another office's case
     ("email_send", {"to": "stranger@example.com", "subject": "s", "body": "b"}),  # unknown recipient
@@ -335,6 +342,8 @@ def test_the_agent_never_gets_a_tool_its_staffers_role_lacks(
         out = cedar_gateway.guarded(tool, args, token)
         may = tool in ROLE_TOOLS.get(role or "", ())
         # ALLOW covers both "ran" and "held for review": a held draft is still something the agent did.
+        if tool in NEEDS_SEEDED_DRAFT and may:
+            continue  # allow path covered in test_gw_draft_revise.py
         assert out.allowed is may, (role, tool, out.event.reason, out.event.policy_ids)
         if not may:
             assert out.result is None
