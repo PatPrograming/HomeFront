@@ -72,7 +72,7 @@ export default function Console() {
             <h1>Your AI assistant</h1>
             <p className="lede">
               Signed in as <strong>{session.username}</strong>. The assistant acts for you, with only the tools
-              your office allows, for 15 minutes at a time.
+              your office allows, and only for the task you give it.
             </p>
           </div>
         </header>
