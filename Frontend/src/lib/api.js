@@ -91,6 +91,10 @@ export const api = {
   emailAccount: () => request("/email/account"),
   emailPermissions: () => request("/email/permissions"),
 
+  // Form data (social post / email setup) for the AI agent. The backend route is not built yet;
+  // change this path when it is. body: see lib/agentPayload.ts
+  submitAgentRequest: (body) => request("/agent-requests", { method: "POST", body }),
+
   // Agent runs (Claude on Bedrock). Poll run() until a terminal status.
   startRun: (agentId, task) =>
     request(`/agents/${encodeURIComponent(agentId)}/runs`, { method: "POST", body: { task } }),

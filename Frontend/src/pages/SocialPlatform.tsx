@@ -3,6 +3,7 @@ import Layout from "../components/Layout";
 import Stepper from "../components/Stepper/Stepper";
 import PlatformIcon, { PLATFORMS, type PlatformId } from "../components/PlatformIcons/PlatformIcons";
 import { OptionGroup } from "./Emails";
+import { buildSocialPayload, normalizeLink, sendToAgent } from "../lib/agentPayload";
 import "./SocialPlatform.css";
 import "./Emails.css";
 
@@ -31,6 +32,7 @@ export default function SocialPlatform() {
   // TODO: pass restrictions to the backend as an agent restriction.
   const [restrictions, setRestrictions] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -67,6 +69,9 @@ export default function SocialPlatform() {
       if (gone) URL.revokeObjectURL(gone.url);
       return cur.filter((i) => i.id !== id);
     });
+
+  // Non-empty links that can't be turned into a valid URL block the step.
+  const badLinks = links.some((l) => l.trim() !== "" && normalizeLink(l) === null);
 
   const chosen = PLATFORMS.filter((p) => selected.includes(p.id));
 
@@ -138,9 +143,24 @@ export default function SocialPlatform() {
           <form
             className="content-main"
             aria-labelledby="sp-title-3"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              if (agentAction !== "") setSubmitted(true);
+              if (agentAction === "") return;
+              setSendError(null);
+              try {
+                const payload = await buildSocialPayload({
+                  platforms: selected,
+                  message,
+                  links,
+                  images: images.map((i) => i.file),
+                  role: agentAction,
+                  restrictions,
+                });
+                await sendToAgent(payload);
+                setSubmitted(true);
+              } catch (err) {
+                setSendError(err instanceof Error ? err.message : "Could not send your settings.");
+              }
             }}
           >
             <h1 id="sp-title-3" className="sp-title">Agent restrictions</h1>
@@ -180,8 +200,9 @@ export default function SocialPlatform() {
             </div>
 
             {submitted && (
-              <p role="status" className="sp-count">Your social platform settings have been saved locally.</p>
+              <p role="status" className="sp-count">Your social platform settings have been sent to the agent.</p>
             )}
+            {sendError && <p className="alert alert-error" role="alert">{sendError}</p>}
 
             <div className="em-nav">
               <button type="button" className="btn btn-outline" onClick={() => goTo(2)}>Back</button>
@@ -194,7 +215,7 @@ export default function SocialPlatform() {
             aria-labelledby="sp-title-2"
             onSubmit={(e) => {
               e.preventDefault();
-              if (message.trim()) goTo(3);
+              if (message.trim() && !badLinks) goTo(3);
             }}
           >
             <div className="content-main">
@@ -231,11 +252,13 @@ export default function SocialPlatform() {
                     {links.map((link, i) => (
                       <div className="link-row" key={i}>
                         <input
-                          type="url"
+                          type="text"
+                          inputMode="url"
                           className="input"
                           aria-label={`Link ${i + 1}`}
-                          placeholder="https://www.agency.gov/update"
-                          value= {link} /*{link.length > 8 && link.startsWith("https://") ? link : `https://${link}`} to be included handling backend data.*/
+                          aria-invalid={link.trim() !== "" && normalizeLink(link) === null}
+                          placeholder="agency.gov/update"
+                          value={link}
                           onChange={(e) => setLink(i, e.target.value)}
                         />
                         <button
@@ -252,6 +275,9 @@ export default function SocialPlatform() {
                       </div>
                     ))}
                   </div>
+                  {badLinks && (
+                    <p className="field-hint" role="alert">Enter a valid link, e.g. agency.gov/update.</p>
+                  )}
                   <button
                     type="button"
                     className="btn btn-ghost add-link"
@@ -329,7 +355,7 @@ export default function SocialPlatform() {
                 Change platforms
               </button>
               <div className="summary-actions">
-                <button type="submit" className="btn btn-primary" disabled={!message.trim()}>
+                <button type="submit" className="btn btn-primary" disabled={!message.trim() || badLinks}>
                   Continue
                 </button>
                 <button type="button" className="btn btn-outline" onClick={() => goTo(1)}>

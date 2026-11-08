@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Layout from "../components/Layout";
 import Stepper from "../components/Stepper/Stepper";
+import { buildEmailPayload, sendToAgent } from "../lib/agentPayload";
 import "./SocialPlatform.css";
 import "./Emails.css";
 
@@ -71,6 +72,7 @@ export default function Emails() {
   // TODO: pass this to the backend as an agent restriction.
   const [restrictions, setRestrictions] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const goTo = (n: number) => {
     setStep(n);
@@ -157,7 +159,11 @@ export default function Emails() {
                   className="input number-input"
                   placeholder="e.g. 250"
                   value={perDay}
-                  onChange={(e) => setPerDay(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Integers only: block exponent, sign and decimal characters.
+                    if (["e", "E", "+", "-", ".", ","].includes(e.key)) e.preventDefault();
+                  }}
+                  onChange={(e) => setPerDay(e.target.value.replace(/\D/g, ""))}
                 />
               </div>
             </div>
@@ -175,9 +181,18 @@ export default function Emails() {
           <form
             className="content-main"
             aria-labelledby="em-title-3"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              if (step3Valid) setSubmitted(true);
+              if (!step3Valid) return;
+              setSendError(null);
+              try {
+                await sendToAgent(
+                  buildEmailPayload({ mailboxes, mailPlatforms, mailType, perDay, role: agentAction, message: emailTopic, restrictions }),
+                );
+                setSubmitted(true);
+              } catch (err) {
+                setSendError(err instanceof Error ? err.message : "Could not send your settings.");
+              }
             }}
           >
             <h1 id="em-title-3" className="sp-title">Agent restrictions</h1>
@@ -237,8 +252,9 @@ export default function Emails() {
             </div>
 
             {submitted && (
-              <p role="status" className="sp-count">Your email settings have been saved locally.</p>
+              <p role="status" className="sp-count">Your email settings have been sent to the agent.</p>
             )}
+            {sendError && <p className="alert alert-error" role="alert">{sendError}</p>}
 
             <div className="em-nav">
               <button type="button" className="btn btn-outline" onClick={() => goTo(2)}>Back</button>
