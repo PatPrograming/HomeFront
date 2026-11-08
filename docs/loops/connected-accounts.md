@@ -1,6 +1,6 @@
 # Loop: connected-accounts
 
-Status: BRANCH DONE; merge with Lane H pending (judge REJECT items 1 and 3 are merge-time)
+Status: ACCEPTED for integration (lead ruling 2026-11-08), conditional on the merged suite passing without the conftest fixture and the integration judge confirming
 Profile: feature (trial depth: full, because this handles OAuth and provider tokens)
 Round: 3 / 4
 Base commit: 23fa467
@@ -208,7 +208,8 @@ has none; cached per `sub`; any failure means `email: null`.
 - Judge (after the reset): **REJECT**. R1, R2 MET; R3 MET on the merged tree (lead ruling; re-ran the e2e on a clean `git archive` of the merge, 8 passed; ChatPanel/ReviewQueue mutations fail their tests); R5 unsettled. Builder claim 4 CONTRADICTED: 6 of the 18 merged failures were not the ruled outcome but `RuntimeError: AVP_POLICY_STORE_ID is not set`, because `get_connections()` built its service through `get_gateway()`; the blanket autouse fixture hid it. Claim "854 passed" UNBACKED (falsifier counted 838); claims 2, 3 (count), 5, 6, 7 BACKED.
 - Fix (60d9e34): `get_connections()` reads the table with `MandateStore.from_env()`; failing-first test added. Branch: 855 passed / 66 baseline / 0 new; connections suites 172. On the merged tree with 60d9e34 and no fixture: the same 18 Lane H tests fail and every one now fails with the "not connected" outcome; e2e 8 passed.
 - Left for the merge (judge items 1 and 3, not this branch's files): Lane H updates those 18 expectations (list in side-session notes `lane-i-round3-merge-probe.md`) and the e2e test lands with the merge commit; then re-run the full merged suite and the judge on the merge.
-- Probe worktrees `lane-i-merge-probe-r3` and `lane-h-alone-probe` deleted.
+- Probe worktrees `lane-i-merge-probe-r3` and `lane-h-alone-probe` deleted; the round-2 `lane-i-merge-probe` deleted too (lead's OK).
+- Lead ruling (2026-11-08): accepted. The REJECT was about the evidence claim, now corrected; R1–R3 MET; branch fix 60d9e34 in. Lane I is accepted for integration on condition that the merged suite passes without the conftest fixture and the integration judge confirms. Lane H re-probes the merge against 60d9e34 and may ask Lane I for `test_e2e_real_connections.py` (full text in side-session notes `lane-i-round3-merge-probe.md`).
 
 ## Decisions
 
