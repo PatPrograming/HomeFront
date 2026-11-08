@@ -4,6 +4,7 @@
     2. session active AND staffer active?  -> no: DENY  (this is how Offboard is instant)
     3. build the facts from the token and DynamoDB (never from tool input)
     4. ask Verified Permissions (Cedar)    -> DENY: stop
+       an outbound call whose Gmail or X account is not connected -> DENY "needs connection"
        an outbound call the staffer has not let the agent make alone -> held as a draft, not run
     5. run the tool
     6. scan untrusted output (flag only, the original text is passed on)
@@ -26,28 +27,34 @@ from typing import Any, Callable
 from atlas_enricher import AnnotateRequest, AtlasEnricher
 from atlas_enricher.enricher import TOOL_RESIDUAL_RISK, AnnotateEvent
 from mcp_tools.handlers import invoke_tool
+from mcp_tools.registry import get_tool
 
 from mandate_contracts import TOOLS, DecisionEvent, GuardrailFlag, MandateClaims, Reason, cedar
 from mandate_contracts.ddb import DraftItem
 from mandate_contracts.roles import role_reason
 
 from .authz import Authorizer, AuthzRequest
-from .autonomy import LOCKED, NEW_CONVERSATION, SOCIAL_CATEGORY
+from .autonomy import LOCKED, MAILING_LIST, NEW_CONVERSATION, SOCIAL_CATEGORY, SOCIAL_REPLY
 from .storage import MandateStore
 from .tokens import InvalidToken, verify_mandate_token
+
+try:  # Lane I's Gmail/X connections; without it outbound calls behave as before
+    from . import connections
+except ImportError:
+    connections = None
 
 log = logging.getLogger("identity_gateway")
 
 Scanner = Callable[[str], GuardrailFlag]
 
-# HomeFront tool name -> the existing mcp_tools handler (and ATLAS label) it reuses.
-LEGACY_TOOLS = {
-    "datagov_search": "datagov.search",
-    "web_scrape": "web.scrape",
-    "email_send": "email.send",
-    "social_post": "social.post",
-}
-OUTBOUND_TOOLS = ("email_send", "social_post")  # held for review unless the staffer allowed the category
+# Tools the gateway answers itself (or never runs); every other tool reuses the mcp_tools handler
+# (and ATLAS label) named like it, with the first underscore as a dot: email_send_list -> email.send_list.
+GATEWAY_ONLY_TOOLS = ("case_read", "inbox_read", "records_bulk_export")
+LEGACY_TOOLS = {name: name.replace("_", ".", 1) for name in TOOLS if name not in GATEWAY_ONLY_TOOLS}
+SOCIAL_TOOLS = ("social_post", "social_reply")
+# Held for review unless the staffer allowed the category.
+OUTBOUND_TOOLS = ("email_send", "email_send_list", *SOCIAL_TOOLS)
+NEEDS_CONNECTION: Reason = "needs connection"
 # One address, nothing else: "a@b.gov, c@evil.com" is not one address.
 SINGLE_ADDRESS = re.compile(r"^[^@\s,;<>]+@([^@\s,;<>]+)$")
 
@@ -60,10 +67,18 @@ class DraftAlreadyDecided(Exception):
     """The draft was already sent or rejected."""
 
 
+class ConnectionMissing(Exception):
+    """The staffer has not connected the account this call sends through; `result` tells the agent to ask."""
+
+    def __init__(self, result: dict[str, Any]) -> None:
+        super().__init__(result.get("status"))
+        self.result = result
+
+
 @dataclass
 class Outcome:
     event: DecisionEvent
-    result: dict[str, Any] | None = None  # the tool's output; None on DENY
+    result: dict[str, Any] | None = None  # the tool's output; None on DENY, except "needs connection"
     office_role: str | None = None  # the staffer's role, set when a role policy may have decided
 
     @property
@@ -140,7 +155,7 @@ class Gateway:
                 context=cedar.build_context(  # always every key; a missing key would skip a forbid
                     delegatorActive=delegator_active,
                     recipientKnown=tool == "email_send" and self._recipient_known(params.to, session.office),
-                    account=params.account if tool == "social_post" else "",
+                    account=params.account if tool in SOCIAL_TOOLS else "",
                 ),
             )
 
@@ -154,6 +169,10 @@ class Gateway:
             # 4b. Earned autonomy. Cedar says the agent *may* send this; the staffer decides whether it
             #     may send it without review. Until then the gateway keeps a draft and sends nothing.
             if tool in OUTBOUND_TOOLS:
+                try:  # before the hold: no draft for a call that cannot be sent
+                    self._require_connection(claims.act, tool, params)
+                except ConnectionMissing as missing:
+                    return self._record(claims, tool, resource, "DENY", NEEDS_CONNECTION, result=missing.result)
                 category = self._outbound_category(tool, params)
                 # A locked category is held even if its stored level says "auto" or a grant exists.
                 # Otherwise it runs if the staffer set it to "auto", or granted it for this session.
@@ -168,7 +187,10 @@ class Gateway:
                     )
 
             # 5. Run the tool.
-            result = self._run(tool, params, case)
+            try:
+                result = self._run(tool, params, case, claims)
+            except ConnectionMissing as missing:  # the account was disconnected between the check and the send
+                return self._record(claims, tool, resource, "DENY", NEEDS_CONNECTION, result=missing.result)
 
             # 6. Untrusted output (public inbox, web pages): flag it, never change it.
             flag = self.scan(json.dumps(result)) if spec.untrusted_output else GuardrailFlag()
@@ -208,7 +230,7 @@ class Gateway:
                 context=cedar.build_context(
                     delegatorActive=True,
                     recipientKnown=tool == "email_send" and self._recipient_known(params.to, draft.office),
-                    account=params.account if tool == "social_post" else "",
+                    account=params.account if tool in SOCIAL_TOOLS else "",
                 ),
             )
         )
@@ -228,7 +250,11 @@ class Gateway:
         if not self.store.decide_draft(draft_id, sent):
             raise DraftAlreadyDecided(draft_id)
         try:
-            result = self._run(tool, params, None)
+            self._require_connection(draft.acting_for, tool, params)  # may have been disconnected since the hold
+            result = self._run(tool, params, None, claims)
+        except ConnectionMissing as missing:
+            self.store.put_draft(draft_id, draft)
+            return self._record(claims, tool, resource, "DENY", NEEDS_CONNECTION, result=missing.result)
         except Exception:
             log.exception("sending draft %s failed; it stays in the review queue", draft_id)
             self.store.put_draft(draft_id, draft)
@@ -241,6 +267,10 @@ class Gateway:
         """From DynamoDB, never from the agent: the kind of the email this replies to."""
         if tool == "social_post":
             return SOCIAL_CATEGORY
+        if tool == "social_reply":
+            return SOCIAL_REPLY
+        if tool == "email_send_list":
+            return MAILING_LIST
         email = self.store.get_email(params.in_reply_to) if params.in_reply_to else None
         if email is None or email.from_.strip().lower() != params.to.strip().lower():
             return NEW_CONVERSATION
@@ -276,7 +306,34 @@ class Gateway:
             return False
         return match.group(1).lower().endswith(".gov") or to.strip().lower() in self.store.constituent_emails(office)
 
-    def _run(self, tool: str, params: Any, case: Any) -> dict[str, Any]:
+    def _require_connection(self, staffer_id: str, tool: str, params: Any) -> None:
+        """Raises ConnectionMissing when this call sends through an account the staffer has not connected."""
+        if connections is None:
+            return
+        provider = connections.provider_for_tool(tool, params.model_dump())
+        if provider is None:  # e.g. Bluesky: a share link, nothing to connect
+            return
+        try:
+            connections.require_connection(staffer_id, provider)
+        except connections.NeedsConnection as exc:
+            raise ConnectionMissing(connections.needs_connection_result(exc)) from exc
+
+    def _send_connected(self, tool: str, params: Any, claims: MandateClaims) -> dict[str, Any]:
+        """Send through the staffer's own Gmail or X account (the caller already found it connected)."""
+        try:
+            if tool == "email_send":
+                return connections.send_gmail(claims.act, params.to, params.subject, params.body, in_reply_to=params.in_reply_to)
+            if tool == "email_send_list":
+                recipients = sorted(self.store.constituent_emails(claims.office))
+                for to in recipients:
+                    connections.send_gmail(claims.act, to, params.subject, params.body)
+                return {"status": "sent", "provider": "gmail", "sent": len(recipients)}
+            reply_to = params.reply_to if tool == "social_reply" else None
+            return connections.post_x(claims.act, params.text, reply_to=reply_to)
+        except connections.NeedsConnection as exc:  # e.g. the token expired between the check and the send
+            raise ConnectionMissing(connections.needs_connection_result(exc)) from exc
+
+    def _run(self, tool: str, params: Any, case: Any, claims: MandateClaims) -> dict[str, Any]:
         if tool == "case_read":
             return {"id": params.case_id, **case.model_dump(mode="json")}
         if tool == "inbox_read":
@@ -284,17 +341,39 @@ class Gateway:
             if email is None:
                 return {"id": params.email_id, "status": "not_found"}
             return {"id": params.email_id, **email.model_dump(mode="json")}
+        if connections is not None and connections.provider_for_tool(tool, params.model_dump()):
+            return self._send_connected(tool, params, claims)
         # records_bulk_export has no handler on purpose: even a wrong ALLOW cannot run it.
-        return invoke_tool(LEGACY_TOOLS[tool], params.model_dump())
+        handler_args = params.model_dump(by_alias=True)  # the agency APIs read `for`, `in` and `parkCode`
+        if tool == "email_send_list":  # the list is read here, at send time, never from input
+            handler_args["recipients"] = sorted(self.store.constituent_emails(claims.office))
+        if tool == "report_save":  # who saved it comes from the token, never from input
+            handler_args |= {"agent_id": f"assistant-{claims.act}", "trace_id": claims.sid, "run_id": None}
+        result = invoke_tool(LEGACY_TOOLS[tool], handler_args)
+        registered = get_tool(LEGACY_TOOLS[tool])
+        if registered and registered.holds_secrets:  # same scrub as agents_api._run_handler
+            result = {**result, "credentials_exposed": False}
+            result.pop("api_key", None)
+            result.pop("X-Api-Key", None)
+        return result
 
-    def _atlas(self, tool: str, decision: str, flag: GuardrailFlag) -> list[str]:
+    def _atlas(self, tool: str, decision: str, reason: Reason, flag: GuardrailFlag) -> list[str]:
         ids: list[str] = []
-        if decision == "DENY":
+        if decision == "DENY" and reason != NEEDS_CONNECTION:  # a missing account is not an attack
             ids += self.enricher.annotate(AnnotateRequest(event=AnnotateEvent.deny, tool=tool)).technique_ids
-            ids += TOOL_RESIDUAL_RISK.get(LEGACY_TOOLS.get(tool, ""), {}).get("technique_ids", [])
+            ids += self._tool_risk_techniques(LEGACY_TOOLS.get(tool, ""))
         if flag.flagged:
             ids += self.enricher.annotate(AnnotateRequest(event=AnnotateEvent.untrusted_input, tool=tool)).technique_ids
         return list(dict.fromkeys(ids))
+
+    @staticmethod
+    def _tool_risk_techniques(dotted: str) -> list[str]:
+        """The enricher's residual-risk labels, else the tool registry's own (new tools have no residual entry)."""
+        residual = TOOL_RESIDUAL_RISK.get(dotted)
+        if residual:
+            return residual.get("technique_ids", [])
+        registered = get_tool(dotted)
+        return registered.atlas_techniques if registered else []
 
     def _record(
         self,
@@ -320,7 +399,7 @@ class Gateway:
             decision=decision,
             reason=reason,
             policy_ids=policy_ids or [],
-            atlas=self._atlas(tool, decision, flag),
+            atlas=self._atlas(tool, decision, reason, flag),
             guardrail=flag,
         )
         try:
@@ -329,9 +408,9 @@ class Gateway:
             # No audit record, no action: an ALLOW we cannot log is withheld.
             log.exception("could not write decision event %s", event.id)
             if decision == "ALLOW":
-                event = event.model_copy(update={"decision": "DENY", "reason": "denied by policy", "atlas": self._atlas(tool, "DENY", flag)})
+                event = event.model_copy(update={"decision": "DENY", "reason": "denied by policy", "atlas": self._atlas(tool, "DENY", "denied by policy", flag)})
                 return Outcome(event)
-        return Outcome(event, result if decision == "ALLOW" else None)
+        return Outcome(event, result if decision == "ALLOW" or reason == NEEDS_CONNECTION else None)
 
 
 def _resource_label(tool: str, params: Any) -> str | None:

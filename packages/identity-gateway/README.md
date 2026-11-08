@@ -15,8 +15,11 @@ agent ──MCP over HTTP, Authorization: Bearer <mandate token>──► /mcp
    2. DynamoDB, fresh read: session active AND staffer active?  ─ no ─► DENY "session revoked / delegator inactive"
    3. build the facts from the token and DynamoDB, never from tool input
    4. Verified Permissions IsAuthorized (Cedar)                 ─ no ─► DENY "denied by policy"
+   4b. outbound tool (email, mailing list, social post or reply): Gmail/X not connected ─► DENY "needs connection"
+       (the result says which account to connect), else held as a draft unless the staffer allowed the category
+       (the mailing list is always held)
    5. run the tool
-   6. inbox_read / web_scrape output → scan() (flag only, text passed on unchanged)
+   6. output of untrusted tools (inbox, web, agency APIs) → scan() (flag only, text passed on unchanged)
    7. write a decision event to DynamoDB
                                                                  │
    ALLOW → tool result            DENY → MCP isError "DENIED (<reason>, ATLAS <id>)"
@@ -59,7 +62,7 @@ Built in step 3 with `mandate_contracts.cedar`:
 | `tokens.py` | Mint and verify mandate tokens (`MANDATE_SIGNING_SECRET`, at least 32 characters) |
 | `storage.py` | The single DynamoDB table: sessions, staffers, cases, emails, events |
 | `authz.py` | `AvpAuthorizer` (Verified Permissions) and `StarterPolicyAuthorizer` (the same six policies in Python, for tests) |
-| `mcp_server.py` | The MCP endpoint: lists the 7 contract tools, sends each call to `guarded()` |
+| `mcp_server.py` | The MCP endpoint: lists the contract tools, sends each call to `guarded()` |
 | `app.py` | `/api/v1/tools`, `/api/v1/demo/matrix`, `/api/v1/mcp/call` (dashboard buttons, same `guarded()`) |
 | `auth_stub.py` | Stand-in for lane A's Cognito checks; refuses everything until `Backend/app/core/cognito.py` exists |
 

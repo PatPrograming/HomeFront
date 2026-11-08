@@ -16,6 +16,15 @@ from mandate_contracts import cedar
 from mandate_contracts.roles import ROLE_GOVERNED_TOOLS, ROLE_TOOLS, role_policy_id
 
 
+# The tools the `research-tools` permit names: the ten public agency APIs plus the two procurement lookups.
+RESEARCH_TOOLS = frozenset(
+    {
+        "census_query", "openfda_search", "eia_query", "nasa_search", "noaa_climate", "nps_parks",
+        "bls_series", "fec_search", "epa_search", "fcc_search", "usaspending_search", "sam_entity_lookup",
+    }
+)
+
+
 @dataclass(frozen=True)
 class AuthzRequest:
     agent_id: str
@@ -93,6 +102,8 @@ class StarterPolicyAuthorizer:
             forbids.append("forbid-bulk-export")
         if req.tool == "social_post" and req.mode == "official" and account == "campaign":
             forbids.append("forbid-campaign-post")
+        if req.tool == "social_reply" and req.mode == "official" and account == "campaign":
+            forbids.append("forbid-campaign-reply")
         if req.tool in ROLE_GOVERNED_TOOLS and req.tool not in ROLE_TOOLS.get(req.role, ()):
             forbids.append(role_policy_id(req.tool))
         if forbids:
@@ -108,4 +119,12 @@ class StarterPolicyAuthorizer:
             permits.append("email-send-known-recipient")
         if req.tool == "social_post" and delegator_active and account == "official":
             permits.append("social-post-official")
+        if req.tool == "social_reply" and delegator_active and account == "official":
+            permits.append("social-reply-official")
+        if req.tool in RESEARCH_TOOLS and delegator_active:
+            permits.append("research-tools")
+        if req.tool == "email_send_list" and delegator_active:
+            permits.append("email-send-list-office")
+        if req.tool == "report_save" and delegator_active:
+            permits.append("report-save")
         return AuthzDecision(bool(permits), permits)
