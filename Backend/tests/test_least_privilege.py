@@ -8,7 +8,7 @@ from mandate_contracts.ddb import StafferItem
 
 from app.main import app
 
-from .test_assistant_api import SID, agent_headers, as_staff, session  # noqa: F401 (fixtures)
+from .test_assistant_api import SID, _send, agent_headers, as_staff, session  # noqa: F401 (fixtures)
 from .test_gateway_api import CHIEF, MAYA, _env, client, gateway, store, table  # noqa: F401 (fixtures)
 
 
@@ -100,8 +100,9 @@ def test_a_category_cannot_be_chosen_by_the_agent(client, session, gateway, stor
 def test_grants_are_per_session_and_die_with_offboarding(client, session, gateway, store):
     as_staff()
     client.post(f"/api/v1/sessions/{SID}/grants", json={"category": "case_status"})
+    assert _send(gateway).event.reason == "allowed"  # the grant works on its own session
     store.put_session("sid-second", store.get_session(SID))  # a second console task, same staffer
-    assert store.grants_for("sid-second") == []
+    assert _send(gateway, "sid-second").result["status"] == "held_for_review"  # not inherited
     store.set_staffer_active("maya", False)
     store.revoke_sessions_for("maya")
     assert store.grants_for(SID) == []

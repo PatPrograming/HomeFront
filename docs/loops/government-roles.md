@@ -73,3 +73,11 @@ Huy checks these against real AWS (steps are in the report):
   - The `ROLES.md` "Least privilege: what we guarantee" section.
   - Mock-mode roles per demo account, taken from TS `ROLE_TOOLS`. A contract test checks it against Python.
 - Checks: 765 passed and 3 skipped (backend/packages), 62 agent, 10 guardrail, 76 console, tsc and build clean.
+- Lite trial on 992b500 (falsifier): **FALSIFIED** on the evidence, not the behavior.
+  - `test_forbids_win_over_every_grant_for_the_chief_of_staff` granted on Maya's session, so the chief had no grants and the test could not fail.
+  - The new second-session check (`grants_for("sid-second") == []`) was always true.
+  - Fixed in round 3. The grants now go on the chief's own session, and the test asserts they are live. The second-session check now sends through the gateway.
+  - I re-ran the falsifier's mutations M3c (a grant overrides `forbid-campaign-post`) and M7 (`has_grant` ignores the sid). Both now fail their tests for the right reason.
+- Open, for the lead (not built):
+  - (a) The Agents page (`agents_api.py`, `POST /api/v1/agents`, admins only) never reads the creator's `officeRole` and does not go through Cedar.
+  - (b) A grant posted on a session that has already expired returns 200, but the gateway ignores it (`expiresAt`).

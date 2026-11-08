@@ -271,11 +271,12 @@ def test_calls_cover_every_tool():
     assert sorted(t for t, _ in CALLS) == sorted(TOOLS)
 
 
-def _grant_everything(store, world, staffer_id="maya"):
-    """The most the staffer could ever hand the agent: every category set to "auto" and granted."""
+def _grant_everything(store, sid, staffer_id="maya"):
+    """The most the staffer could ever hand the agent: every category set to "auto" and granted on `sid`."""
     for category in CATEGORIES:
         store.put_autonomy(staffer_id, category, AutonomyItem(level="auto"))
-        store.put_grant(world.sid, category, staffer_id, "2026-11-08T00:00:00Z", 2**31)
+        store.put_grant(sid, category, staffer_id, "2026-11-08T00:00:00Z", 2**31)
+    assert sorted(store.grants_for(sid)) == sorted(CATEGORIES)
 
 
 @pytest.mark.parametrize("granted", [False, True], ids=["no-grants", "every-grant"])
@@ -285,7 +286,7 @@ def test_the_agent_never_gets_a_tool_its_staffers_role_lacks(
 ):
     store.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer", office_role=role))
     if granted:
-        _grant_everything(store, world)
+        _grant_everything(store, world.sid)
     token = make_token()
     for tool, args in CALLS:
         out = cedar_gateway.guarded(tool, args, token)
@@ -302,15 +303,18 @@ def test_the_agent_never_gets_a_tool_its_staffers_role_lacks(
 
 def test_a_grant_or_auto_outside_the_role_is_ignored_by_the_gateway(cedar_gateway, store, make_token, world, handler_spy):
     # maya is a Caseworker: no posting. Even with posts set to "auto" and granted, Cedar denies first.
-    _grant_everything(store, world)
+    _grant_everything(store, world.sid)
     out = cedar_gateway.guarded("social_post", {"account": "official", "text": "hi"}, make_token())
     assert out.allowed is False and out.event.policy_ids == ["role-social-post"]
     assert handler_spy.calls == [] and store.get_autonomy("maya", "social_post").level == "auto"
 
 
 def test_forbids_win_over_every_grant_for_the_chief_of_staff(cedar_gateway, store, make_token, world, handler_spy):
-    _grant_everything(store, world, "chiefofstaff")
+    _grant_everything(store, world.chief_sid, "chiefofstaff")  # granted on the chief's own session
     token = make_token(act="chiefofstaff", sid=world.chief_sid)
+    official = cedar_gateway.guarded("social_post", {"account": "official", "text": "hi"}, token)
+    assert official.event.reason == "allowed"  # the grants are live: an official post runs, not held
+    handler_spy.calls.clear()
     campaign = cedar_gateway.guarded("social_post", {"account": "campaign", "text": "Vote"}, token)
     bulk = cedar_gateway.guarded("records_bulk_export", {"query": "all"}, token)
     assert campaign.event.policy_ids == ["forbid-campaign-post"] and bulk.event.policy_ids == ["forbid-bulk-export"]
