@@ -64,3 +64,18 @@ Tests first: `ConsoleRoles.test.tsx`, `AgentActivity.test.tsx`, `agentActivity.t
 - No approval stop: the lead session set the checks and decisions in the brief; Huy reviews the lane report.
 - Lead builds in-session instead of spawning test-author/implementer agents: a frontend-only change in five files under
   a demo deadline; tests are still written first and the trial runs at the end.
+
+### Round 1 — 2026-11-08
+- Built: tasks 1–3, commits 8561c16, 947bb88
+- Outcome checks: 4/4 pass; fixed [C1, C2, C3, C4] (scoreboard: chat-console-ux.rounds/round-1.json)
+- Trial (lite): falsifier FALSIFIED requirement "allowed tools and any session grants": the disclosure ignored
+  "Approve and allow for this session" and still said replies wait for review.
+- Gap list: 1. session grants missing from "What it may do this session" (falsifier row 2).
+- Decision: next round.
+
+### Round 2 — 2026-11-08
+- Built: grants kept per session in the console (sessionStorage, the API has no list route), passed from
+  ReviewQueue `onGrant` to the disclosure; `permissionLines` takes grants. Tests added first (failed, then pass).
+- Outcome checks: 4/4 pass (round-2.json); 72 tests. Live mock repro of the falsifier's steps now shows
+  "Sends case status updates without asking (this session only)".
+- Decision: re-trial (lite).

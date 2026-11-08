@@ -19,6 +19,16 @@ import "./Console.css";
 
 const CARD_KEY = "mandate.card"; // the running session's card, so a reload keeps the sid on screen
 const REVOKED = "session revoked / delegator inactive";
+const GRANTS_KEY = "mandate.grants"; // { [sid]: categories } granted with "Approve and allow for this session"
+
+// The API has no "list grants" route, so the console remembers the grants this tab made, per session.
+function loadGrants(): Record<string, string[]> {
+  try {
+    return JSON.parse(sessionStorage.getItem(GRANTS_KEY) ?? "{}") as Record<string, string[]>;
+  } catch {
+    return {};
+  }
+}
 
 // Only the same signed-in user gets their saved card back.
 function loadCard(username: string): SessionCard | null {
@@ -67,6 +77,13 @@ export default function Console() {
   const locked = new Set(review.categories.filter((c) => c.locked).map((c) => c.category));
   const admin = isAdmin(session);
   const [railOpen, setRailOpen] = useState(false);
+  const [grants, setGrants] = useState(loadGrants);
+
+  function granted(sid: string, category: string) {
+    const next = { ...grants, [sid]: [...new Set([...(grants[sid] ?? []), category])] };
+    sessionStorage.setItem(GRANTS_KEY, JSON.stringify(next));
+    setGrants(next);
+  }
 
   // The review drawer (under 1024 px) closes on Escape, like other dialogs.
   useEffect(() => {
@@ -115,7 +132,7 @@ export default function Console() {
               chat={chatWithSession}
               sid={card?.sid ?? null}
               disabled={revoked}
-              activity={{ card, events, categories: review.categories, admin }}
+              activity={{ card, events, categories: review.categories, grants: card ? grants[card.sid] ?? [] : [], admin }}
             />
           </div>
 
@@ -128,7 +145,7 @@ export default function Console() {
                 </svg>
               </button>
             </div>
-            <ReviewQueue drafts={review.drafts} locked={locked} onDone={review.reload} />
+            <ReviewQueue drafts={review.drafts} locked={locked} onDone={review.reload} onGrant={granted} />
             <AutonomyPanel categories={review.categories} onChange={review.reload} />
           </aside>
           {railOpen && <div className="rail-backdrop" onClick={() => setRailOpen(false)} aria-hidden="true" />}

@@ -11,16 +11,18 @@ export default function AgentActivity({
   card,
   events,
   categories,
+  grants = [],
   working,
   admin,
 }: {
   card: SessionCard;
   events: DecisionEvent[];
   categories: AutonomyCategory[];
+  grants?: string[]; // categories granted for this session with "Approve and allow for this session"
   working: boolean;
   admin: boolean;
 }) {
-  const { allowed, never } = permissionLines(card, categories);
+  const { allowed, never } = permissionLines(card, categories, grants);
   const blocked = events.filter((e) => e.decision === "DENY").length;
 
   return (

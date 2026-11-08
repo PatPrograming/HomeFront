@@ -17,11 +17,28 @@ export function toolLabel(tool: string): string {
   return LABELS[tool] ?? tool.replace(/_/g, " ");
 }
 
-// What the agent may do this session: its allowed tools, plus every kind of message the staffer lets it send alone.
-export function permissionLines(card: SessionCard, categories: AutonomyCategory[]): { allowed: string[]; never: string[] } {
-  const alone = categories.filter((c) => c.level === "auto" && !c.locked).map((c) => `Sends ${c.label.toLowerCase()} without asking`);
+// What the agent may do this session: its allowed tools, plus every kind of message it may send alone, either
+// always (autonomy set to "sends alone") or for this session only ("Approve and allow for this session").
+export function permissionLines(
+  card: SessionCard,
+  categories: AutonomyCategory[],
+  grants: string[] = [],
+): { allowed: string[]; never: string[] } {
+  const open = categories.filter((c) => !c.locked);
+  const always = open.filter((c) => c.level === "auto");
+  const granted = open.filter((c) => c.level !== "auto" && grants.includes(c.category));
+  const alone = [...always, ...granted].map((c) => c.category);
+  const label = (tool: string) => {
+    if (tool === "email_send" && alone.some((c) => c !== "social_post")) return "Send email replies (the kinds listed below go out without asking)";
+    if (tool === "social_post" && alone.includes("social_post")) return "Post on the official account";
+    return toolLabel(tool);
+  };
   return {
-    allowed: [...card.allowedTools.map(toolLabel), ...alone],
+    allowed: [
+      ...card.allowedTools.map(label),
+      ...always.map((c) => `Sends ${c.label.toLowerCase()} without asking`),
+      ...granted.map((c) => `Sends ${c.label.toLowerCase()} without asking (this session only)`),
+    ],
     never: TOOL_NAMES.filter((t) => !card.allowedTools.includes(t)).map(toolLabel),
   };
 }

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { DecisionEvent } from "../../../packages/mandate-contracts/ts/index";
-import type { SessionCard } from "../lib/api";
+import type { AutonomyCategory, SessionCard } from "../lib/api";
 import AgentActivity from "./AgentActivity";
 
 const card: SessionCard = {
@@ -44,5 +44,16 @@ describe("AgentActivity: the inline 'what is it doing' disclosure", () => {
   it("reads Working… while the turn runs and Done with a count after", () => {
     expect(render(false, true)).toContain("Working…");
     expect(render(false, false)).toContain("Done · 2 actions");
+  });
+});
+
+describe("AgentActivity: session grants", () => {
+  it("lists a category granted for this session instead of claiming replies wait for review", () => {
+    const cats = [{ category: "case_status", label: "Case status updates", level: "review", locked: false }] as AutonomyCategory[];
+    const html = renderToStaticMarkup(
+      <AgentActivity card={card} events={events} categories={cats} grants={["case_status"]} working={false} admin={false} />,
+    );
+    expect(html).toContain("Sends case status updates without asking (this session only)");
+    expect(html).not.toContain("Send email replies (waits for your review)");
   });
 });

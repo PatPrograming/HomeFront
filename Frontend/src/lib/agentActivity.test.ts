@@ -41,9 +41,22 @@ describe("agentActivity: plain words for staff", () => {
       { category: "newsletter", label: "Newsletters", level: "review", locked: false },
     ] as AutonomyCategory[];
     const lines = permissionLines(card, cats);
-    expect(lines.allowed).toEqual(["Read your inbox", "Send email replies (waits for your review)", "Sends case status updates without asking"]);
+    expect(lines.allowed).toEqual([
+      "Read your inbox",
+      "Send email replies (the kinds listed below go out without asking)",
+      "Sends case status updates without asking",
+    ]);
     expect(lines.never).toContain("Export all constituent records");
     expect(lines.never).not.toContain("Read your inbox");
+  });
+
+  it("counts 'Approve and allow for this session' grants, so it never claims every reply waits for review", () => {
+    const card = { allowedTools: ["inbox_read", "email_send"] } as unknown as SessionCard;
+    const cats = [{ category: "case_status", label: "Case status updates", level: "review", locked: false }] as AutonomyCategory[];
+    const lines = permissionLines(card, cats, ["case_status"]);
+    expect(lines.allowed).toContain("Sends case status updates without asking (this session only)");
+    expect(lines.allowed).not.toContain("Send email replies (waits for your review)");
+    expect(lines.allowed).toContain("Send email replies (the kinds listed below go out without asking)");
   });
 
   it("takes the events of one turn, oldest first", () => {

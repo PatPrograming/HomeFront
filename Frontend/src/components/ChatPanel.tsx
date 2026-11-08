@@ -21,6 +21,7 @@ export interface ChatActivity {
   card: SessionCard | null;
   events: DecisionEvent[];
   categories: AutonomyCategory[];
+  grants?: string[];
   admin: boolean;
 }
 
@@ -103,6 +104,7 @@ export default function ChatPanel({
         card={card}
         events={turnEvents(activity!.events, fromTs, toTs)}
         categories={activity!.categories}
+        grants={activity!.grants}
         working={working}
         admin={admin}
       />
