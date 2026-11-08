@@ -1,7 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Chat } from "../lib/useChat";
 import ChatPanel, { isStalled, STALL_MS } from "./ChatPanel";
+
+vi.mock("../lib/api", () => ({ api: {} })); // draft cards call it; these tests never do
 
 const chatWith = (ts: string): Chat =>
   ({ messages: [{ id: "m1", ts, role: "user", text: "Check my email" }], error: null, send: async () => {} }) as unknown as Chat;
@@ -37,5 +39,23 @@ describe("ChatPanel: no endless 'Working…'", () => {
   it("never promises a 15-minute session", () => {
     const empty = { messages: [], error: null, send: async () => {} } as unknown as Chat;
     expect(renderToStaticMarkup(<ChatPanel chat={empty} sid={null} disabled={false} />)).not.toMatch(/15-minute/);
+  });
+});
+
+describe("ChatPanel: a renewed session keeps the conversation", () => {
+  it("draws a divider right after the last message from before the renewal", () => {
+    const chat = {
+      messages: [
+        { id: "a1", ts: "2026-11-08T03:00:09Z", role: "assistant", text: "Earlier reply" },
+        { id: "u2", ts: "2026-11-08T04:20:00Z", role: "user", text: "New prompt" },
+      ],
+      error: null,
+      send: async () => {},
+    } as unknown as Chat;
+    const html = renderToStaticMarkup(<ChatPanel chat={chat} sid="sid-new" disabled={false} renewedAfter="a1" />);
+    const divider = html.indexOf('role="separator"');
+    expect(divider).toBeGreaterThan(html.indexOf("Earlier reply"));
+    expect(divider).toBeLessThan(html.indexOf("New prompt"));
+    expect(renderToStaticMarkup(<ChatPanel chat={chat} sid="sid-new" disabled={false} />)).not.toContain('role="separator"');
   });
 });

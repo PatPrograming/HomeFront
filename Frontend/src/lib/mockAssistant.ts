@@ -13,6 +13,7 @@ interface InboxEmail {
   id: string;
   from: string;
   subject: string;
+  body: string;
   kind: string;
 }
 
@@ -26,11 +27,17 @@ interface Stats {
 
 export interface AssistantState {
   chats: Record<string, ChatMessage[]>;
-  drafts: Record<string, Draft & { actingFor: string; sid: string }>;
+  drafts: Record<string, StoredDraft>; // ranked when listed
   autonomy: Record<string, Record<string, Stats>>; // username → category → stats
   answered: Record<string, string[]>; // username → inbox email ids already handled
   grants?: Record<string, string[]>; // sid → categories the staffer let the agent send alone in that session
 }
+
+type StoredDraft = Omit<Draft, "urgency" | "score" | "reason" | "revising"> & {
+  actingFor: string;
+  sid: string;
+  revising?: { instruction: string; at: number };
+};
 
 export interface MockSessionRef {
   sid: string;
@@ -61,7 +68,67 @@ const PROMOTE_AFTER: Record<string, number> = { social_post: 5 };
 const DEFAULT_PROMOTE_AFTER = 3;
 const MIN_UNCHANGED_SHARE = 0.9;
 
+// What the staffer may change in a draft, and where a post can go (the server decides both in Lane H's API).
+// Lane H's shape: a new recipient is checked when saved (only constituents on file here, like Cedar's
+// recipientKnown); a post goes to one platform.
+const EDITABLE: Record<Draft["tool"], string[]> = { email_send: ["subject", "body", "to"], social_post: ["text", "platform"] };
+const PLATFORMS = [
+  { id: "x", label: "X" },
+  { id: "bluesky", label: "Bluesky" },
+  { id: "linkedin", label: "LinkedIn" },
+  { id: "facebook", label: "Facebook" },
+];
+const staleVersion = (draft: StoredDraft) =>
+  Object.assign(new MockError(409, "This draft changed"), { data: { error: "stale_version", draft } });
+const REVISE_MS = 1500;
+
+// The scripted agent's revision: "shorter" keeps the first sentence or two; anything else is noted at the end.
+function revise(text: string, instruction: string): string {
+  if (/short|brief|concise|trim/i.test(instruction)) {
+    const sentences = text.match(/[^.!?\n]+[.!?]?/g)?.map((x) => x.trim()).filter(Boolean) ?? [text];
+    return sentences.slice(0, Math.max(1, Math.ceil(sentences.length / 2))).join(" ");
+  }
+  return `${text}\n\n(${instruction})`;
+}
+
+function finishRevision(d: StoredDraft, now: number): void {
+  if (!d.revising || now - d.revising.at < REVISE_MS) return;
+  const field = d.tool === "email_send" ? "body" : "text";
+  d.args[field] = revise(d.args[field], d.revising.instruction);
+  d.version = (d.version ?? 1) + 1;
+  d.revising = undefined;
+}
+
 const inbox = new Map((inboxData as InboxEmail[]).map((e) => [e.id, e]));
+
+// A copy of Backend/app/routers/draft_rank.py for mock mode: the same weights, words and thresholds. It reads the
+// category, the original email (only when the reply goes to its sender) and the age, never the draft text.
+const KIND_WEIGHT: Record<string, number> = {
+  sensitive: 40, case_status: 30, scheduling: 20, info_request: 15, new_conversation: 10, social_post: 10,
+  staff_memo: 5, suspicious: 5, newsletter: 0,
+};
+const URGENT_WORDS = ["urgent", "emergency", "eviction", "evicted", "medical", "hospital", "deadline", "today", "asap", "immediately", "shut off", "homeless", "gấp", "khẩn cấp", "urgente", "emergencia", "desalojo"];
+const REPEAT_PHRASES = ["third time", "second time", "again", "follow up", "follow-up", "no reply", "nobody", "haven't heard", "still waiting", "called back"];
+const mentions = (text: string, words: string[]) => words.filter((w) => new RegExp(`\\b${w.replace(/[-]/g, "\\$&")}\\b`).test(text));
+
+export function rankDraft(draft: Pick<Draft, "tool" | "category" | "args" | "createdAt">, now: number): Pick<Draft, "urgency" | "score" | "reason"> {
+  const email = draft.args.in_reply_to ? inbox.get(draft.args.in_reply_to) : undefined;
+  const toSender = draft.tool === "email_send" && email !== undefined && email.from.toLowerCase() === (draft.args.to ?? "").toLowerCase();
+  const text = toSender ? `${email!.subject}\n${email!.body}`.toLowerCase() : "";
+  const urgent = mentions(text, URGENT_WORDS);
+  const repeat = mentions(text, REPEAT_PHRASES).length > 0;
+  const minutes = Math.max(0, Math.floor((now - Date.parse(draft.createdAt)) / 60_000));
+  const score = (KIND_WEIGHT[draft.category] ?? 10) + (urgent.length ? 30 : 0) + (repeat ? 15 : 0) + Math.min(20, Math.floor((minutes * 2) / 60));
+  const age = minutes < 60 ? "waiting under an hour" : minutes < 48 * 60 ? `waiting ${Math.floor(minutes / 60)} h` : `waiting ${Math.floor(minutes / 1440)} days`;
+  const named = urgent.slice(0, 2).map((w) => `'${w}'`).join(", ");
+  const reason = [
+    LABELS[draft.category] ?? draft.category,
+    ...(urgent.length ? [`mentions ${named}${urgent.length > 2 ? ` and ${urgent.length - 2} more` : ""}`] : []),
+    ...(repeat ? ["wrote before"] : []),
+    age,
+  ].join(" · ");
+  return { urgency: score >= 60 ? "high" : score >= 35 ? "medium" : "low", score, reason };
+}
 
 // The mock API's error: `status` and `data` look like ApiError's, so pages handle both the same way.
 export class MockError extends Error {
@@ -158,6 +225,7 @@ function outbound(
   state.drafts[id] = {
     id, status: "pending", tool, category, categoryLabel: LABELS[category], args,
     createdAt: new Date(now).toISOString(), actingFor: session.actingFor, sid: session.sid,
+    version: 1, ...(tool === "social_post" ? { platform: "x" } : { recipient: args.to }),
   };
   events.push(event(session, tool, resource, "held for staff review", now));
   return "held";
@@ -281,8 +349,43 @@ export function assistantRoute(
   }
 
   if (method === "GET" && pathname === "/drafts") {
-    const drafts = Object.values(state.drafts).filter((d) => d.actingFor === user && d.status === "pending");
-    return { drafts: drafts.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)) };
+    for (const d of Object.values(state.drafts)) finishRevision(d, now);
+    const drafts = Object.values(state.drafts)
+      .filter((d) => d.actingFor === user && d.status === "pending")
+      .map((d) => ({
+        ...d, ...rankDraft(d, now), revising: Boolean(d.revising), editable: EDITABLE[d.tool],
+        ...(d.tool === "social_post" ? { platformOptions: PLATFORMS } : {}),
+      }));
+    return { drafts: drafts.sort((a, b) => b.score - a.score || a.createdAt.localeCompare(b.createdAt)) };
+  }
+  // Lane H's edit routes: PATCH saves the staffer's edits (only editable fields); revise asks the agent for the
+  // next version, which appears REVISE_MS later.
+  const editPath = pathname.match(/^\/drafts\/([^/]+)(\/revise)?$/);
+  if (editPath && (method === "PATCH" || (method === "POST" && editPath[2]))) {
+    const draft = state.drafts[decodeURIComponent(editPath[1])];
+    if (!draft || draft.actingFor !== user) throw new MockError(404, "Unknown draft");
+    if (draft.status !== "pending") throw new MockError(409, `Draft already ${draft.status}`);
+    if (method === "POST") {
+      const instruction = String((body as { instruction?: string }).instruction ?? "").trim().slice(0, 500);
+      if (!instruction) throw new MockError(422, "Say what to change");
+      draft.revising = { instruction, at: now };
+      return { id: draft.id, revising: true };
+    }
+    const { expectedVersion, ...patch } = (body ?? {}) as Record<string, unknown>;
+    if (expectedVersion !== undefined && expectedVersion !== (draft.version ?? 1)) throw staleVersion(draft);
+    const refused = Object.keys(patch).filter((k) => !EDITABLE[draft.tool].includes(k));
+    if (refused.length) throw new MockError(422, `You can't change ${refused.join(", ")} here`);
+    if (patch.to !== undefined && ![...inbox.values()].some((e) => e.from.toLowerCase() === String(patch.to).toLowerCase())) {
+      throw new MockError(403, "That address isn't a constituent on file, so the office's policy won't send to it");
+    }
+    if (patch.platform !== undefined && !PLATFORMS.some((o) => o.id === patch.platform)) throw new MockError(422, "Unknown platform");
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === "platform") draft.platform = String(v);
+      else draft.args[k] = String(v);
+      if (k === "to") draft.recipient = String(v);
+    }
+    draft.version = (draft.version ?? 1) + 1;
+    return { ...draft, revising: false };
   }
   const draftPath = pathname.match(/^\/drafts\/([^/]+)\/(approve|reject)$/);
   if (method === "POST" && draftPath) {
@@ -296,7 +399,8 @@ export function assistantRoute(
       s.rejected += 1;
       return { id: draft.id, status: "rejected" };
     }
-    const edits = (body ?? {}) as DraftEdits;
+    const { expectedVersion, ...edits } = (body ?? {}) as DraftEdits & { expectedVersion?: number };
+    if (expectedVersion !== undefined && expectedVersion !== (draft.version ?? 1)) throw staleVersion(draft);
     const changed = Object.entries(edits).filter(([k, v]) => v !== undefined && draft.args[k] !== v);
     Object.assign(draft.args, edits);
     draft.status = "sent";

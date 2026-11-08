@@ -79,9 +79,9 @@ describe("Console: the chat replaces 'Start a session'", () => {
   it("with a live session it shows who acts and until when, and sends without starting another", async () => {
     storage.set("mandate.card", JSON.stringify(card("sid-live")));
     const html = renderToStaticMarkup(<Console />);
-    expect(html).toContain("agent-1");
+    expect(html).toContain("Your assistant acts for you");
     expect(html).toContain("rep-x");
-    expect(html).toContain("Access ends at"); // staff get one line; the countdown card is admin-only (ConsoleRoles.test.tsx)
+    expect(html).not.toContain("Access ends at"); // the expiry and the raw agent id are admin-only (ConsoleRoles.test.tsx)
     await panelChat!.send("Any new mail?");
     expect(startSession).not.toHaveBeenCalled();
     expect(chatSent).toEqual(["Any new mail?"]);

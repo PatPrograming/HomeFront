@@ -20,8 +20,9 @@ describe("AgentActivity: the inline 'what is it doing' disclosure", () => {
   it("tells a staffer who acts, what it may do and what it did, in plain words", () => {
     const html = render(false);
     expect(html).toContain("<details");
-    expect(html).toContain("agent-1");
     expect(html).toContain("Acting for you");
+    expect(html).toContain("Email agent: Read email email-3"); // each action names the agent kind that did it
+    expect(html).toContain("Records agent: Blocked: export all constituent records (never allowed)");
     expect(html).toContain("rep-x");
     expect(html).toContain("Read your inbox");
     expect(html).toContain("Send email replies (waits for your review)");
@@ -32,7 +33,7 @@ describe("AgentActivity: the inline 'what is it doing' disclosure", () => {
 
   it("never shows a staffer policy ids, ATLAS ids, the session id or the technical link", () => {
     const html = render(false);
-    for (const secret of ["forbid-bulk-export", "read-tools", "AML.", "sid-secret-1", "Technical details"]) expect(html).not.toContain(secret);
+    for (const secret of ["forbid-bulk-export", "read-tools", "AML.", "sid-secret-1", "Technical details", "agent-1"]) expect(html).not.toContain(secret);
   });
 
   it("gives an admin a Technical details link to the audit view", () => {

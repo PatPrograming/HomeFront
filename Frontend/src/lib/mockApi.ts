@@ -1,7 +1,12 @@
 // Fake backend for mock mode (VITE_MOCK_API=1, dev server only). It answers the same routes as
 // lane A/B's API so the whole demo can be clicked through without a server:
 //   GET  /me                   → { username, sub, email, groups } of the demo user
-//   POST /sessions             → a fake identity card, then a scripted agent run (one event every 2 s)
+//   POST /sessions             → a fake identity card, then a scripted agent run (one event every 2 s); earlier
+//                                conversations stay open, up to MAX_OPEN per person
+//   GET  /sessions?q=&archived=1 → the caller's conversations, pinned first: card fields + title, status, waiting,
+//                                pinned, group, archived (Lane E's shape); deleted ones never
+//   PATCH /sessions/{sid}      → rename, pin, group, archive (owner only)
+//   DELETE /sessions/{sid}     → soft delete: hidden from the lists, events and drafts kept
 //   GET  /sessions/{sid}       → { sid, status, actingFor, office, expiresAt }; own sessions, or any for an admin
 //   GET  /events?since=<key>   → contract sample events + the generated ones, same cursor rules
 //   POST /staff/{id}/offboard  → admin only; the agent's next call becomes a DENY and the run stops
@@ -31,6 +36,29 @@ interface MockSession {
   startedAt: number;
   step: number;
   stopped: boolean;
+  // What the sidebar changes (Lane E's PATCH / DELETE). Older saved sessions lack them.
+  title?: string;
+  pinned?: boolean;
+  group?: string | null;
+  archived?: boolean;
+  deleted?: boolean;
+}
+
+// A short name from what the staffer asked first, like the server's auto title: drop polite filler, keep the
+// main clause's first five words without a dangling small word, capitalise.
+const FILLER = /^(hi|hello|hey|please|can you|could you|would you|i want you to|i need you to|i'd like you to)\b[\s,]*/i;
+const TRAILING = new Set(["a", "an", "the", "about", "to", "for", "of", "on", "in", "with", "at", "my", "our"]);
+export function autoTitle(text: string): string {
+  let rest = text.trim();
+  for (let before = ""; before !== rest; ) {
+    before = rest;
+    rest = rest.replace(FILLER, "");
+  }
+  const clause = rest.split(/[,.:;!?]|\s(?:and|then)\s/i)[0]; // the main ask, before "and answer…" or ": text"
+  const words = clause.replace(/[^\p{L}\p{N}\s'-]/gu, " ").split(/\s+/).filter(Boolean).slice(0, 5);
+  while (words.length > 1 && TRAILING.has(words[words.length - 1].toLowerCase())) words.pop(); // no dangling "about"
+  const title = words.join(" ");
+  return title ? title[0].toUpperCase() + title.slice(1) : "New conversation";
 }
 
 interface MockState {
@@ -45,6 +73,7 @@ console.info("MANDATE_MOCK_API_MODULE loaded: fake API, no backend is called.");
 const STORE_KEY = "mandate.mock.v1";
 const STEP_MS = 2000;
 const OFFICE = "rep-x";
+const MAX_OPEN = 5; // open conversations per person, like the real per-user cap
 
 type Verdict = Pick<Step, "decision" | "reason" | "policyIds" | "atlas">;
 const allow = (policyId: string): Verdict => ({ decision: "ALLOW", reason: "allowed", policyIds: [policyId], atlas: [] });
@@ -92,7 +121,9 @@ function save(state: MockState): void {
   const sessions = { ...latest.sessions };
   for (const [sid, s] of Object.entries(state.sessions)) {
     const other = sessions[sid];
-    sessions[sid] = !other || s.step > other.step || (s.stopped && !other.stopped) ? s : other;
+    const run = !other || s.step > other.step || (s.stopped && !other.stopped) ? s : other;
+    // Sidebar changes (title, pin, group, archive, delete) come from this request, which loaded the world fresh.
+    sessions[sid] = { ...run, title: s.title, pinned: s.pinned, group: s.group, archived: s.archived, deleted: s.deleted || other?.deleted };
   }
   const offboarded = { ...latest.offboarded, ...state.offboarded };
   const assistant = mergeAssistantState(latest.assistant, state.assistant);
@@ -160,7 +191,8 @@ export async function mockRequest(method: string, path: string, body: unknown, t
     result = { username: user.username, sub: `mock-sub-${user.username}`, email: `${user.username}@rep-x.example.gov`, groups: user.groups };
   } else if (method === "POST" && url.pathname === "/sessions") {
     if (state.offboarded[user.username]) throw new MockError(403, "staffer is offboarded");
-    for (const s of Object.values(state.sessions)) if (s.actingFor === user.username) s.stopped = true;
+    const open = Object.values(state.sessions).filter((s) => s.actingFor === user.username && Date.parse(s.expiresAt) > now);
+    if (open.length >= MAX_OPEN) throw new MockError(409, `You have ${MAX_OPEN} open conversations. Use one of them, or wait for one to end.`);
     const sid = crypto.randomUUID();
     const role = MOCK_ROLES[user.username] ?? (user.groups.includes("admin") ? "chief_of_staff" : "caseworker");
     const card = {
@@ -177,6 +209,41 @@ export async function mockRequest(method: string, path: string, body: unknown, t
     };
     state.sessions[sid] = { ...card, startedAt: now, step: 0, stopped: false };
     result = card;
+  } else if (method === "GET" && url.pathname === "/sessions") {
+    const status = (s: MockSession) => (state.offboarded[s.actingFor] ? "revoked" : Date.parse(s.expiresAt) <= now ? "expired" : "active");
+    const firstAsk = (sid: string) => state.assistant.chats[sid]?.find((m) => m.role === "user")?.text;
+    const waiting = (sid: string) => Object.values(state.assistant.drafts).filter((d) => d.sid === sid && d.status === "pending").length;
+    const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+    const archived = url.searchParams.get("archived") === "1";
+    const sessions = Object.values(state.sessions)
+      .filter((s) => s.actingFor === user.username && !s.deleted && Boolean(s.archived) === archived)
+      .map((s) => {
+        const ask = firstAsk(s.sid);
+        return {
+          sid: s.sid, agent: s.agent, actingFor: s.actingFor, office: s.office, mode: s.mode, allowedTools: s.allowedTools,
+          expiresAt: s.expiresAt, createdAt: new Date(s.startedAt).toISOString(),
+          title: s.title ?? (ask ? autoTitle(ask) : "New conversation"),
+          status: status(s), waiting: waiting(s.sid),
+          pinned: Boolean(s.pinned), group: s.group ?? null, archived: Boolean(s.archived),
+        };
+      })
+      .filter((s) => !q || s.title.toLowerCase().includes(q))
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt.localeCompare(a.createdAt));
+    result = { sessions };
+  } else if ((method === "PATCH" || method === "DELETE") && /^\/sessions\/[^/]+$/.test(url.pathname)) {
+    const s = state.sessions[decodeURIComponent(url.pathname.split("/")[2])];
+    if (!s || s.actingFor !== user.username || s.deleted) throw new MockError(404, "Unknown session");
+    if (method === "DELETE") {
+      s.deleted = true; // hidden from the lists; its events and drafts stay, like the office's audit record
+      result = { sid: s.sid, deleted: true };
+    } else {
+      const patch = (body ?? {}) as { title?: string; pinned?: boolean; group?: string | null; archived?: boolean };
+      if (patch.title !== undefined) s.title = patch.title.trim().slice(0, 80) || s.title;
+      if (patch.pinned !== undefined) s.pinned = patch.pinned;
+      if (patch.group !== undefined) s.group = patch.group?.trim().slice(0, 40) || null;
+      if (patch.archived !== undefined) s.archived = patch.archived;
+      result = { sid: s.sid, title: s.title, pinned: Boolean(s.pinned), group: s.group ?? null, archived: Boolean(s.archived) };
+    }
   } else if (method === "GET" && /^\/sessions\/[^/]+$/.test(url.pathname)) {
     const s = state.sessions[decodeURIComponent(url.pathname.split("/")[2])];
     if (!s || (s.actingFor !== user.username && !user.groups.includes("admin"))) throw new MockError(404, "Unknown session");

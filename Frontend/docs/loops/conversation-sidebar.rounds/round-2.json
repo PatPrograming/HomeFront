@@ -1,0 +1,64 @@
+{
+  "round": 2,
+  "at": "2026-11-08T10:35:33.110Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162",
+  "passed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4"
+  ],
+  "failed": [],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Sidebar renders sections, menu, rename, delete confirmation, collapsed and archived views; its wrapper sends actions to the API, saves collapse, leaves a removed open conversation; search sends q",
+      "command": "cd Frontend && npx vitest run src/components/Sidebar.test.tsx src/components/SidebarView.test.tsx src/lib/useSessions.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 951,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/lib/useSessions.test.tsx (1 test) 3ms\n ✓ src/components/Sidebar.test.tsx (6 tests) 7ms\n ✓ src/components/SidebarView.test.tsx (11 tests) 16ms\n\n Test Files  3 passed (3)\n      Tests  18 passed (18)\n   Start at  02:35:16\n   Duration  297ms (transform 108ms, setup 0ms, collect 194ms, tests 26ms, environment 1ms, prepare 127ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Sections, menu actions call the right API, collapse persists (and survives blocked storage)",
+      "command": "cd Frontend && npx vitest run src/lib/sidebar.test.ts 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 674,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/lib/sidebar.test.ts (12 tests) 12ms\n\n Test Files  1 passed (1)\n      Tests  12 passed (12)\n   Start at  02:35:17\n   Duration  205ms (transform 26ms, setup 0ms, collect 23ms, tests 12ms, environment 0ms, prepare 41ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Mock API: search, rename, pin, group, archive, restore, soft delete, short auto titles",
+      "command": "cd Frontend && npx vitest run src/lib/mockApi.test.ts -t \"sidebar\" 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 3101,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\nstdout | src/lib/mockApi.test.ts\nMANDATE_MOCK_API_MODULE loaded: fake API, no backend is called.\n\n ✓ src/lib/mockApi.test.ts (17 tests | 11 skipped) 2325ms\n   ✓ mock sidebar routes > names a conversation short, from what the staffer asked first  370ms\n   ✓ mock sidebar routes > renames, pins (pinned first), groups, searches, archives, restores and soft-deletes  1584ms\n   ✓ mock sidebar routes > only the owner can change a conversation  367ms\n\n Test Files  1 passed (1)\n      Tests  6 passed | 11 skipped (17)\n   Start at  02:35:18\n   Duration  2.61s (transform 61ms, setup 0ms, collect 71ms, tests 2.32s, environment 0ms, prepare 39ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Frontend types, build, full suite",
+      "command": "cd Frontend && npx tsc --noEmit && npm run build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 12300,
+      "note": "",
+      "stdoutTail": "   ✓ mock post drafts > drafts only the post text, whether the request uses a colon or 'saying'  490ms\n   ✓ mock per-session grants > a grant sends that category alone in this session only, and offboarding closes it  1342ms\n   ✓ mock forbidden request > refuses a bulk export, naming the policy, with one DENY event and no draft  610ms\n   ✓ mock GET /sessions: several conversations > keeps earlier conversations open, lists the caller's own with title and waiting count  734ms\n   ✓ mock GET /sessions: several conversations > each conversation keeps its own chat  485ms\n   ✓ mock GET /sessions: several conversations > caps open conversations per person  728ms\n   ✓ mock GET /sessions: several conversations > ranks waiting drafts with urgency, score and reason  488ms\n   ✓ mock sidebar routes > names a conversation short, from what the staffer asked first  365ms\n   ✓ mock sidebar routes > renames, pins (pinned first), groups, searches, archives, restores and soft-deletes  1577ms\n   ✓ mock sidebar routes > only the owner can change a conversation  364ms\n\n Test Files  28 passed (28)\n      Tests  149 passed (149)\n   Start at  02:35:22\n   Duration  10.29s (transform 775ms, setup 0ms, collect 2.44s, tests 10.36s, environment 5ms, prepare 2.02s)",
+      "stderrTail": ""
+    }
+  ]
+}

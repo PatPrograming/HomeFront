@@ -13,7 +13,7 @@ vi.stubGlobal("sessionStorage", {
 const SID = "sid-1";
 const state = { openId: null as string | null, error: null as Error | null };
 const draft = (id: string, to: string): Draft => ({
-  id, status: "pending", tool: "email_send", category: "case_status", categoryLabel: "Case status updates",
+  id, status: "pending", tool: "email_send", category: "case_status", categoryLabel: "Case status updates", urgency: "medium", score: 40, reason: "r",
   args: { to, subject: `Re: ${id}`, body: `Body ${id}` }, createdAt: "2026-11-08T08:00:03Z", sid: SID,
 });
 const drafts = [draft("d1", "marcus.bell@example.com"), draft("d2", "rosa@example.com"), draft("d3", "kevin@example.com")];
@@ -61,9 +61,10 @@ describe("Console: review from the chat", () => {
   it("opens the chosen draft, and only that one, in the side panel with a read-only recipient", () => {
     state.openId = "d2";
     const html = renderToStaticMarkup(<Console />);
-    expect(html).toContain('role="dialog"');
-    expect(html).toContain("Body d2");
-    expect(html).not.toContain("Body d1");
+    expect(html).toContain('<section class="review-panel" role="dialog"');
+    const panel = html.slice(html.indexOf('<section class="review-panel" role="dialog"')); // the side panel only:
+    expect(panel).toContain("Body d2"); // draft cards in the chat now show every draft's text, on purpose
+    expect(panel).not.toContain("Body d1");
     const recipient = html.match(/<input[^>]*value="rosa@example\.com"[^>]*>/)?.[0] ?? "";
     expect(recipient).toMatch(/\sreadonly=""/); // React's real attribute, not aria-readonly or a class
   });

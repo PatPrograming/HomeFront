@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DecisionEvent } from "../../../packages/mandate-contracts/ts/index";
-import { describeEvent, permissionLines, toolLabel, turnEvents } from "./agentActivity";
+import { agentKind, describeEvent, permissionLines, toolLabel, turnEvents } from "./agentActivity";
 import type { AutonomyCategory, SessionCard } from "./api";
 
 const ev = (over: Partial<DecisionEvent>): DecisionEvent => ({
@@ -67,6 +67,16 @@ describe("agentActivity: plain words for staff", () => {
     expect(lines.allowed).toContain("Sends case status updates without asking (this session only)");
     expect(lines.allowed).not.toContain("Send email replies (waits for your review)");
     expect(lines.allowed).toContain("Send email replies (the kinds listed below go out without asking)");
+  });
+
+  it("names the agent by what it does, never by its id", () => {
+    expect(agentKind("inbox_read")).toBe("Email agent");
+    expect(agentKind("email_send")).toBe("Email agent");
+    expect(agentKind("social_post")).toBe("Social media agent");
+    expect(agentKind("datagov_search")).toBe("Research agent");
+    expect(agentKind("web_scrape")).toBe("Research agent");
+    expect(agentKind("case_read")).toBe("Research agent");
+    expect(agentKind("records_bulk_export")).toBe("Records agent");
   });
 
   it("takes the events of one turn, oldest first", () => {

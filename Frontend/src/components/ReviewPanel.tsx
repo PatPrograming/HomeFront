@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type Draft, type DraftEdits } from "../lib/api";
+import { api, type ApproveResult, type Draft, type DraftEdits } from "../lib/api";
+import { approveOutcome } from "../lib/approve";
+import { staleMessage } from "./DraftCard";
 import { connectionMessage } from "../lib/errors";
+import { draftTitle } from "./DraftCardView";
 
 // Only the text can change; the recipient or account is what the gateway's policy already checked.
 const EDITABLE: Record<Draft["tool"], (keyof DraftEdits)[]> = { email_send: ["subject", "body"], social_post: ["text"] };
@@ -16,6 +19,8 @@ export default function ReviewPanel({
   onClose,
   onGrant,
   onDecided,
+  position,
+  onNext,
 }: {
   draft: Draft;
   locked: boolean;
@@ -23,13 +28,16 @@ export default function ReviewPanel({
   onClose: () => void;
   onGrant?: (sid: string, category: string) => void; // so the chat's disclosure can list the grant
   onDecided?: (status: "sent" | "rejected") => void; // so the draft's card in the chat can say what happened
+  position?: { index: number; total: number }; // where this draft is in the waiting list (1-based)
+  onNext?: () => void; // open the next waiting draft without going back to the list
 }) {
   const [edits, setEdits] = useState<DraftEdits>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connect, setConnect] = useState<{ label: string; url: string; note: string } | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const isEmail = draft.tool === "email_send";
-  const title = isEmail ? `Reply to ${draft.args.to}` : `Post on @${draft.args.account}`;
+  const title = draftTitle(draft);
 
   // A different draft opened in the same panel starts clean, with focus on its title for screen readers.
   useEffect(() => {
@@ -41,13 +49,20 @@ export default function ReviewPanel({
   async function decide(action: () => Promise<unknown>, status: "sent" | "rejected") {
     setBusy(true);
     setError(null);
+    setConnect(null);
     try {
-      await action();
+      const result = await action();
+      // Lane I: a platform that isn't connected yet; nothing was sent, so the draft stays open here.
+      const outcome = status === "sent" && result ? approveOutcome(result as ApproveResult) : { done: true as const };
+      if (!outcome.done) {
+        setConnect(outcome.connect);
+        return;
+      }
       onDecided?.(status);
       await onDone();
       onClose();
     } catch (e) {
-      setError(connectionMessage(e, false));
+      setError(staleMessage(e) ? "This draft changed since you opened it. Close it and open it again to see the latest version." : connectionMessage(e, false));
     } finally {
       setBusy(false);
     }
@@ -57,16 +72,30 @@ export default function ReviewPanel({
     <section className="review-panel" role="dialog" aria-labelledby="review-panel-title">
       <header className="review-panel-head">
         <div>
-          <p className="review-panel-kind">{draft.categoryLabel} · needs your review</p>
+          <p className="review-panel-kind">
+            Draft {draft.version ?? 1} · {draft.categoryLabel} · needs your review
+          </p>
           <h2 id="review-panel-title" ref={headingRef} tabIndex={-1}>
             {title}
           </h2>
         </div>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close review">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </button>
+        <div className="review-panel-nav">
+          {position && onNext && position.total > 1 && (
+            <>
+              <span className="muted review-position">
+                {position.index} of {position.total}
+              </span>
+              <button type="button" className="btn-plain review-next" onClick={onNext}>
+                Next waiting
+              </button>
+            </>
+          )}
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close review">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <div className="review-panel-body">
@@ -87,13 +116,18 @@ export default function ReviewPanel({
       </div>
 
       <footer className="review-panel-actions">
+        {connect && (
+          <p className="alert" role="status">
+            {connect.note} <a href={connect.url}>Connect {connect.label}</a>
+          </p>
+        )}
         {error && (
           <p className="alert" role="alert">
             {error}
           </p>
         )}
         <div className="draft-actions">
-          <button type="button" className="btn-primary" disabled={busy} onClick={() => decide(() => api.approveDraft(draft.id, edits), "sent")}>
+          <button type="button" className="btn-primary" disabled={busy} onClick={() => decide(() => api.approveDraft(draft.id, edits, draft.version), "sent")}>
             {isEmail ? "Approve and send" : "Approve and post"}
           </button>
           {draft.sid && !locked && (
@@ -106,7 +140,7 @@ export default function ReviewPanel({
                 decide(async () => {
                   await api.grant(draft.sid!, draft.category);
                   onGrant?.(draft.sid!, draft.category);
-                  await api.approveDraft(draft.id, edits);
+                  return api.approveDraft(draft.id, edits, draft.version);
                 }, "sent")
               }
             >

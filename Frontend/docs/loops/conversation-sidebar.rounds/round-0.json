@@ -1,0 +1,64 @@
+{
+  "round": 0,
+  "at": "2026-11-08T10:19:54.759Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162",
+  "passed": [],
+  "failed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4"
+  ],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Sidebar renders sections, menu, rename, delete confirmation, collapsed and archived views",
+      "command": "cd Frontend && npx vitest run src/components/Sidebar.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 933,
+      "note": "",
+      "stdoutTail": "      5| import { SidebarView, type SidebarViewProps } from \"./Sidebar\";\n       |                               ^\n      6| \n      7| const s = (sid: string, title: string, over: Partial<SessionSummary> =…\n\nCaused by: Error: Failed to load url ./Sidebar (resolved id: ./Sidebar) in /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend/src/components/Sidebar.test.tsx. Does the file exist?\n ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-CDnG8rE7.js:51858:17\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\n Test Files  1 failed (1)\n      Tests  no tests\n   Start at  02:19:51\n   Duration  262ms (transform 33ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 40ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Sections, menu actions call the right API, collapse persists (and survives blocked storage)",
+      "command": "cd Frontend && npx vitest run src/lib/sidebar.test.ts 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 712,
+      "note": "",
+      "stdoutTail": "      2| import type { SessionSummary } from \"./api\";\n       |                               ^\n      3| import { loadCollapsed, runAction, saveCollapsed, sections } from \"./s…\n      4| \n\nCaused by: Error: Failed to load url ./sidebar (resolved id: ./sidebar) in /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend/src/lib/sidebar.test.ts. Does the file exist?\n ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-CDnG8rE7.js:51858:17\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\n Test Files  1 failed (1)\n      Tests  no tests\n   Start at  02:19:52\n   Duration  225ms (transform 23ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 51ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Mock API: search, rename, pin, group, archive, restore, soft delete, short auto titles",
+      "command": "cd Frontend && npx vitest run src/lib/mockApi.test.ts -t \"sidebar\" 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 1839,
+      "note": "",
+      "stdoutTail": "    204|       method, pathname: url.pathname, search: url.searchParams, body, …\n    205|     });\n    206|     if (result === undefined) throw new MockError(404, `mock API has n…\n       |                                     ^\n    207|   }\n    208| \n ❯ src/lib/mockApi.test.ts:210:5\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯\n\n\n Test Files  1 failed (1)\n      Tests  2 failed | 1 passed | 11 skipped (14)\n   Start at  02:19:52\n   Duration  1.36s (transform 63ms, setup 0ms, collect 74ms, tests 1.10s, environment 0ms, prepare 41ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Frontend types, build, full suite",
+      "command": "cd Frontend && npx tsc --noEmit && npm run build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 410,
+      "note": "",
+      "stdoutTail": "src/components/Sidebar.test.tsx(5,52): error TS2307: Cannot find module './Sidebar' or its corresponding type declarations.\nsrc/components/Sidebar.test.tsx(8,45): error TS2353: Object literal may only specify known properties, and 'pinned' does not exist in type 'SessionSummary'.\nsrc/components/Sidebar.test.tsx(13,30): error TS2353: Object literal may only specify known properties, and 'pinned' does not exist in type 'Partial<SessionSummary>'.\nsrc/components/Sidebar.test.tsx(14,30): error TS2353: Object literal may only specify known properties, and 'group' does not exist in type 'Partial<SessionSummary>'.\nsrc/components/Sidebar.test.tsx(126,50): error TS2353: Object literal may only specify known properties, and 'archived' does not exist in type 'Partial<SessionSummary>'.\nsrc/lib/sidebar.test.ts(3,67): error TS2307: Cannot find module './sidebar' or its corresponding type declarations.\nsrc/lib/sidebar.test.ts(6,50): error TS2353: Object literal may only specify known properties, and 'pinned' does not exist in type 'SessionSummary'.\nsrc/lib/sidebar.test.ts(16,29): error TS2353: Object literal may only specify known properties, and 'pinned' does not exist in type 'Partial<SessionSummary>'.\nsrc/lib/sidebar.test.ts(17,17): error TS2353: Object literal may only specify known properties, and 'group' does not exist in type 'Partial<SessionSummary>'.\nsrc/lib/sidebar.test.ts(18,17): error TS2353: Object literal may only specify known properties, and 'group' does not exist in type 'Partial<SessionSummary>'.\nsrc/lib/sidebar.test.ts(20,28): error TS7006: Parameter 'x' implicitly has an 'any' type.\nsrc/lib/sidebar.test.ts(21,28): error TS7006: Parameter 'g' implicitly has an 'any' type.\nsrc/lib/sidebar.test.ts(21,56): error TS7006: Parameter 'x' implicitly has an 'any' type.\nsrc/lib/sidebar.test.ts(22,28): error TS7006: Parameter 'x' implicitly has an 'any' type.",
+      "stderrTail": ""
+    }
+  ]
+}

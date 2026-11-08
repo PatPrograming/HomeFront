@@ -44,3 +44,42 @@ describe("the first chat message starts the session", () => {
     expect(d.sendMessage).not.toHaveBeenCalled();
   });
 });
+
+// Lane E: an expired session is continued (same conversation, fresh one-hour session), not replaced by a blank one.
+const refusal = (status: number, code: string) => Object.assign(new Error(code), { status, data: { message: code, code } });
+
+describe("an expired session is continued", () => {
+  const old = card("sid-old", "2026-11-07T21:59:00Z");
+
+  it("asks the broker to continue the old sid", async () => {
+    const d = deps();
+    await sendInSession(old, "hi", NOW, d);
+    expect(d.startSession).toHaveBeenCalledWith("sid-old");
+    expect(d.sendMessage).toHaveBeenCalledWith("sid-new", "hi");
+  });
+
+  it("still active on the server: keeps using the old sid", async () => {
+    const d = deps();
+    d.startSession.mockRejectedValueOnce(refusal(409, "still_active"));
+    const out = await sendInSession(old, "hi", NOW, d);
+    expect(d.sendMessage).toHaveBeenCalledWith("sid-old", "hi");
+    expect(out.card.sid).toBe("sid-old");
+  });
+
+  it("already continued in another tab: uses that newest session", async () => {
+    const d = { ...deps(), findContinuation: vi.fn(async () => card("sid-other-tab", "2026-11-07T23:00:00Z")) };
+    d.startSession.mockRejectedValueOnce(refusal(409, "already_continued"));
+    const out = await sendInSession(old, "hi", NOW, d);
+    expect(d.findContinuation).toHaveBeenCalledWith("sid-old");
+    expect(d.sendMessage).toHaveBeenCalledWith("sid-other-tab", "hi");
+    expect(out.card.sid).toBe("sid-other-tab");
+  });
+
+  it.each([[403, "revoked"], [404, "not_found"]])("%i (%s): starts a fresh conversation instead", async (status, code) => {
+    const d = deps();
+    d.startSession.mockRejectedValueOnce(refusal(status, code));
+    const out = await sendInSession(old, "hi", NOW, d);
+    expect(d.startSession).toHaveBeenLastCalledWith();
+    expect(out.card.sid).toBe("sid-new");
+  });
+});

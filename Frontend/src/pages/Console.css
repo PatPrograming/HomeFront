@@ -206,7 +206,7 @@
 
 .assistant-main {
   width: 100%;
-  max-width: 760px;
+  max-width: 860px; /* the chat is the main thing: no right rail beside it */
   margin: 0 auto;
   min-width: 0;
   min-height: calc(100vh - 68px - 8px);
@@ -269,7 +269,9 @@
   color: var(--ink);
 }
 
-.mandate-console .rail-toggle {
+.mandate-console .rail-toggle,
+.mandate-console .rules-toggle {
+
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -279,7 +281,7 @@
   color: var(--ink);
 }
 
-.mandate-console .rail-toggle:hover {
+.mandate-console .rules-toggle:hover {
   background: var(--tone);
 }
 
@@ -492,8 +494,7 @@
 }
 
 .activity-who strong {
-  font-family: var(--mono);
-  font-size: 13px;
+  font-weight: 600;
 }
 
 .activity-label {
@@ -663,23 +664,8 @@
   outline-offset: 0;
 }
 
-/* Right rail / drawer */
-.rail {
-  display: grid;
-  gap: 16px;
-  align-content: start;
-  min-width: 0;
-}
-
-.rail .panel {
-  padding: 18px;
-}
-
-.rail h2 {
-  font-size: 16px;
-}
-
-.rail-close-row {
+/* Sending rules: a popover under its button on a wide screen, a sheet on a phone (see the 600 px block). */
+.conv-close-row {
   display: flex;
   justify-content: flex-end;
 }
@@ -691,48 +677,50 @@
   background: rgba(15, 28, 46, 0.32);
 }
 
-@media (max-width: 1023px) {
-  .rail {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 60;
-    width: min(420px, 100%);
-    padding: 12px 16px 24px;
-    overflow-y: auto;
-    background: var(--canvas, #f5f7fa);
-    box-shadow: -12px 0 32px rgba(15, 28, 46, 0.16);
-    transform: translateX(100%);
-    visibility: hidden;
-    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.25s;
-  }
-  .rail.is-open {
-    transform: none;
-    visibility: visible;
-    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
+.rules-anchor {
+  position: relative;
 }
 
-@media (min-width: 1024px) {
-  .assistant-shell {
-    grid-template-columns: minmax(0, 1fr) 340px;
-  }
-  .rail {
-    position: sticky;
-    top: 84px;
-    max-height: calc(100vh - 100px);
-    overflow-y: auto;
-    padding: 16px 0 24px;
-  }
-  .mandate-console .rail-toggle,
-  .rail-close-row,
-  .rail-backdrop {
-    display: none;
-  }
+.rules-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(75vh, 680px);
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 2px 4px rgba(15, 28, 46, 0.04), 0 24px 48px rgba(15, 28, 46, 0.14);
+}
+
+.rules-popover .panel {
+  padding: 0;
+  border: 0;
+}
+
+.rules-popover h2 {
+  font-size: 16px;
 }
 
 @media (max-width: 600px) {
+  /* Title on its own line, the three header buttons in one row under it. */
+  .assistant-head {
+    flex-wrap: wrap;
+  }
+  .head-actions {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+  .head-actions button {
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
   .identity-sep {
     display: none;
   }
@@ -1057,9 +1045,6 @@
     max-height: 100%;
     width: 100%;
   }
-  .rail.is-covered {
-    display: none;
-  }
 }
 
 @media (max-width: 1023px) {
@@ -1073,6 +1058,492 @@
   .review-panel {
     border: 0;
     border-radius: 0;
+  }
+}
+
+/* Conversations: a left rail from 1280 px, a drawer opened by "Conversations" below. */
+.sidebar {
+  display: grid;
+  gap: 8px;
+  width: 248px;
+  position: relative;
+}
+
+.sidebar.is-collapsed {
+  width: 40px;
+  justify-items: center;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.sidebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar-search {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  font: 15px/1.3 var(--sans);
+  color: var(--ink);
+}
+
+.sidebar-search:focus-visible,
+.sidebar-rename:focus-visible,
+.sidebar-menu-input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 0;
+}
+
+.sidebar-heading {
+  margin-top: 8px;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.mandate-console .sidebar-group-toggle {
+  min-height: 28px;
+  padding: 0 4px;
+  background: transparent;
+  text-align: left;
+}
+
+.mandate-console .sidebar-link {
+  justify-self: start;
+  min-height: 30px;
+  margin-top: 8px;
+  padding: 0 6px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.mandate-console .sidebar-link:hover {
+  color: var(--ink);
+}
+
+.sidebar-empty {
+  padding: 4px;
+  font-size: 13px;
+}
+
+.sidebar-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-item .conversation {
+  flex: 1;
+  min-width: 0;
+  padding-right: 34px;
+}
+
+.mandate-console .item-more {
+  position: absolute;
+  right: 2px;
+  min-height: 30px !important;
+  width: 30px;
+  opacity: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.sidebar-item:hover .item-more,
+.mandate-console .item-more:focus-visible,
+.mandate-console .item-more[aria-expanded="true"] {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .mandate-console .item-more {
+    opacity: 1;
+  }
+}
+
+.sidebar-rename {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  font: 600 14px/1.3 var(--sans);
+}
+
+.sidebar-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 40;
+  min-width: 190px;
+  display: grid;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 2px 4px rgba(15, 28, 46, 0.04), 0 16px 32px rgba(15, 28, 46, 0.14);
+}
+
+.mandate-console .sidebar-menu [role="menuitem"] {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.mandate-console .sidebar-menu [role="menuitem"]:hover,
+.mandate-console .sidebar-menu [role="menuitem"]:focus-visible {
+  background: var(--tone);
+  outline: none;
+}
+
+.mandate-console .sidebar-menu [role="menuitem"].is-danger {
+  color: var(--deny);
+}
+
+.sidebar-menu-input {
+  margin: 4px 0;
+  min-height: 34px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: 14px/1.3 var(--sans);
+}
+
+.sidebar-confirm {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid #e3b9b9;
+  border-radius: 12px;
+  background: var(--deny-tint);
+  font-size: 14px;
+}
+
+.sidebar-confirm-title {
+  font-weight: 700;
+  color: var(--deny);
+  overflow-wrap: anywhere;
+}
+
+.sidebar-error {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.mandate-console .new-conversation {
+  justify-self: start;
+  min-height: 36px;
+  font-size: 14px;
+}
+
+.mandate-console .conversation {
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  gap: 2px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.mandate-console .conversation:hover {
+  background: var(--tone);
+}
+
+.mandate-console .conversation[aria-current="true"] {
+  background: #e3ebf5;
+}
+
+.conversation-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conversation-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.conversation-meta:empty {
+  display: none;
+}
+
+.conversation-status.is-revoked {
+  color: var(--deny);
+  font-weight: 600;
+}
+
+.conversation-waiting {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.mandate-console .conv-toggle {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+@media (min-width: 1280px) {
+  /* The sidebar column takes the sidebar's own width: 248 px open, 40 px collapsed. */
+  .assistant-shell {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .assistant-shell.has-review {
+    grid-template-columns: auto minmax(0, 1fr) minmax(380px, 440px);
+  }
+  .conv-rail {
+    position: sticky;
+    top: 84px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    padding: 16px 0 220px; /* room below the last item for its "⋯" menu, which this scrolling column would clip */
+  }
+  .mandate-console .conv-toggle,
+  .conv-close-row,
+  .conv-backdrop {
+    display: none;
+  }
+}
+
+@media (max-width: 1279px) {
+  .conv-rail {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 60;
+    width: min(320px, 88%);
+    padding: 12px 16px 24px;
+    overflow-y: auto;
+    background: var(--canvas, #f5f7fa);
+    box-shadow: 12px 0 32px rgba(15, 28, 46, 0.16);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.25s;
+  }
+  .conv-rail.is-open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* In the drawer the sidebar fills it and has nothing to collapse. */
+  .conv-rail .sidebar {
+    width: 100%;
+  }
+  .mandate-console .conv-rail .sidebar-collapse {
+    display: none;
+  }
+}
+
+/* The waiting list: a popover under the badge, a sheet on a phone. */
+.waiting-anchor {
+  position: relative;
+}
+
+.waiting-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 2px 4px rgba(15, 28, 46, 0.04), 0 24px 48px rgba(15, 28, 46, 0.14);
+}
+
+.waiting-popover-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.waiting-popover-head h2 {
+  font-size: 16px;
+}
+
+.waiting-list {
+  display: grid;
+  gap: 10px;
+}
+
+.waiting-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.seg {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--tone);
+}
+
+.mandate-console .seg button {
+  min-height: 30px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.mandate-console .seg button[aria-pressed="true"] {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(15, 28, 46, 0.1);
+}
+
+.waiting-rows {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.mandate-console .waiting-row {
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.mandate-console .waiting-row:hover {
+  background: var(--tone);
+}
+
+.waiting-main {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.waiting-who {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waiting-what {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waiting-meta,
+.waiting-reason {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.waiting-empty {
+  padding: 8px 2px;
+  font-size: 14px;
+}
+
+.urgency {
+  flex-shrink: 0;
+  min-width: 58px;
+  margin-top: 1px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.urgency-high {
+  background: var(--deny-tint);
+  color: var(--deny);
+}
+
+.urgency-medium {
+  background: var(--flag-tint);
+  color: var(--flag);
+}
+
+.urgency-low {
+  background: var(--tone);
+  color: var(--ink-soft);
+}
+
+.review-panel-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.review-position {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mandate-console .review-next {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .waiting-popover,
+  .rules-popover {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    width: auto;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    padding: 16px;
+    animation: sheet-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .review-panel-head {
+    flex-wrap: wrap;
   }
 }
 
@@ -1094,13 +1565,17 @@
   .activity-dot {
     animation: none;
   }
-  .rail,
-  .rail.is-open,
   .activity .chevron {
     transition: none;
   }
-  .review-slot {
+  .review-slot,
+  .waiting-popover,
+  .rules-popover {
     animation: none;
+  }
+  .conv-rail,
+  .conv-rail.is-open {
+    transition: none;
   }
 }
 
@@ -1381,4 +1856,164 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
+/* A renewed session inside one conversation: a quiet line, not a box. */
+.chat-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.chat-divider::before,
+.chat-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* A draft in the chat: version, where it goes, the text; edit in place or ask for a change. */
+.review-cards > li {
+  list-style: none;
+}
+
+.draft-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+.draft-card.is-done {
+  background: transparent;
+}
+
+.draft-card.is-revising {
+  opacity: 0.7;
+}
+
+.draft-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.draft-version {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--blue-50, #eef4fb);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.draft-card-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.draft-card-meta {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.draft-card.is-done .draft-card-meta {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.draft-card-body {
+  display: grid;
+  gap: 4px;
+}
+
+.draft-card-to {
+  font-size: 13px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.draft-card-subject {
+  font-weight: 600;
+}
+
+.draft-card-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+.draft-card-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.draft-card-foot {
+  display: grid;
+  gap: 10px;
+}
+
+.draft-revise {
+  display: flex;
+  gap: 8px;
+}
+
+.draft-revise input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: 15px/1.3 var(--sans);
+}
+
+.draft-revise input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 0;
+}
+
+.platform-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mandate-console .platform-chip {
+  min-height: 32px;
+  padding: 0 12px;
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.mandate-console .platform-chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--blue-50, #eef4fb);
+  color: var(--accent);
+}
+
+.review-cards {
+  max-width: 640px;
+}
+
+.session-notice {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.identity-task {
+  color: var(--ink-soft);
+}
+
+.identity-task::before {
+  content: "·";
+  margin-right: 8px;
+  color: var(--line-strong, #c5cdd8);
 }

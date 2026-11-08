@@ -1,0 +1,77 @@
+{
+  "round": 2,
+  "at": "2026-11-08T12:51:20.769Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162",
+  "passed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5"
+  ],
+  "failed": [],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Earlier prompts stay after a session renews; drafts stay under their own reply",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleRollover.test.tsx src/components/ReviewCards.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 1707,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/components/ReviewCards.test.tsx (5 tests) 18ms\n ✓ src/pages/ConsoleRollover.test.tsx (3 tests) 22ms\n\n Test Files  2 passed (2)\n      Tests  8 passed (8)\n   Start at  04:50:56\n   Duration  695ms (transform 277ms, setup 0ms, collect 515ms, tests 39ms, environment 0ms, prepare 191ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Editable draft card: edit in place, platforms/recipient shown, Save, revise → Draft N",
+      "command": "cd Frontend && npx vitest run src/components/DraftCard.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 1454,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/components/DraftCard.test.tsx (8 tests) 44ms\n\n Test Files  1 passed (1)\n      Tests  8 passed (8)\n   Start at  04:50:57\n   Duration  656ms (transform 119ms, setup 0ms, collect 160ms, tests 44ms, environment 0ms, prepare 179ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Descriptive agent names for staff, raw id and expiry admin-only",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleRoles.test.tsx src/components/AgentActivity.test.tsx src/lib/agentActivity.test.ts src/pages/Console.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 1612,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/lib/agentActivity.test.ts (7 tests) 9ms\n ✓ src/components/AgentActivity.test.tsx (5 tests) 9ms\n ✓ src/pages/Console.test.tsx (5 tests) 13ms\n ✓ src/pages/ConsoleRoles.test.tsx (5 tests) 37ms\n\n Test Files  4 passed (4)\n      Tests  22 passed (22)\n   Start at  04:50:59\n   Duration  821ms (transform 462ms, setup 0ms, collect 1.08s, tests 69ms, environment 1ms, prepare 335ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Sending rules behind a button; chat full width",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleSendingRules.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 1617,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/pages/ConsoleSendingRules.test.tsx (2 tests) 13ms\n\n Test Files  1 passed (1)\n      Tests  2 passed (2)\n   Start at  04:51:00\n   Duration  853ms (transform 289ms, setup 0ms, collect 444ms, tests 13ms, environment 0ms, prepare 77ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C5",
+      "check": "Frontend types, build, full suite",
+      "command": "cd Frontend && npx tsc --noEmit && npm run build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 19017,
+      "note": "",
+      "stdoutTail": "   ✓ mock GET /sessions: several conversations > each conversation keeps its own chat  484ms\n   ✓ mock GET /sessions: several conversations > caps open conversations per person  728ms\n   ✓ mock GET /sessions: several conversations > ranks waiting drafts with urgency, score and reason  488ms\n   ✓ mock sidebar routes > names a conversation short, from what the staffer asked first  363ms\n   ✓ mock sidebar routes > renames, pins (pinned first), groups, searches, archives, restores and soft-deletes  1782ms\n   ✓ mock sidebar routes > only the owner can change a conversation  420ms\n   ✓ mock draft edits (Lane H's routes) > saves the staffer's edits as the next version, and refuses the recipient  864ms\n   ✓ mock draft edits (Lane H's routes) > only the version on screen can be edited or approved  981ms\n   ✓ mock draft edits (Lane H's routes) > a post goes to one platform the server supports  849ms\n   ✓ mock draft edits (Lane H's routes) > 'make it shorter' gives a shorter next version a moment later  852ms\n\n Test Files  34 passed (34)\n      Tests  180 passed (180)\n   Start at  04:51:05\n   Duration  15.30s (transform 3.80s, setup 0ms, collect 11.33s, tests 15.29s, environment 8ms, prepare 8.39s)",
+      "stderrTail": ""
+    }
+  ]
+}

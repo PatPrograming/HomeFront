@@ -28,6 +28,7 @@ except ModuleNotFoundError as exc:  # STUB until lane A (WP1) merges Backend/app
     from identity_gateway.auth_stub import StaffIdentity, require_admin, require_staff
 
 from app.routers.sessions import SESSION_TTL_SECONDS, _created_epoch  # noqa: E402  (same session clock as the broker)
+from app.routers.draft_rank import rank_draft  # noqa: E402
 from app.services import conversations  # noqa: E402
 from app.services import agent_failures  # noqa: E402
 from app.services.agent_supervisor import AgentStartError, RetryRefused, credentials_mode, get_supervisor  # noqa: E402
@@ -214,13 +215,25 @@ def agent_send_message(body: AgentMessageIn, claims: MandateClaims = Depends(req
 @router.get("/drafts")
 def list_drafts(sid: str | None = None, staff: StaffIdentity = Depends(require_staff)) -> dict:
     """Every draft waiting for the caller, or only one conversation's with `?sid=`."""
-    drafts = [pair for pair in get_gateway().store.pending_drafts_for(staff.username) if sid is None or pair[1].sid == sid]
-    return {
-        "drafts": [
-            {"id": draft_id, **draft.model_dump(mode="json"), "categoryLabel": LABELS.get(draft.category, draft.category)}
-            for draft_id, draft in drafts
-        ]
-    }
+    store = get_gateway().store
+    now = datetime.now(timezone.utc)
+    drafts = []
+    for draft_id, draft in store.pending_drafts_for(staff.username):
+        if sid is not None and draft.sid != sid:
+            continue
+        reply_to = draft.args.get("in_reply_to")
+        email = store.get_email(reply_to) if reply_to else None
+        drafts.append(
+            {
+                "id": draft_id,
+                **draft.model_dump(mode="json"),
+                "categoryLabel": LABELS.get(draft.category, draft.category),
+                **rank_draft(draft, email, now),
+            }
+        )
+    # Most urgent first; the oldest first among equals. The console can also show them by time.
+    drafts.sort(key=lambda d: (-d["score"], d["createdAt"]))
+    return {"drafts": drafts}
 
 
 @router.post("/drafts/{draft_id}/approve")

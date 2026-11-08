@@ -65,3 +65,27 @@ describe("api", () => {
     expect(err.message).toBe("admin only");
   });
 });
+
+describe("api: conversation routes for the sidebar", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("lists with ?q= and ?archived=1, and without them when empty", async () => {
+    let fetch = respond(200, { sessions: [] });
+    await api.listSessions("  monroe pothole ", true);
+    expect(fetch.mock.calls[0][0]).toBe("/api/v1/sessions?q=monroe+pothole&archived=1");
+    fetch = respond(200, { sessions: [] });
+    await api.listSessions();
+    expect(fetch.mock.calls[0][0]).toBe("/api/v1/sessions");
+  });
+
+  it("changes a conversation with PATCH and soft-deletes with DELETE", async () => {
+    let fetch = respond(200, {});
+    await api.updateSession("s 1", { pinned: true, group: null });
+    expect(fetch.mock.calls[0][0]).toBe("/api/v1/sessions/s%201");
+    expect(fetch.mock.calls[0][1].method).toBe("PATCH");
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ pinned: true, group: null });
+    fetch = respond(200, { sid: "s1", deleted: true });
+    await api.deleteSession("s1");
+    expect(fetch.mock.calls[0][1].method).toBe("DELETE");
+  });
+});
