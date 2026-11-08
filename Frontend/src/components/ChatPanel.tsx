@@ -20,7 +20,7 @@ const SUGGESTIONS = [
 const time = (ts: string) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 // After this long without a reply, stop showing "Working…": no agent is attached to the session.
-export const STALL_MS = 20_000;
+export const STALL_MS = 120_000; // research turns (several tool calls on Bedrock) often take 30-60 s
 export const isStalled = (lastTs: string, now: number) => now - new Date(lastTs).getTime() > STALL_MS;
 
 /** What the inline "Working… / Done" disclosure needs. `admin` also unlocks technical details (commands, ids). */
