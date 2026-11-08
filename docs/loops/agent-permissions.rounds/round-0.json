@@ -1,0 +1,156 @@
+{
+  "round": 0,
+  "at": "2026-11-08T11:34:27.193Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/agent-perms-lane-h",
+  "passed": [
+    "C6",
+    "C7",
+    "C8",
+    "C10",
+    "C11"
+  ],
+  "failed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "C9"
+  ],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Contracts: every Agents-tab capability has a mandate tool, Cedar action, role policy and starter permit; role table is the single source",
+      "command": "scripts/offline-pytest.sh -q packages/mandate-contracts/tests/test_capability_parity.py",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 4,
+      "ms": 603,
+      "note": "",
+      "stdoutTail": "no tests ran in 0.00s",
+      "stderrTail": "ERROR: file or directory not found: packages/mandate-contracts/tests/test_capability_parity.py"
+    },
+    {
+      "id": "C2",
+      "check": "Assistant does each agent kind's job through guarded() (email, mailing list, social post/reply, research APIs, market research, report) with Cedar + role + held drafts + ATLAS events",
+      "command": "scripts/offline-pytest.sh -q packages/identity-gateway/tests/test_gw_agent_parity.py",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 4,
+      "ms": 341,
+      "note": "",
+      "stdoutTail": "no tests ran in 0.00s",
+      "stderrTail": "ERROR: file or directory not found: packages/identity-gateway/tests/test_gw_agent_parity.py"
+    },
+    {
+      "id": "C3",
+      "check": "Permission catalog API: options = kind ceiling ∩ creator role, recommended = least privilege, plain-words effects",
+      "command": "scripts/offline-pytest.sh -q Backend/tests/test_agent_permissions_api.py",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 4,
+      "ms": 333,
+      "note": "",
+      "stdoutTail": "no tests ran in 0.00s",
+      "stderrTail": "ERROR: file or directory not found: Backend/tests/test_agent_permissions_api.py"
+    },
+    {
+      "id": "C4",
+      "check": "Escalation suite: forged payloads, name variants, unknown/duplicate tools, edit-to-add, other user/office, admin-only tools, role change after create, direct API bypass, token reuse across sessions, prompt injection",
+      "command": "scripts/offline-pytest.sh -q Backend/tests/test_privilege_escalation.py packages/identity-gateway/tests/test_gw_escalation.py",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 4,
+      "ms": 345,
+      "note": "",
+      "stdoutTail": "no tests ran in 0.00s",
+      "stderrTail": "ERROR: file or directory not found: Backend/tests/test_privilege_escalation.py"
+    },
+    {
+      "id": "C5",
+      "check": "Assistant agent: system prompt names the new capabilities and a scripted model's forbidden tool call is DENIED",
+      "command": "scripts/offline-pytest.sh -q agent/tests/test_assistant_parity.py",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 4,
+      "ms": 342,
+      "note": "",
+      "stdoutTail": "no tests ran in 0.00s",
+      "stderrTail": "ERROR: file or directory not found: agent/tests/test_assistant_parity.py"
+    },
+    {
+      "id": "C6",
+      "check": "Backend + packages suite stays green",
+      "command": "scripts/offline-pytest.sh -q Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 119418,
+      "note": "",
+      "stdoutTail": "........................................................................ [ 24%]\n........................................................................ [ 36%]\n.......................................s................................ [ 49%]\n........................................................................ [ 61%]\n................................................ss...................... [ 73%]\n........................................................................ [ 86%]\n........................................................................ [ 98%]\n........                                                                 [100%]\n=============================== warnings summary ===============================\n.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/agent-perms-lane-h/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n581 passed, 3 skipped, 1 warning in 117.97s (0:01:57)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C7",
+      "check": "Gateway suite stays green",
+      "command": "scripts/offline-pytest.sh -q packages/identity-gateway/tests",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 30972,
+      "note": "",
+      "stdoutTail": "tests/test_gw_mcp.py::test_revoking_mid_task_denies_the_next_mcp_call_on_the_same_connection\ntests/test_gw_mcp.py::test_inactive_delegator_over_mcp_is_denied_and_untrusted_content_is_not_returned\n  /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/contextlib.py:105: DeprecationWarning: Use `streamable_http_client` instead.\n    self.gen = func(*args, **kwds)\n\ntests/test_gw_tokens.py::test_rejects_other_hmac_algorithms_even_with_the_right_secret[HS384]\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/agent-perms-lane-h/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 38 bytes long, which is below the minimum recommended length of 48 bytes for SHA384. See RFC 7518 Section 3.2.\n    return self._jws.encode(\n\ntests/test_gw_tokens.py::test_rejects_other_hmac_algorithms_even_with_the_right_secret[HS512]\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/agent-perms-lane-h/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 38 bytes long, which is below the minimum recommended length of 64 bytes for SHA512. See RFC 7518 Section 3.2.\n    return self._jws.encode(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n331 passed, 8 warnings in 29.58s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C8",
+      "check": "Agent + guardrail suite stays green",
+      "command": "scripts/offline-pytest.sh -q agent/tests packages/guardrail-scanner/tests",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 15419,
+      "note": "",
+      "stdoutTail": "  /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/contextlib.py:105: DeprecationWarning: Use `streamable_http_client` instead.\n    self.gen = func(*args, **kwds)\n\ntest_agent_loop.py::test_http_401_mid_run_stops_the_run\ntest_agent_loop.py::test_http_401_at_start_stops_cleanly\ntest_chat.py::test_serve_chat_stops_when_the_gateway_revokes_mid_turn[401]\ntest_compromised_agent.py::test_http_401_mid_run_stops_without_retrying\ntest_compromised_agent.py::test_rejected_token_at_connect_stops_with_every_call_not_done\n  /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/base_events.py:709: RuntimeWarning: coroutine 'MCPClient.stop.<locals>._set_close_event' was never awaited\n    self._ready.clear()\n  Enable tracemalloc to get traceback where the object was allocated.\n  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n72 passed, 46 warnings in 14.62s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C9",
+      "check": "Permission picker + side warning UI tests",
+      "command": "cd Frontend && npx vitest run src/pages/NewAgent.test.tsx src/lib/permissions.test.ts",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 726,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/agent-perms-lane-h/Frontend",
+      "stderrTail": "No test files found, exiting with code 1\n\nfilter: src/pages/NewAgent.test.tsx, src/lib/permissions.test.ts\ninclude: **/*.{test,spec}.?(c|m)[jt]s?(x)\nexclude:  **/node_modules/**, **/dist/**, **/cypress/**, **/.{idea,git,cache,output,temp}/**, **/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*"
+    },
+    {
+      "id": "C10",
+      "check": "Frontend typecheck, all tests, build",
+      "command": "cd Frontend && npm run -s build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 8003,
+      "note": "",
+      "stdoutTail": " ✓ src/lib/events.test.ts (10 tests) 5ms\n ✓ src/config.test.ts (2 tests) 3ms\n ✓ src/lib/mockApi.test.ts (7 tests) 5162ms\n   ✓ mock GET /sessions/{sid} > reads active, then revoked after the Chief of Staff offboards Maya  632ms\n   ✓ mock GET /sessions/{sid} > is 404 for another staffer and for an unknown session  365ms\n   ✓ mock chat console > holds replies, offers autonomy after 3 unchanged approvals, then sends that kind alone  1348ms\n   ✓ mock chat console > never lets a locked category send alone, and keeps another staffer out  365ms\n   ✓ mock post drafts > drafts only the post text, whether the request uses a colon or 'saying'  491ms\n   ✓ mock per-session grants > a grant sends that category alone in this session only, and offboarding closes it  1346ms\n   ✓ mock forbidden request > refuses a bulk export, naming the policy, with one DENY event and no draft  609ms\n\n Test Files  17 passed (17)\n      Tests  78 passed (78)\n   Start at  03:34:06\n   Duration  5.72s (transform 1.01s, setup 0ms, collect 2.17s, tests 5.64s, environment 2ms, prepare 1.93s)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C11",
+      "check": "New Cedar policies validate in the local Cedar engine and setup.sh deploys them only as a dry run by default",
+      "command": "scripts/offline-pytest.sh -q Backend/tests/test_setup_role_policies.py packages/identity-gateway/tests/test_gw_roles.py",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 14787,
+      "note": "",
+      "stdoutTail": "........................................................................ [ 51%]\n...................................................................      [100%]\n139 passed in 13.68s",
+      "stderrTail": ""
+    }
+  ]
+}

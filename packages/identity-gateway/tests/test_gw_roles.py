@@ -70,7 +70,7 @@ def _req(tool, role, *, case_office="rep-x", delegator=True, known=True, account
         context=cedar.build_context(
             delegatorActive=delegator,
             recipientKnown=tool == "email_send" and known,
-            account=account if tool == "social_post" else "",
+            account=account if tool in ("social_post", "social_reply") else "",
         ),
     )
 
@@ -84,6 +84,11 @@ ROLE_CASES = [
     ("communications_director", "social_post", "case_read", "role-case-read"),
     ("legislative_aide", "datagov_search", "email_send", "role-email-send"),
     ("intern", "web_scrape", "inbox_read", "role-inbox-read"),
+    ("chief_of_staff", "email_send_list", "records_bulk_export", "forbid-bulk-export"),
+    ("caseworker", "report_save", "email_send_list", "role-email-send-list"),
+    ("communications_director", "social_reply", "usaspending_search", "role-usaspending-search"),
+    ("legislative_aide", "sam_entity_lookup", "social_reply", "role-social-reply"),
+    ("intern", "census_query", "report_save", "role-report-save"),
 ]
 
 
@@ -102,7 +107,12 @@ def test_real_cedar_allows_exactly_the_roles_tool_list(role, tool):
 
 def test_the_intern_is_read_only():
     allowed = [t for t in TOOL_NAMES if CEDAR.is_authorized(_req(t, "intern")).allowed]
-    assert allowed == ["datagov_search", "web_scrape"]
+    assert sorted(allowed) == sorted(
+        ["datagov_search", "web_scrape", "census_query", "nasa_search", "nps_parks", "noaa_climate", "draft_revise"]
+    )
+    # draft_revise only edits an existing pending draft; it sends nothing. No outbound tool for the intern.
+    outbound = {"email_send", "email_send_list", "social_post", "social_reply"}
+    assert not outbound & set(allowed)
 
 
 # ---- fail closed ---------------------------------------------------------------
@@ -131,6 +141,26 @@ def test_forbids_still_win_for_the_chief_of_staff():
     assert bulk.allowed is False and bulk.policy_ids == ["forbid-bulk-export"]
     campaign = CEDAR.is_authorized(_req("social_post", "chief_of_staff", account="campaign"))
     assert campaign.allowed is False and campaign.policy_ids == ["forbid-campaign-post"]
+
+
+def test_a_campaign_reply_is_forbidden_for_every_role_that_may_reply():
+    for role in ("chief_of_staff", "communications_director"):
+        official = CEDAR.is_authorized(_req("social_reply", role, account="official"))
+        assert official.allowed is True and "social-reply-official" in official.policy_ids
+        campaign = CEDAR.is_authorized(_req("social_reply", role, account="campaign"))
+        assert campaign.allowed is False and campaign.policy_ids == ["forbid-campaign-reply"]
+
+
+def test_only_the_chief_may_email_the_mailing_list_and_a_staff_account_is_not_needed():
+    allowed = [r for r in ROLES if CEDAR.is_authorized(_req("email_send_list", r)).allowed]
+    assert allowed == ["chief_of_staff"]
+    assert CEDAR.is_authorized(_req("email_send_list", "chief_of_staff", delegator=False)).allowed is False
+
+
+def test_the_new_permits_need_an_active_delegator():
+    for tool in ("census_query", "usaspending_search", "report_save"):
+        assert CEDAR.is_authorized(_req(tool, "chief_of_staff")).allowed is True
+        assert CEDAR.is_authorized(_req(tool, "chief_of_staff", delegator=False)).allowed is False
 
 
 def test_the_starter_conditions_still_apply_inside_a_role():
@@ -258,11 +288,31 @@ CALLS = [  # (tool, args) for every tool, with the inputs that pass the starter 
     ("email_send", {"to": "a@b.gov", "subject": "s", "body": "b"}),
     ("social_post", {"account": "official", "text": "Town hall"}),
     ("records_bulk_export", {"query": "all"}),
+    ("email_send_list", {"subject": "News", "body": "Hello"}),
+    ("social_reply", {"account": "official", "reply_to": "https://x.com/a/status/1", "text": "Thanks"}),
+    ("usaspending_search", {"keywords": "cameras", "fiscal_year": 2025}),
+    ("sam_entity_lookup", {"name": "Axon"}),
+    ("report_save", {"title": "t", "body": "b"}),
+    ("census_query", {"year": "2023", "dataset": "acs/acs1", "get": "NAME", "for": "place:1", "in": ""}),
+    ("openfda_search", {"endpoint": "drug/event", "search": "x", "limit": "1"}),
+    ("eia_query", {"route": "petroleum/crd/crpdn", "frequency": "monthly", "length": "1", "facet": ""}),
+    ("nasa_search", {"q": "mars"}),
+    ("noaa_climate", {"datasetid": "GHCND", "locationid": "ZIP:95050", "startdate": "2025-01-01", "enddate": "2025-01-02", "datatypeid": ""}),
+    ("nps_parks", {"q": "yosemite", "parkCode": ""}),
+    ("bls_series", {"series_id": "CUUR0000SA0", "startyear": "2024", "endyear": "2025"}),
+    ("fec_search", {"q": "Smith"}),
+    ("epa_search", {"q": "SANTA CLARA"}),
+    ("fcc_search", {"q": "KQED"}),
+    ("draft_revise", {"draft_id": "no-such-draft", "body": "shorter"}),
 ]
+# draft_revise only ALLOWs on an existing pending draft of the same session, which this shared harness does not
+# seed; test_gw_draft_revise.py covers its allow path. Here only the role-deny side is asserted for it.
+NEEDS_SEEDED_DRAFT = {"draft_revise"}
 OUT_OF_BOUNDS = [  # inputs every role is refused, whatever it may otherwise do
     ("case_read", {"case_id": "case-2"}),  # another office's case
     ("email_send", {"to": "stranger@example.com", "subject": "s", "body": "b"}),  # unknown recipient
     ("social_post", {"account": "campaign", "text": "Vote"}),  # campaign account
+    ("social_reply", {"account": "campaign", "reply_to": "1", "text": "Vote"}),  # campaign account
     ("records_bulk_export", {"query": "all"}),
 ]
 
@@ -282,7 +332,7 @@ def _grant_everything(store, sid, staffer_id="maya"):
 @pytest.mark.parametrize("granted", [False, True], ids=["no-grants", "every-grant"])
 @pytest.mark.parametrize("role", [*ROLES, None])
 def test_the_agent_never_gets_a_tool_its_staffers_role_lacks(
-    cedar_gateway, store, make_token, world, handler_spy, role, granted, trusted_replies
+    cedar_gateway, store, make_token, world, handler_spy, role, granted, trusted_replies, all_connected
 ):
     store.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer", office_role=role))
     if granted:
@@ -292,6 +342,8 @@ def test_the_agent_never_gets_a_tool_its_staffers_role_lacks(
         out = cedar_gateway.guarded(tool, args, token)
         may = tool in ROLE_TOOLS.get(role or "", ())
         # ALLOW covers both "ran" and "held for review": a held draft is still something the agent did.
+        if tool in NEEDS_SEEDED_DRAFT and may:
+            continue  # allow path covered in test_gw_draft_revise.py
         assert out.allowed is may, (role, tool, out.event.reason, out.event.policy_ids)
         if not may:
             assert out.result is None
@@ -309,7 +361,7 @@ def test_a_grant_or_auto_outside_the_role_is_ignored_by_the_gateway(cedar_gatewa
     assert handler_spy.calls == [] and store.get_autonomy("maya", "social_post").level == "auto"
 
 
-def test_forbids_win_over_every_grant_for_the_chief_of_staff(cedar_gateway, store, make_token, world, handler_spy):
+def test_forbids_win_over_every_grant_for_the_chief_of_staff(cedar_gateway, store, make_token, world, handler_spy, all_connected):
     _grant_everything(store, world.chief_sid, "chiefofstaff")  # granted on the chief's own session
     token = make_token(act="chiefofstaff", sid=world.chief_sid)
     official = cedar_gateway.guarded("social_post", {"account": "official", "text": "hi"}, token)
@@ -319,6 +371,7 @@ def test_forbids_win_over_every_grant_for_the_chief_of_staff(cedar_gateway, stor
     bulk = cedar_gateway.guarded("records_bulk_export", {"query": "all"}, token)
     assert campaign.event.policy_ids == ["forbid-campaign-post"] and bulk.event.policy_ids == ["forbid-bulk-export"]
     assert not campaign.allowed and not bulk.allowed and handler_spy.calls == []
+    assert all_connected.x == [("chiefofstaff", "hi")]  # only the official post went out
 
 
 # ---- the agent's identity cannot be swapped -------------------------------------

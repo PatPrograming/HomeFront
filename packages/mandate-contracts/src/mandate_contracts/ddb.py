@@ -102,12 +102,14 @@ class DraftItem(WireModel):
     agent: str
     acting_for: str
     office: str
-    tool: Literal["email_send", "social_post"]
+    tool: Literal["email_send", "social_post", "email_send_list", "social_reply"]
     category: str
     args: dict[str, str]  # the tool input as the agent sent it
     created_at: str
     decided_at: str | None = None
     edited: bool = False  # the staffer changed the text before approving
+    version: int = 1  # +1 on every revision, so a card can tell a stale view from the latest wording
+    revising: bool = False  # the staffer asked the agent to revise; the agent's draft_revise clears it
 
 
 class AutonomyItem(WireModel):
@@ -127,3 +129,4 @@ class ChatMessageItem(WireModel):
     ts: str
     role: Literal["user", "assistant"]
     text: str
+    connect: Literal["gmail", "x"] | None = None  # set on a "connect your account" message; the console adds a Connect button

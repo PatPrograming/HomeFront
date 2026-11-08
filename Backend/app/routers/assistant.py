@@ -5,18 +5,21 @@ mandate token, so the agent only ever reads and answers the chat of the session 
 and loses the chat the moment the session is revoked, like every tool call.
 """
 
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
-from identity_gateway.autonomy import CATEGORIES, LABELS, LOCKED, SOCIAL_CATEGORY, reviews, view
-from identity_gateway.gateway import DraftAlreadyDecided, get_gateway
+from identity_gateway.authz import AuthzRequest
+from identity_gateway.autonomy import CATEGORIES, CATEGORY_TOOL, LABELS, LOCKED, reviews, view
+from identity_gateway.gateway import PLATFORMS, REVISABLE_FIELDS, SOCIAL_TOOLS, DraftAlreadyDecided, get_gateway
 from identity_gateway.tokens import InvalidToken, verify_mandate_token
-from mandate_contracts import MandateClaims
+from mandate_contracts import TOOLS, MandateClaims, cedar
 from mandate_contracts.ddb import ChatMessageItem, DraftItem
 from mandate_contracts.roles import ROLE_TOOLS, role_reason
 
@@ -37,20 +40,49 @@ router = APIRouter(tags=["assistant"])
 bearer = HTTPBearer(auto_error=False)
 
 MAX_MESSAGE_CHARS = 4000
-# What the staffer may change before approving. Never the recipient or the account: those are
-# what Cedar checked.
-EDITABLE_FIELDS = {"email_send": ("subject", "body"), "social_post": ("text",)}
+# What the staffer may change at approval time. Never the recipient or the account: those are
+# what Cedar checked. (PATCH can also change `to` and `platform`, with a fresh Cedar check.)
+EDITABLE_FIELDS = {
+    "email_send": ("subject", "body"),
+    "email_send_list": ("subject", "body"),
+    "social_post": ("text",),
+    "social_reply": ("text",),
+}
+MAX_REVISE_CHARS = 500
+PLATFORM_LABELS = {"x": "X", "bluesky": "Bluesky", "linkedin": "LinkedIn", "facebook": "Facebook"}
+PLATFORM_OPTIONS = [{"id": platform, "label": PLATFORM_LABELS[platform]} for platform in PLATFORMS]
 
 
 class MessageIn(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
 
 
-class ApproveIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")  # a `to` or `account` in here is a 422, not ignored
+class DecideIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    # The version the staffer was looking at; a newer one (an edit, an agent revision) makes this a 409.
+    expected_version: int | None = Field(default=None, alias="expectedVersion")
+
+
+class ApproveIn(DecideIn):  # a `to` or `account` in here is a 422, not ignored
     subject: str | None = Field(default=None, max_length=300)
     body: str | None = Field(default=None, max_length=MAX_MESSAGE_CHARS)
     text: str | None = Field(default=None, max_length=MAX_MESSAGE_CHARS)
+
+
+class DraftEditIn(BaseModel):
+    """Every field the tools have; the route 422s on any the draft's own tool does not let the staffer change."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    expected_version: int = Field(alias="expectedVersion")
+    subject: str | None = Field(default=None, max_length=300)
+    body: str | None = Field(default=None, max_length=MAX_MESSAGE_CHARS)
+    to: str | None = Field(default=None, max_length=320)
+    text: str | None = Field(default=None, max_length=MAX_MESSAGE_CHARS)
+    platform: Literal[PLATFORMS] | None = None
+
+
+class ReviseIn(BaseModel):
+    instruction: str = Field(min_length=1, max_length=MAX_REVISE_CHARS)
 
 
 class AutonomyIn(BaseModel):
@@ -86,6 +118,54 @@ def _own_pending_draft(draft_id: str, staff: StaffIdentity) -> DraftItem:
     if draft.status != "pending":
         raise HTTPException(status.HTTP_409_CONFLICT, f"Draft already {draft.status}")
     return draft
+
+
+def _draft_view(draft_id: str, draft: DraftItem) -> dict:
+    editable = REVISABLE_FIELDS[draft.tool]
+    return {
+        "id": draft_id,
+        **draft.model_dump(mode="json"),
+        "categoryLabel": LABELS.get(draft.category, draft.category),
+        "recipient": draft.args.get("to"),
+        "platform": draft.args.get("platform"),
+        "editable": list(editable),
+        "platformOptions": PLATFORM_OPTIONS if "platform" in editable else [],
+    }
+
+
+def _require_current(draft: DraftItem, expected_version: int | None) -> None:
+    if expected_version is not None and draft.version != expected_version:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The draft changed since you opened it")
+
+
+def _refuse_if_not_allowed(draft: DraftItem, args: dict[str, str]) -> None:
+    """Ask Cedar about the edited recipient or platform now, so a doomed edit is refused instead of failing at approval.
+
+    Builds the same request as `Gateway.send_draft`, which still checks again when the staffer approves.
+    """
+    gateway = get_gateway()
+    staffer = gateway.store.get_staffer(draft.acting_for)
+    params = TOOLS[draft.tool].input_model.model_validate(args)
+    decision = gateway.authorizer.is_authorized(
+        AuthzRequest(
+            agent_id=draft.agent,
+            office=draft.office,
+            mode="official",
+            role=staffer.office_role or "",
+            tool=draft.tool,
+            resource=cedar.tool_entity(draft.tool),
+            context=cedar.build_context(
+                delegatorActive=True,
+                recipientKnown=draft.tool == "email_send" and gateway._recipient_known(params.to, draft.office),
+                account=params.account if draft.tool in SOCIAL_TOOLS else "",
+            ),
+        )
+    )
+    if decision.allowed:
+        return
+    if any(policy.startswith("role-") for policy in decision.policy_ids):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, f"Not part of your role: {role_reason(staffer.office_role, draft.tool)}")
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "The office's rules do not allow that recipient or account")
 
 
 def _count_review(staffer_id: str, category: str, outcome: Literal["approved_unchanged", "edited", "rejected"]) -> None:
@@ -225,9 +305,7 @@ def list_drafts(sid: str | None = None, staff: StaffIdentity = Depends(require_s
         email = store.get_email(reply_to) if reply_to else None
         drafts.append(
             {
-                "id": draft_id,
-                **draft.model_dump(mode="json"),
-                "categoryLabel": LABELS.get(draft.category, draft.category),
+                **_draft_view(draft_id, draft),
                 **rank_draft(draft, email, now),
             }
         )
@@ -236,24 +314,67 @@ def list_drafts(sid: str | None = None, staff: StaffIdentity = Depends(require_s
     return {"drafts": drafts}
 
 
+@router.patch("/drafts/{draft_id}")
+def edit_draft(draft_id: str, body: DraftEditIn, staff: StaffIdentity = Depends(require_staff)):
+    draft = _own_pending_draft(draft_id, staff)
+    changes = body.model_dump(exclude_none=True, exclude={"expected_version"})
+    editable = REVISABLE_FIELDS[draft.tool]
+    if not changes or not changes.keys() <= set(editable):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"You can change only: {', '.join(editable)}")
+    if draft.version != body.expected_version:
+        return JSONResponse({"error": "stale_version", "draft": _draft_view(draft_id, draft)}, status.HTTP_409_CONFLICT)
+    args = {**draft.args, **changes}
+    if changes.keys() & {"to", "platform"}:
+        _refuse_if_not_allowed(draft, args)
+    edited = draft.model_copy(update={"args": args, "version": draft.version + 1, "edited": True})
+    gateway = get_gateway()
+    # Written only while still pending, so an edit can never undo an approval or rejection that just happened.
+    if not gateway.store.decide_draft(draft_id, edited):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Draft already decided")
+    now = int(time.time())
+    claims = MandateClaims(
+        sub=draft.agent, act=draft.acting_for, office=draft.office, mode="official", sid=draft.sid, iat=now, exp=now
+    )
+    gateway._record(claims, draft.tool, args.get("to") or args.get("account"), "ALLOW", "edited by staff")
+    return _draft_view(draft_id, edited)
+
+
+@router.post("/drafts/{draft_id}/revise", status_code=status.HTTP_202_ACCEPTED)
+def revise_draft(draft_id: str, body: ReviseIn, staff: StaffIdentity = Depends(require_staff)) -> dict:
+    """Ask the assistant to rewrite the draft; it answers with `draft_revise`, which clears `revising`."""
+    draft = _own_pending_draft(draft_id, staff)
+    if draft.revising:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The assistant is already revising this draft")
+    _own_active_session(draft.sid, staff)
+    _ensure_agent(draft.sid, staff)
+    if not get_gateway().store.decide_draft(draft_id, draft.model_copy(update={"revising": True})):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Draft already decided")
+    _post(draft.sid, "user", f"Revise draft {draft_id}: {body.instruction}")
+    return {"id": draft_id, "revising": True}
+
+
 @router.post("/drafts/{draft_id}/approve")
 def approve_draft(draft_id: str, body: ApproveIn, staff: StaffIdentity = Depends(require_staff)) -> dict:
     draft = _own_pending_draft(draft_id, staff)
+    _require_current(draft, body.expected_version)
     text = {k: v for k, v in body.model_dump(exclude_none=True).items() if k in EDITABLE_FIELDS[draft.tool]}
     try:
         outcome = get_gateway().send_draft(draft_id, draft, text)
     except DraftAlreadyDecided:
         raise HTTPException(status.HTTP_409_CONFLICT, "Draft already decided") from None
+    if outcome.result and outcome.result["status"] == "needs_connection":  # the draft stays pending
+        return {"id": draft_id, **outcome.result}
     if not outcome.allowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, outcome.deny_text())
-    edited = get_gateway().store.get_draft(draft_id).edited
+    edited = draft.edited or get_gateway().store.get_draft(draft_id).edited  # send_draft only sees this call's text
     _count_review(staff.username, draft.category, "edited" if edited else "approved_unchanged")
     return {"id": draft_id, "status": "sent", "edited": edited}
 
 
 @router.post("/drafts/{draft_id}/reject")
-def reject_draft(draft_id: str, staff: StaffIdentity = Depends(require_staff)) -> dict:
+def reject_draft(draft_id: str, body: DecideIn | None = None, staff: StaffIdentity = Depends(require_staff)) -> dict:
     draft = _own_pending_draft(draft_id, staff)
+    _require_current(draft, body.expected_version if body else None)
     rejected = draft.model_copy(update={"status": "rejected", "decided_at": datetime.now(timezone.utc).isoformat()})
     if not get_gateway().store.decide_draft(draft_id, rejected):
         raise HTTPException(status.HTTP_409_CONFLICT, "Draft already decided")
@@ -281,7 +402,7 @@ def _within_role(category: str, staff: StaffIdentity) -> None:
     """
     staffer = get_gateway().store.get_staffer(staff.username)
     role = staffer.office_role if staffer else None
-    tool = "social_post" if category == SOCIAL_CATEGORY else "email_send"
+    tool = CATEGORY_TOOL[category]
     if tool not in ROLE_TOOLS.get(role or "", ()):
         raise HTTPException(status.HTTP_403_FORBIDDEN, f"Not part of your role: {role_reason(role, tool)}")
 

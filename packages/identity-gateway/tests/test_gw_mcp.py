@@ -110,7 +110,7 @@ def test_non_bearer_authorization_header_is_401(server, make_token):
 def test_tools_list_returns_exactly_the_seven_contract_tools_with_their_schemas(server, make_token):
     result = _with_session(server, make_token(), lambda s: s.list_tools())
     tools = {t.name: t for t in result.tools}
-    assert set(tools) == set(TOOLS) and len(result.tools) == 7
+    assert set(tools) == set(TOOLS) and len(result.tools) == len(TOOLS)
     for name, tool in tools.items():
         assert tool.inputSchema == input_schema(name), name
 

@@ -36,6 +36,18 @@ BEDROCK_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
 def test_tool_list_matches_brief():
+    research = [
+        "census_query",
+        "openfda_search",
+        "eia_query",
+        "nasa_search",
+        "noaa_climate",
+        "nps_parks",
+        "bls_series",
+        "fec_search",
+        "epa_search",
+        "fcc_search",
+    ]
     assert list(TOOLS) == [
         "inbox_read",
         "case_read",
@@ -43,9 +55,22 @@ def test_tool_list_matches_brief():
         "web_scrape",
         "email_send",
         "social_post",
+        "email_send_list",
+        "social_reply",
+        "usaspending_search",
+        "sam_entity_lookup",
+        "report_save",
+        *research,
         "records_bulk_export",
+        "draft_revise",
     ]
-    assert {n for n, t in TOOLS.items() if t.untrusted_output} == {"inbox_read", "web_scrape"}
+    assert {n for n, t in TOOLS.items() if t.untrusted_output} == {
+        "inbox_read",
+        "web_scrape",
+        "usaspending_search",
+        "sam_entity_lookup",
+        *research,
+    }
     assert [n for n, t in TOOLS.items() if t.always_denied] == ["records_bulk_export"]
 
 

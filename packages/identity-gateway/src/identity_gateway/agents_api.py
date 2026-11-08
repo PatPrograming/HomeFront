@@ -21,7 +21,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
+from mandate_contracts.ddb import StafferItem
+from mandate_contracts.roles import TOOL_ACTIONS, mandate_tool_name, role_allows, role_label, role_reason
+from pydantic import BaseModel, ConfigDict, Field
 
 # Allow running without editable installs by putting sibling packages on path.
 _ROOT = Path(__file__).resolve().parents[3]
@@ -43,7 +45,7 @@ from mcp_tools.handlers import (  # noqa: E402
     resolve_sender,
     ses_identity_status,
 )
-from mcp_tools.registry import get_tool, list_tools, tool_public_view  # noqa: E402
+from mcp_tools.registry import TOOL_REGISTRY, get_tool, list_tools, tool_public_view  # noqa: E402
 from mcp_tools.share_links import ShareLinkError, normalize_platform  # noqa: E402
 
 from . import email_admin  # noqa: E402
@@ -55,6 +57,7 @@ from .agent_types import (
     agent_type_view,
     disallowed_tools,
     get_agent_type,
+    recommended_tools,
 )
 from .approvals import ApprovalConflict, ApprovalRecord
 from .reports import ReportRecord
@@ -118,6 +121,8 @@ class AuthResponse(BaseModel):
 
 
 class GrantUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # no owner/office/user: the caller is the actor
+
     tools: list[str]
 
 
@@ -129,7 +134,10 @@ class ToolCallRequest(BaseModel):
 # Field limits mirror the check constraints on public.agents.
 class CreateAgentRequest(BaseModel):
     """`kind` picks a template: instructions, tool_grants and max_steps left
-    out of the request take the type's defaults. Fixed after creation."""
+    out of the request take the type's defaults (tool_grants: the recommended
+    set the creator's role allows). Fixed after creation. The owner is always the caller."""
+
+    model_config = ConfigDict(extra="forbid")
 
     kind: AgentKind = DEFAULT_KIND
     name: str = Field(min_length=1, max_length=80)
@@ -276,6 +284,9 @@ class Actor:
     """
 
     user_id: str | None = None
+    # The Cognito admin group. It opens the admin pages and shared agents; it never widens
+    # the office role that caps an agent's tools.
+    is_admin: bool = False
 
     def can_access(self, agent: AgentRecord) -> bool:
         return agent.owner_id is None or agent.owner_id == self.user_id
@@ -303,6 +314,29 @@ def set_actor_resolver(resolver: ActorResolver) -> None:
     _actor_resolver = resolver
 
 
+RoleResolver = Callable[[str], StafferItem | None]
+
+
+def _no_staffer(_user_id: str) -> StafferItem | None:
+    return None
+
+
+# The host app sets this to read the staffer's item fresh from the mandate store
+# (Backend/app/agent_iam.py). Until then nobody has a role, so no tool is allowed (fail closed).
+_role_resolver: RoleResolver = _no_staffer
+
+
+def set_role_resolver(resolver: RoleResolver) -> None:
+    global _role_resolver
+    _role_resolver = resolver
+
+
+def _office_role(user_id: str | None) -> str | None:
+    """The staffer's office role right now, or None if they are unknown, offboarded or have no role."""
+    staffer = _role_resolver(user_id) if user_id else None
+    return staffer.office_role if staffer and staffer.active else None
+
+
 def get_actor(authorization: str | None = Header(default=None)) -> Actor:
     return _actor_resolver(authorization)
 
@@ -312,6 +346,20 @@ def _accessible_agent(agent_id: str, actor: Actor) -> AgentRecord:
     # 404, not 403, so callers can't probe which agent ids exist.
     if agent is None or not actor.can_access(agent):
         raise HTTPException(status_code=404, detail="Unknown agent")
+    return agent
+
+
+def _editable_agent(agent_id: str, actor: Actor) -> AgentRecord:
+    """An agent whose grants the caller may change: their own, or a shared one if they are an admin."""
+    agent = _accessible_agent(agent_id, actor)
+    if agent.owner_id is None and not actor.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "shared_agent_admin_only",
+                "message": "Only an admin can change the tools of a shared agent.",
+            },
+        )
     return agent
 
 
@@ -398,6 +446,106 @@ def _enforce_kind_ceiling(agent: AgentRecord, tools: list[str], actor: Actor) ->
     )
 
 
+def _check_tool_names(tools: list[str]) -> None:
+    """Raise 400 for a name that isn't exactly a registry tool, or is listed twice.
+    No normalising: a lookalike must never turn into a real grant."""
+    unknown = [t for t in tools if t not in TOOL_REGISTRY]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "unknown_tools", "message": f"Unknown tools: {unknown}", "tools": unknown},
+        )
+    duplicates = sorted({t for t in tools if tools.count(t) > 1})
+    if duplicates:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "duplicate_tools", "message": f"Listed twice: {duplicates}", "tools": duplicates},
+        )
+
+
+def _enforce_role_cap(tools: list[str], actor: Actor, agent_id: str | None = None) -> None:
+    """Raise 403 (and audit a deny) if the caller's office role doesn't allow any of `tools`.
+    The role is read from the staffer's item now, never from the request or the token."""
+    role = _office_role(actor.user_id)
+    denied = sorted(t for t in tools if not role_allows(role, t))
+    if not denied:
+        return
+    atlas = enricher.annotate(
+        AnnotateRequest(
+            event=AnnotateEvent.deny,
+            tool=denied[0],
+            agent_id=agent_id,
+            reason="tool outside the creator's office role",
+        )
+    )
+    event = store.append_audit(
+        {
+            "type": "grant_denied",
+            "decision": "deny",
+            "agent_id": agent_id,
+            "actor": actor.label,
+            "tool": denied[0],
+            "tools": denied,
+            "atlas": atlas.model_dump(),
+        }
+    )
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "error": "role_not_allowed",
+            "message": f"Your office role ({role_label(role)}) can't give an agent {', '.join(denied)}.",
+            "tools": denied,
+            "atlas": atlas.model_dump(),
+            "audit_id": event["id"],
+        },
+    )
+
+
+def _capping_user(agent: AgentRecord, run_id: str | None, acting_user: str | None) -> str | None:
+    """Whose office role caps this agent's tool calls: its owner. A shared agent has no owner, so
+    the staffer who started the run, else the staffer making the call; None (denied) if neither is known."""
+    if agent.owner_id:
+        return agent.owner_id
+    run = runs.get(run_id) if run_id else None
+    return (run.created_by if run else None) or acting_user
+
+
+def _reason_unavailable(kind: str, role: str | None, tool_name: str, kind_ok: bool, role_ok: bool) -> str | None:
+    if not kind_ok:
+        return f"{get_agent_type(kind).label} agents can't hold this tool."
+    if not role_ok:
+        reason = role_reason(role, mandate_tool_name(tool_name))
+        return reason[0].upper() + reason[1:] + "."
+    return None
+
+
+@router.get("/agent-permissions")
+def agent_permissions(kind: AgentKind, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    """The permission picker's catalog: every tool with whether this caller may give it to an agent
+    of `kind` (kind ceiling AND the caller's office role) and whether it is recommended."""
+    agent_type = get_agent_type(kind)
+    role = _office_role(actor.user_id)
+    tools = []
+    for name, tool in TOOL_REGISTRY.items():
+        kind_ok = agent_type.allows(name)
+        role_ok = role_allows(role, name)
+        tools.append(
+            {
+                "name": name,
+                "label": name.replace(".", " ").replace("_", " ").capitalize(),
+                "effect": TOOL_ACTIONS[mandate_tool_name(name)].capitalize(),
+                "risk": tool.risk_level,
+                "outbound": tool.outbound,
+                "held_for_review": tool.requires_hitl,
+                "allowed_for_kind": kind_ok,
+                "allowed_for_role": role_ok,
+                "recommended": kind_ok and role_ok and name in recommended_tools(kind),
+                "reason_unavailable": _reason_unavailable(kind, role, name, kind_ok, role_ok),
+            }
+        )
+    return {"kind": kind, "role": role, "role_label": role_label(role), "tools": tools}
+
+
 @router.get("/agents")
 def agents(actor: Actor = Depends(get_actor)) -> list[dict[str, Any]]:
     return [_agent_view(a) for a in store.list_agents() if actor.can_access(a)]
@@ -409,7 +557,12 @@ def create_agent(
 ) -> dict[str, Any]:
     agent_type = get_agent_type(body.kind)
     sent = body.model_fields_set
-    tool_grants = body.tool_grants if "tool_grants" in sent else sorted(agent_type.default_tools)
+    role = _office_role(actor.user_id)
+    tool_grants = (
+        body.tool_grants
+        if "tool_grants" in sent
+        else sorted(t for t in recommended_tools(body.kind) if role_allows(role, t))
+    )
     instructions = (
         body.instructions if "instructions" in sent else agent_type.default_instructions
     )
@@ -430,13 +583,12 @@ def create_agent(
             detail={"error": "invalid_platforms", "message": "Only social media agents have platforms."},
         )
 
-    unknown = [t for t in tool_grants if get_tool(t) is None]
-    if unknown:
-        raise HTTPException(status_code=400, detail=f"Unknown tools: {unknown}")
+    _check_tool_names(tool_grants)
     blocked = disallowed_tools(body.kind, tool_grants)
     if blocked:
         # No agent exists yet, so nothing to audit against.
         raise HTTPException(status_code=403, detail=_kind_denial(body.kind, blocked))
+    _enforce_role_cap(tool_grants, actor)
     try:
         agent = store.create_agent(
             body.name,
@@ -830,11 +982,10 @@ def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthRe
 def replace_grants(
     agent_id: str, body: GrantUpdate, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
-    current = _accessible_agent(agent_id, actor)
-    unknown = [t for t in body.tools if get_tool(t) is None]
-    if unknown:
-        raise HTTPException(status_code=400, detail=f"Unknown tools: {unknown}")
+    current = _editable_agent(agent_id, actor)
+    _check_tool_names(body.tools)
     _enforce_kind_ceiling(current, body.tools, actor)
+    _enforce_role_cap(body.tools, actor, agent_id)
     agent = store.set_grants(agent_id, body.tools)
     atlas = enricher.annotate(
         AnnotateRequest(event=AnnotateEvent.revoke, agent_id=agent_id, reason="grants replaced")
@@ -902,10 +1053,10 @@ def revoke_tool(
 def grant_tool(
     agent_id: str, tool_name: str, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
-    current = _accessible_agent(agent_id, actor)
-    if get_tool(tool_name) is None:
-        raise HTTPException(status_code=404, detail="Unknown tool")
+    current = _editable_agent(agent_id, actor)
+    _check_tool_names([tool_name])
     _enforce_kind_ceiling(current, [tool_name], actor)
+    _enforce_role_cap([tool_name], actor, agent_id)
     agent = store.grant_tool(agent_id, tool_name)
     atlas = enricher.annotate(
         AnnotateRequest(
@@ -949,7 +1100,7 @@ def agent_tool_call(
     agent, tok = resolve_agent_token(x_agent_token.strip())
     if not actor.can_access(agent):
         raise HTTPException(status_code=404, detail="Unknown agent")
-    return call_tool(agent, tok, body.tool, body.arguments)
+    return call_tool(agent, tok, body.tool, body.arguments, acting_user=actor.user_id)
 
 
 def gateway_tool_call(
@@ -968,8 +1119,10 @@ def call_tool(
     arguments: dict[str, Any],
     *,
     run_id: str | None = None,
+    acting_user: str | None = None,
 ) -> dict[str, Any]:
-    """Authorize, execute and audit one tool call. Raises HTTPException on deny."""
+    """Authorize, execute and audit one tool call. Raises HTTPException on deny.
+    `acting_user` is the signed-in staffer behind the call, if any (see _capping_user)."""
     from .workload_aauth import prove_workload_aauth, tool_call_proof_body
 
     try:
@@ -1086,6 +1239,40 @@ def call_tool(
                 "message": f"Blocked {tool_name}: not in agent grants (AML.T0053 / AML.M0028).",
                 "technique_ids": atlas.technique_ids,
                 "mitigation_ids": atlas.mitigation_ids,
+                "atlas": atlas.model_dump(),
+                "audit_id": event["id"],
+            },
+        )
+
+    # A grant is only as wide as the owner's office role is today: a demoted or
+    # offboarded owner's agents lose the tool at once, whatever was granted.
+    if not role_allows(_office_role(_capping_user(agent, run_id, acting_user)), tool_name):
+        atlas = enricher.annotate(
+            AnnotateRequest(
+                event=AnnotateEvent.deny,
+                tool=tool_name,
+                agent_id=agent.agent_id,
+                reason="tool outside the office role of the staffer behind this agent",
+            )
+        )
+        event = store.append_audit(
+            {
+                "type": "tool_call",
+                "run_id": run_id,
+                "trace_id": run_id or getattr(tok, "session_id", None),
+                "actor": f"agent:{agent.agent_id}",
+                "decision": "deny",
+                "agent_id": agent.agent_id,
+                "tool": tool_name,
+                "args_hash": _hash_args(arguments),
+                "atlas": atlas.model_dump(),
+            }
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "role_not_allowed",
+                "message": f"Blocked {tool_name}: the staffer behind this agent no longer has an office role that allows it.",
                 "atlas": atlas.model_dump(),
                 "audit_id": event["id"],
             },
@@ -1512,6 +1699,8 @@ def approve(
         blocked_reason = f"{rec.tool} was revoked"
     elif disallowed_tools(agent.kind, [rec.tool]):
         blocked_reason = f"{rec.tool} isn't allowed for {agent.kind} agents"
+    elif not role_allows(_office_role(_capping_user(agent, rec.run_id, actor.user_id)), rec.tool):
+        blocked_reason = f"the office role of the staffer behind this agent no longer allows {rec.tool}"
     else:
         # Reviewer edits and list changes since the request both count.
         blocked_reason = _recipient_problem(agent, rec.tool, arguments)

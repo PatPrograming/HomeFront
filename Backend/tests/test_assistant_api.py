@@ -86,7 +86,7 @@ def test_another_staffer_cannot_read_or_post_in_mayas_chat(client, session):
 # --- review queue -------------------------------------------------------------
 
 
-def test_held_drafts_are_listed_and_approved_with_new_wording(client, session, gateway):
+def test_held_drafts_are_listed_and_approved_with_new_wording(client, session, gateway, office_ses):
     draft_id = hold_reply(gateway)
     as_staff()
     drafts = client.get("/api/v1/drafts").json()["drafts"]
@@ -118,7 +118,7 @@ def _category(client, name):
     return next(c for c in client.get("/api/v1/autonomy").json()["categories"] if c["category"] == name)
 
 
-def test_three_unchanged_approvals_offer_autonomy_and_accepting_it_sends_directly(client, session, gateway, store):
+def test_three_unchanged_approvals_offer_autonomy_and_accepting_it_sends_directly(client, session, gateway, store, office_ses):
     as_staff()
     for _ in range(3):
         client.post(f"/api/v1/drafts/{hold_reply(gateway)}/approve", json={})
@@ -162,7 +162,7 @@ def _send(gateway, sid=SID):
     return gateway.guarded("email_send", args, agent_headers(sid)["Authorization"].removeprefix("Bearer "))
 
 
-def test_a_grant_lets_the_agent_send_that_category_for_this_session_only(client, session, gateway, store):
+def test_a_grant_lets_the_agent_send_that_category_for_this_session_only(client, session, gateway, store, office_ses):
     assert _send(gateway).result["status"] == "held_for_review"
     as_staff()
     r = client.post(f"/api/v1/sessions/{SID}/grants", json={"category": "case_status"})
@@ -240,7 +240,7 @@ def test_other_cannot_be_granted_or_set_to_auto(client, session):
     assert client.put("/api/v1/autonomy/other", json={"level": "auto"}).status_code == 404
 
 
-def test_a_grant_ends_when_the_session_does(client, session, gateway, store):
+def test_a_grant_ends_when_the_session_does(client, session, gateway, store, office_ses):
     """A grant on a session past its one-hour end no longer skips review, even with a live mandate token."""
     as_staff()
     client.post(f"/api/v1/sessions/{SID}/grants", json={"category": "case_status"})
@@ -251,7 +251,7 @@ def test_a_grant_ends_when_the_session_does(client, session, gateway, store):
     assert _send(gateway).result["status"] == "held_for_review"
 
 
-def test_a_granted_category_still_cannot_post_on_the_campaign_account(client, session, gateway, store):
+def test_a_granted_category_still_cannot_post_on_the_campaign_account(client, session, gateway, store, all_connected):
     """social_post is grantable, so this is the case where a grant could bypass Cedar if the order were wrong."""
     # Posting is a Communications Director's job; as a Caseworker maya's role would block the official post too.
     store.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer", office_role="communications_director"))

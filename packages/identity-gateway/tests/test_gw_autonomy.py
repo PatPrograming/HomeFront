@@ -24,7 +24,7 @@ def test_a_send_maya_has_not_allowed_is_held_not_run(gateway, store, make_token,
     assert draft.args == {"to": world.known_email, **REPLY}
 
 
-def test_a_reply_in_an_allowed_category_is_sent(trusted_replies, gateway, make_token, world, handler_spy):
+def test_a_reply_in_an_allowed_category_is_sent(trusted_replies, gateway, make_token, world, handler_spy, office_ses):
     args = {"to": world.known_email, "in_reply_to": world.trusted_email_id, **REPLY}
     out = gateway.guarded("email_send", args, make_token())
 
@@ -73,7 +73,7 @@ def _hold_one(gateway, store, make_token, world):
     return draft_id, store.get_draft(draft_id)
 
 
-def test_an_approved_draft_is_sent_once(gateway, store, make_token, world, handler_spy):
+def test_an_approved_draft_is_sent_once(gateway, store, make_token, world, handler_spy, office_ses):
     from identity_gateway.gateway import DraftAlreadyDecided
 
     draft_id, draft = _hold_one(gateway, store, make_token, world)
@@ -142,7 +142,9 @@ def test_in_reply_to_an_email_that_does_not_exist_is_a_new_conversation(trusted_
     assert handler_spy.calls == []
 
 
-def test_the_reply_address_matches_the_sender_ignoring_case_and_spaces(trusted_replies, gateway, make_token, world, handler_spy):
+def test_the_reply_address_matches_the_sender_ignoring_case_and_spaces(
+    trusted_replies, gateway, make_token, world, handler_spy, office_ses
+):
     args = {"to": f"  {world.known_email.upper()} ", "in_reply_to": world.trusted_email_id, **REPLY}
     out = gateway.guarded("email_send", args, make_token())
 

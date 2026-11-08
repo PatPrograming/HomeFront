@@ -221,6 +221,77 @@
   color: var(--red-600);
 }
 
+.tool-option.is-disabled {
+  cursor: not-allowed;
+  background: var(--canvas);
+  color: var(--muted);
+}
+
+.tool-option .tool-reason {
+  display: block;
+  font-size: 14px;
+  color: var(--danger);
+  margin-top: 2px;
+}
+
+/* Form with the "your changes" panel beside it; stacks below at tablet width. */
+.agent-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 760px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.permission-panel {
+  position: sticky;
+  top: 16px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow-wrap: anywhere;
+}
+
+.permission-panel h2 {
+  font-size: 1.1rem;
+  margin: 0 0 12px;
+}
+
+.permission-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.permission-panel .change {
+  display: grid;
+  gap: 2px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.permission-panel .change:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.permission-panel .risk {
+  margin-left: 0;
+}
+
+.permission-panel .change-effect {
+  color: var(--ink-soft);
+}
+
+.permission-panel .change-note {
+  color: var(--red-600);
+  font-weight: 600;
+}
+
 .steps-field .input {
   max-width: 120px;
 }
@@ -275,6 +346,16 @@
   background: var(--surface);
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius);
+}
+
+@media (max-width: 768px) {
+  .agent-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .permission-panel {
+    position: static;
+  }
 }
 
 @media (max-width: 760px) {

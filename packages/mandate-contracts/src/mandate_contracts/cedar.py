@@ -37,6 +37,24 @@ STARTER_POLICIES: dict[str, str] = {
     "forbid-bulk-export": """forbid(principal, action == Mandate::Action::"records_bulk_export", resource);""",
     "forbid-campaign-post": """forbid(principal, action == Mandate::Action::"social_post", resource)
   when { principal.mode == "official" && context.account == "campaign" };""",
+    # Added later as new files: setup.sh creates AVP policies but never updates one.
+    "research-tools": """permit(principal, action in [Mandate::Action::"census_query", Mandate::Action::"openfda_search",
+                             Mandate::Action::"eia_query", Mandate::Action::"nasa_search",
+                             Mandate::Action::"noaa_climate", Mandate::Action::"nps_parks",
+                             Mandate::Action::"bls_series", Mandate::Action::"fec_search",
+                             Mandate::Action::"epa_search", Mandate::Action::"fcc_search",
+                             Mandate::Action::"usaspending_search", Mandate::Action::"sam_entity_lookup"], resource)
+  when { context.delegatorActive };""",
+    "email-send-list-office": """permit(principal, action == Mandate::Action::"email_send_list", resource)
+  when { context.delegatorActive };""",
+    "social-reply-official": """permit(principal, action == Mandate::Action::"social_reply", resource)
+  when { context.delegatorActive && context.account == "official" };""",
+    "forbid-campaign-reply": """forbid(principal, action == Mandate::Action::"social_reply", resource)
+  when { principal.mode == "official" && context.account == "campaign" };""",
+    "report-save": """permit(principal, action == Mandate::Action::"report_save", resource)
+  when { context.delegatorActive };""",
+    "draft-revise": """permit(principal, action == Mandate::Action::"draft_revise", resource)
+  when { context.delegatorActive };""",
     # One forbid per tool for the staffer's office role (roles.py, docs/ROLES.md).
     **ROLE_POLICIES,
 }

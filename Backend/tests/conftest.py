@@ -39,7 +39,22 @@ os.environ.pop("AWS_PROFILE", None)
 import jwt  # noqa: E402
 import pytest  # noqa: E402
 
-from tests.helpers import APP_CLIENT_ID, JWKS, JWKS_URL, USER_POOL_ID  # noqa: E402
+from tests.helpers import (  # noqa: E402
+    APP_CLIENT_ID,
+    DEMO_STAFFERS,
+    JWKS,
+    JWKS_URL,
+    PRODUCTION_ROLE_STAFFERS,
+    USER_POOL_ID,
+)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "production_roles: use the real Agents-tab role resolver on a moto mandate store "
+        "(no legacy dict resolver); see the `production_roles` fixture",
+    )
 
 
 @pytest.fixture
@@ -107,3 +122,149 @@ def _no_real_email(monkeypatch):
     email_admin.clear_cache()
     yield
     email_admin.clear_cache()
+
+
+class _FakeSes:
+    def __init__(self):
+        self.sent: list[dict] = []
+
+    def send_email(self, **kwargs):
+        self.sent.append(kwargs)
+        return {"MessageId": "ses-123"}
+
+
+@pytest.fixture
+def office_ses(monkeypatch):
+    """The office has an SES sender (fake client, no AWS). Lead's ruling: an email goes through the
+    staffer's Gmail, else this sender, else "needs connection". No test staffer has Gmail, so with or
+    without Lane I's `connections` module an email that is sent goes through the `email.send` SES handler.
+    Use it in tests that need an email to actually send."""
+    from app.agent_iam import ensure_package_paths
+
+    ensure_package_paths()
+    from mcp_tools import handlers
+
+    fake = _FakeSes()
+    monkeypatch.setattr(handlers, "_ses_client", lambda quick=False: fake)
+    monkeypatch.setenv("HOMEFRONT_EMAIL_FROM", "office@example.gov")
+    return fake
+
+
+class _NeedsConnection(Exception):
+    def __init__(self, provider):
+        super().__init__(provider)
+        self.provider = provider
+
+
+@pytest.fixture
+def all_connected(monkeypatch):
+    """Every staffer has Gmail and X connected: a recording double on `gateway.connections` with Lane I's
+    signatures. For tests about something else (roles, Cedar) whose calls send under auto or a grant; it
+    behaves the same before and after Lane I merges. The gate itself is tested in
+    packages/identity-gateway/tests/test_gw_needs_connection.py and test_gw_connections_merged.py,
+    and here in test_connect_prompt.py and test_draft_edit.py."""
+    import types
+
+    from app.agent_iam import ensure_package_paths
+
+    ensure_package_paths()
+    import identity_gateway.gateway as gw
+
+    d = types.ModuleType("identity_gateway.connections")
+    d.NeedsConnection, d.ProviderError, d.CONNECTABLE = _NeedsConnection, type("ProviderError", (Exception,), {}), ("gmail", "x")
+    d.gmail, d.x = [], []
+    d.provider_for_tool = lambda tool, args: (
+        "gmail" if tool in ("email_send", "email_send_list")
+        else "x" if tool in ("social_post", "social_reply") and (args.get("platform") or "x") == "x"
+        else None
+    )
+    d.require_connection = lambda staffer_id, provider: None
+    d.needs_connection_result = lambda exc: {"status": "needs_connection", "provider": exc.provider}
+
+    def send_gmail(staffer_id, to, subject, body, in_reply_to=None):
+        d.gmail.append((staffer_id, to))
+        return {"status": "sent", "provider": "gmail"}
+
+    def post_x(staffer_id, text, reply_to=None):
+        d.x.append((staffer_id, text))
+        return {"status": "posted", "provider": "x"}
+
+    d.send_gmail, d.post_x = send_gmail, post_x
+    monkeypatch.setattr(gw, "connections", d, raising=False)
+    return d
+
+
+# --- Agents-tab role resolver (docs/loops/agent-permissions.md, Design 6) ----------------------
+
+
+@pytest.fixture(autouse=True)
+def _legacy_role_resolver(request):
+    """LEGACY TESTS ONLY. The Agents tab now caps every create, grant and tool call by the caller's
+    office role, read from the STAFFER item in the mandate store. The older tests here never set up
+    that store, so they get a dict-backed resolver instead: a user named in docs/ROLES.md has their
+    ROLES.md role, and any other caller is a chief_of_staff (so the old tests keep exercising what they
+    were written for, not the role caps).
+
+    It does NOT apply to tests marked `production_roles` (test_agent_permissions_api.py and
+    test_privilege_escalation.py): those use the production resolver against moto, so a missing
+    wiring in Backend/app/agent_iam.py cannot hide behind this fixture.
+
+    It is a no-op until `agents_api.set_role_resolver` exists, so the suite stays collectable while
+    the feature is built; the production_roles tests fail in the meantime."""
+    if request.node.get_closest_marker("production_roles"):
+        yield
+        return
+    from app.agent_iam import ensure_package_paths
+
+    ensure_package_paths()
+    from identity_gateway import agents_api
+    from mandate_contracts.ddb import StafferItem
+
+    install = getattr(agents_api, "set_role_resolver", None)
+    if install is None:
+        yield
+        return
+
+    def resolve(user_id):
+        group, role = DEMO_STAFFERS.get(user_id, ("admin", "chief_of_staff"))
+        return StafferItem(active=True, office="rep-x", role=group, office_role=role)
+
+    install(resolve)
+    yield
+
+
+@pytest.fixture
+def production_roles(monkeypatch):
+    """The real wiring, no stubs: a moto mandate store holding STAFFER items (helpers.PRODUCTION_ROLE_STAFFERS)
+    set as the process gateway, then `agent_iam.include_agents_api` run again so the Agents tab's role
+    resolver is the one production installs. Yields the MandateStore: tests change a role or offboard
+    someone with `store.put_staffer` / `store.set_staffer_active`, exactly as an admin would in DynamoDB."""
+    import secrets
+
+    import boto3
+    from fastapi import FastAPI
+    from moto import mock_aws
+
+    from app.agent_iam import ensure_package_paths, include_agents_api
+
+    ensure_package_paths()
+    from identity_gateway import gateway as gateway_module
+    from identity_gateway.authz import StarterPolicyAuthorizer
+    from identity_gateway.gateway import Gateway, set_gateway
+    from identity_gateway.storage import MandateStore, create_table
+    from mandate_contracts.ddb import StafferItem
+
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    secret = secrets.token_hex(24)
+    monkeypatch.setenv("MANDATE_SIGNING_SECRET", secret)
+    previous = gateway_module._gateway
+    with mock_aws():
+        store = MandateStore(create_table(boto3.resource("dynamodb", region_name="us-east-1")))
+        for username, (group, office_role, office, active) in PRODUCTION_ROLE_STAFFERS.items():
+            store.put_staffer(
+                username, StafferItem(active=active, office=office, role=group, office_role=office_role)
+            )
+        set_gateway(Gateway(store, StarterPolicyAuthorizer(), secret))
+        include_agents_api(FastAPI())  # production wiring (actor + role resolver), on a throwaway app
+        yield store
+    set_gateway(previous)

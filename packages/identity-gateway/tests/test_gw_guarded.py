@@ -84,18 +84,19 @@ def test_inbox_read_returns_the_email_item(gateway, make_token, world):
     assert world.email_body in blob and "Road repair" in blob and "citizen@example.com" in blob
 
 
-def test_allowed_email_send_runs_the_mcp_tools_handler_and_is_simulated(
-    trusted_replies, gateway, make_token, handler_spy, world
-):
+def test_allowed_email_send_runs_the_mcp_tools_handler(trusted_replies, gateway, make_token, handler_spy, world, office_ses):
     out = gateway.guarded("email_send", KNOWN_ARGS["email_send"], make_token())
     assert out.allowed is True
-    assert out.result["simulated"] is True
+    assert out.result["simulated"] is False and len(office_ses.sent) == 1
     assert handler_spy.calls, "email_send did not go through an mcp_tools handler"
 
 
 @pytest.mark.parametrize("tool", ["datagov_search", "web_scrape", "social_post"])
 def test_other_allowed_tools_go_through_mcp_tools(maya_posts, trusted_replies, gateway, make_token, handler_spy, tool):
-    out = gateway.guarded(tool, KNOWN_ARGS[tool], make_token())
+    args = KNOWN_ARGS[tool]
+    if tool == "social_post":  # a share-link platform: X posts go through the connected account, not a handler
+        args = {**args, "platform": "bluesky"}
+    out = gateway.guarded(tool, args, make_token())
     assert out.allowed is True and out.result
     assert handler_spy.calls
 
@@ -369,7 +370,7 @@ def test_authorizer_error_is_a_deny(store, secret, make_token, world, events_of,
     assert e.decision == "DENY"
 
 
-def test_tool_handler_error_is_a_deny(trusted_replies, gateway, make_token, handler_spy):
+def test_tool_handler_error_is_a_deny(trusted_replies, gateway, make_token, handler_spy, office_ses):
     handler_spy.boom = True
     out = gateway.guarded("email_send", KNOWN_ARGS["email_send"], make_token())
     assert handler_spy.calls, "the handler was supposed to run and fail"
@@ -425,10 +426,29 @@ def test_an_unaudited_call_is_never_allowed(gateway, store, make_token, monkeypa
 
 def test_scan_runs_only_for_untrusted_output_tools(gateway, scan_spy, make_token, world):
     untrusted = {name for name, spec in TOOLS.items() if spec.untrusted_output}
-    assert untrusted == {"inbox_read", "web_scrape"}
+    research = {
+        "census_query", "openfda_search", "eia_query", "nasa_search", "noaa_climate",
+        "nps_parks", "bls_series", "fec_search", "epa_search", "fcc_search",
+    }  # fmt: skip
+    assert untrusted == {"inbox_read", "web_scrape", "usaspending_search", "sam_entity_lookup", *research}
     for tool, args in KNOWN_ARGS.items():
         scan_spy.calls.clear()
         gateway.guarded(tool, args, make_token())
+        assert bool(scan_spy.calls) == (tool in untrusted), tool
+    # The new tools too, as the chief of staff (who may use all of them).
+    chief = make_token(act="chiefofstaff", sid=world.chief_sid)
+    new_tools = {
+        "usaspending_search": {"keywords": "cameras", "fiscal_year": 2025},
+        "sam_entity_lookup": {"name": "Axon"},
+        "nasa_search": {"q": "mars"},
+        "census_query": {"year": "2023", "dataset": "acs/acs1", "get": "NAME", "for": "place:1", "in": ""},
+        "report_save": {"title": "t", "body": "b"},
+        "email_send_list": {"subject": "s", "body": "b"},
+        "social_reply": {"account": "official", "reply_to": "1", "text": "t"},
+    }
+    for tool, args in new_tools.items():
+        scan_spy.calls.clear()
+        gateway.guarded(tool, args, chief)
         assert bool(scan_spy.calls) == (tool in untrusted), tool
 
 

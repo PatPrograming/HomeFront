@@ -136,10 +136,12 @@ and never deletes.
 
 1. DynamoDB table `mandate` (`pk`/`sk` strings, on-demand).
 2. A Verified Permissions policy store (description `mandate`, validation off).
-3. The six starter policies from `packages/mandate-contracts/policies/*.cedar`; each policy's
+3. The starter policies and `forbid-campaign-reply` from `packages/mandate-contracts/policies/*.cedar`; each policy's
    description is its readable name. The six office-role policies (`role-*.cedar`, see
    `docs/ROLES.md`) are added only with `--with-role-policies`, and only after a read of every
-   STAFFER item finds a valid `officeRole` on each one. Run `test-users.sh --apply` first.
+   STAFFER item finds a valid `officeRole` on each one. Run `test-users.sh --apply` first. The four
+   new permits (`research-tools`, `email-send-list-office`, `social-reply-official`, `report-save`)
+   wait for the same flag: without the role forbids, every role would get those tools.
 4. `Backend/infra/.env.aws` (untracked): `AVP_POLICY_STORE_ID` and `AVP_POLICY_NAMES`, the map
    from AVP's generated policy ids to the readable names that decision events show.
 

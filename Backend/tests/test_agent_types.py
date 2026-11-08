@@ -7,6 +7,7 @@ from app.main import app
 from tests.helpers import ADMIN
 
 from identity_gateway import agents_api as gateway  # noqa: E402
+from identity_gateway import agent_types  # noqa: E402
 from identity_gateway.agent_types import AGENT_TYPES, disallowed_tools  # noqa: E402
 from identity_gateway.dynamo_repo import agent_from_item, agent_to_item  # noqa: E402
 from identity_gateway.store import AgentRecord  # noqa: E402
@@ -75,9 +76,31 @@ def test_create_fills_template_defaults(kind):
     body = r.json()
     t = AGENT_TYPES[kind]
     assert body["kind"] == kind
-    assert body["tool_grants"] == sorted(t.default_tools)
+    # Omitted tool_grants = the recommended (least-privilege) set.
+    assert body["tool_grants"] == sorted(agent_types.recommended_tools(kind))
     assert body["instructions"] == t.default_instructions
     assert body["max_steps"] == t.default_max_steps
+
+
+def test_email_agent_defaults_to_email_send_only():
+    # The mailing-list tool is a deliberate extra grant (chief of staff only), never a default.
+    assert _create("email").json()["tool_grants"] == ["email.send"]
+
+
+def test_recommended_tools_per_kind():
+    assert agent_types.recommended_tools("email") == {"email.send"}
+    assert agent_types.recommended_tools("social") == {"social.post", "social.reply"}
+    research = agent_types.recommended_tools("research")
+    assert research == set(AGENT_TYPES["research"].default_tools) and len(research) == 12
+    assert agent_types.recommended_tools("market_research") == set(AGENT_TYPES["market_research"].default_tools)
+    assert agent_types.recommended_tools("custom") == set()
+
+
+@pytest.mark.parametrize("kind", sorted(AGENT_TYPES))
+def test_recommended_tools_are_within_the_kind_ceiling(kind):
+    recommended = set(agent_types.recommended_tools(kind))
+    assert recommended <= set(TOOL_REGISTRY)
+    assert disallowed_tools(kind, recommended) == []
 
 
 def test_create_explicit_fields_override_template():
@@ -136,7 +159,7 @@ def test_grant_within_ceiling_is_allowed():
     agent = _create("email").json()
     r = client.post(f"/api/v1/agents/{agent['agent_id']}/grants/datagov.search")
     assert r.status_code == 200
-    assert r.json()["tool_grants"] == ["datagov.search", "email.send", "email.send_list"]
+    assert r.json()["tool_grants"] == ["datagov.search", "email.send"]
 
 
 def test_replace_grants_outside_ceiling_changes_nothing():

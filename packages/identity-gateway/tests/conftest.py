@@ -43,6 +43,69 @@ def _offline_env(monkeypatch):
     monkeypatch.delenv("DATA_GOV_API_KEY", raising=False)
 
 
+class _FakeSes:
+    def __init__(self):
+        self.sent: list[dict] = []
+
+    def send_email(self, **kwargs):
+        self.sent.append(kwargs)
+        return {"MessageId": "ses-123"}
+
+
+@pytest.fixture
+def office_ses(monkeypatch):
+    """The office has an SES sender (fake client, no AWS). Lead's ruling: an email goes through the
+    staffer's Gmail, else this sender, else "needs connection". No test staffer has Gmail, so with or
+    without Lane I's `connections` module an email that is sent goes through the `email.send` SES handler.
+    Use it in tests that need an email to actually send."""
+    from mcp_tools import handlers
+
+    fake = _FakeSes()
+    monkeypatch.setattr(handlers, "_ses_client", lambda quick=False: fake)
+    monkeypatch.setenv("HOMEFRONT_EMAIL_FROM", "office@example.gov")
+    return fake
+
+
+class _NeedsConnection(Exception):
+    def __init__(self, provider):
+        super().__init__(provider)
+        self.provider = provider
+
+
+@pytest.fixture
+def all_connected(monkeypatch):
+    """Every staffer has Gmail and X connected: a recording double on `gateway.connections` with Lane I's
+    signatures. For tests about something else (roles, Cedar) whose calls send under auto or a grant; it
+    behaves the same before and after Lane I merges. The gate itself is tested in
+    test_gw_needs_connection.py and, with Lane I's real module, test_gw_connections_merged.py."""
+    import types
+
+    import identity_gateway.gateway as gw
+
+    d = types.ModuleType("identity_gateway.connections")
+    d.NeedsConnection, d.ProviderError, d.CONNECTABLE = _NeedsConnection, type("ProviderError", (Exception,), {}), ("gmail", "x")
+    d.gmail, d.x = [], []
+    d.provider_for_tool = lambda tool, args: (
+        "gmail" if tool in ("email_send", "email_send_list")
+        else "x" if tool in ("social_post", "social_reply") and (args.get("platform") or "x") == "x"
+        else None
+    )
+    d.require_connection = lambda staffer_id, provider: None
+    d.needs_connection_result = lambda exc: {"status": "needs_connection", "provider": exc.provider}
+
+    def send_gmail(staffer_id, to, subject, body, in_reply_to=None):
+        d.gmail.append((staffer_id, to))
+        return {"status": "sent", "provider": "gmail"}
+
+    def post_x(staffer_id, text, reply_to=None):
+        d.x.append((staffer_id, text))
+        return {"status": "posted", "provider": "x"}
+
+    d.send_gmail, d.post_x = send_gmail, post_x
+    monkeypatch.setattr(gw, "connections", d, raising=False)
+    return d
+
+
 @pytest.fixture
 def secret():
     return SECRET
@@ -265,3 +328,60 @@ def events_of():
         return events
 
     return _events
+
+
+# ---- real Cedar (cedarpy) on the committed policy files ----------------------------------------
+
+
+def _build_real_cedar():
+    from pathlib import Path
+
+    import cedarpy
+
+    from identity_gateway.authz import AuthzDecision
+
+    policy_dir = Path(__file__).resolve().parents[2] / "mandate-contracts" / "policies"
+    files = sorted(policy_dir.glob("*.cedar"))
+    text = "\n".join(p.read_text() for p in files)
+    names = {f"policy{i}": p.stem for i, p in enumerate(files)}  # cedarpy numbers policies in file order
+
+    def plain(typed):
+        return {k: next(iter(v.values())) for k, v in typed.items()}
+
+    def uid(identifier):
+        return {"__entity": {"type": identifier["entityType"], "id": identifier["entityId"]}}
+
+    class RealCedar:
+        """The real Cedar engine, fed by the same contract helpers AvpAuthorizer uses."""
+
+        def is_authorized(self, req):
+            from mandate_contracts import cedar
+
+            agent = cedar.agent_entity(req.agent_id, req.office, req.mode, req.role)
+            entities = [
+                {"uid": uid(e["identifier"]), "attrs": plain(e["attributes"]), "parents": []}
+                for e in (agent, req.resource)
+            ]
+            ident = req.resource["identifier"]
+            request = {
+                "principal": f'Mandate::Agent::"{req.agent_id}"',
+                "action": f'Mandate::Action::"{req.tool}"',
+                "resource": f'{ident["entityType"]}::"{ident["entityId"]}"',
+                "context": plain(req.context["contextMap"]),
+            }
+            result = cedarpy.is_authorized(request, text, entities)
+            assert not result.diagnostics.errors, result.diagnostics.errors
+            ids = sorted(names[p] for p in result.diagnostics.reasons)
+            return AuthzDecision(allowed=result.decision == cedarpy.Decision.Allow, policy_ids=ids)
+
+    return RealCedar()
+
+
+@pytest.fixture(params=["double", "cedar"])
+def engine_gateway(request, store, secret, scan_spy):
+    """A Gateway on each policy engine: the in-Python StarterPolicyAuthorizer and the real Cedar engine."""
+    from identity_gateway.authz import StarterPolicyAuthorizer
+    from identity_gateway.gateway import Gateway
+
+    authorizer = StarterPolicyAuthorizer() if request.param == "double" else _build_real_cedar()
+    return Gateway(store, authorizer, secret, scan=scan_spy)

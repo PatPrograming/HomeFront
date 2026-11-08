@@ -61,3 +61,36 @@ def auth(sub: str | None = None, **kwargs) -> dict[str, str]:
 # The default caller for the teammates' agent-API tests: a signed-in admin.
 ADMIN_USER = "test-admin"
 ADMIN = auth(ADMIN_USER)
+
+# docs/ROLES.md demo accounts: username -> (Cognito group, office role). Used by the legacy role resolver
+# in conftest.py; any other username there is a chief_of_staff.
+DEMO_STAFFERS = {
+    "admin": ("admin", "chief_of_staff"),
+    "chiefofstaff": ("admin", "chief_of_staff"),
+    "bronco": ("staffer", "caseworker"),
+    "maya": ("staffer", "caseworker"),
+    "scuacm": ("staffer", "communications_director"),
+    "a10": ("staffer", "legislative_aide"),
+    "aws": ("staffer", "intern"),
+}
+
+# STAFFER items for the production-resolver tests: username -> (Cognito group, office role, office, active).
+# login() signs in with the group listed here.
+PRODUCTION_ROLE_STAFFERS = {
+    **{name: (group, role, "rep-x", True) for name, (group, role) in DEMO_STAFFERS.items()},
+    "dana": ("staffer", "caseworker", "rep-z", True),  # same role as maya, another office
+    # An admin-group login whose OFFICE role is small: the Cognito group must never widen it.
+    "admin-caseworker": ("admin", "caseworker", "rep-x", True),
+    "admin-comms": ("admin", "communications_director", "rep-x", True),
+    "admin-intern": ("admin", "intern", "rep-x", True),
+    "retired": ("staffer", "caseworker", "rep-x", False),  # offboarded
+    "norole": ("staffer", None, "rep-x", True),  # STAFFER item with no officeRole
+    # "ghost" has no STAFFER item at all.
+}
+
+
+def login(username: str, **kwargs) -> dict[str, str]:
+    """Authorization header for a user in PRODUCTION_ROLE_STAFFERS, signed in with their own Cognito
+    group (an unknown user such as "ghost" gets the staffer group)."""
+    group = PRODUCTION_ROLE_STAFFERS.get(username, ("staffer",))[0]
+    return auth(username, groups=(group,), **kwargs)

@@ -1,6 +1,6 @@
 """The real MCP endpoint (streamable HTTP) at `/mcp`.
 
-It lists the seven contract tools with their exact schemas, and every call goes
+It lists the contract tools with their exact schemas, and every call goes
 through `guarded()`. A missing, forged or expired bearer token gets HTTP 401
 before any MCP message is read. Accepts legacy HS256 mandate tokens and AAuth
 (ID-JAG + proof-of-possession) credentials.
@@ -73,7 +73,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> types.CallToolResul
     except InvalidToken:
         return types.CallToolResult(content=[types.TextContent(type="text", text="DENIED (invalid token)")], isError=True)
     if not outcome.allowed:
-        return types.CallToolResult(content=[types.TextContent(type="text", text=outcome.deny_text())], isError=True)
+        # A DENY with a result is "needs connection": the agent gets the JSON that says which account to ask for.
+        text = json.dumps(outcome.result) if outcome.result else outcome.deny_text()
+        return types.CallToolResult(content=[types.TextContent(type="text", text=text)], isError=True)
     return types.CallToolResult(content=[types.TextContent(type="text", text=json.dumps(outcome.result))], isError=False)
 
 
