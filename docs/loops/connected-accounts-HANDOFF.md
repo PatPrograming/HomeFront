@@ -1,3 +1,5 @@
+> **Resolved 2026-11-08 07:10 PT:** the judge ran (REJECT); its branch item is fixed in 60d9e34, the rest is merge-time. See the loop file, Round 3. Probe worktrees deleted. Kept as the audit trail.
+
 # Handoff: connected-accounts (Lane I), round 3
 
 Resume prompt: `Resume /converge from docs/loops/connected-accounts.md; read docs/loops/connected-accounts-HANDOFF.md first.`
