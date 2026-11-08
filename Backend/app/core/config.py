@@ -21,7 +21,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    allowed_origins: str = "http://localhost:3000,http://localhost:5173"
+    allowed_origins: str = "http://localhost:3000"
 
     # Amazon Cognito (printed by Backend/infra/cognito.sh). Empty ids mean every
     # token is rejected: the backend fails closed until the pool is configured.

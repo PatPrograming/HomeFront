@@ -14,8 +14,10 @@ npm ci
 VITE_MOCK_API=1 npm run dev     # http://localhost:3000
 ```
 
-Sign in as Maya, press **Start assistant**, and watch the feed. Open a second tab, sign in as the Chief of Staff,
-and press **Offboard** next to Maya. Both tabs share the fake data, so Maya's tab shows the DENY a second later.
+Sign in as Maya, open **Your assistant** and send a message (the first message starts the session). Under each reply,
+click **Done · n actions** to see, in plain words, which agent acts for you, what it may do and what it did. Open a
+second tab, sign in as the Chief of Staff, and press **Offboard** next to Maya. Both tabs share the fake data, so
+Maya's tab shows Revoked a second later.
 "Reset demo data" on the sign-in page starts over.
 
 Against the real API and Cognito (lane A and lane B):
@@ -64,7 +66,7 @@ All of it is in `src/lib/pkce.ts` (pure helpers) and `src/lib/auth.ts` (about 10
 | `/social-platform` | anyone | Choose platforms, then enter the message, links and images (front-end only for now) |
 | `/login` | anyone | Sends you to Cognito (or, in mock mode, lets you pick Maya or the Chief of Staff) |
 | `/` with `?code=` | anyone | Finishes sign-in (Cognito returns to the site root; `/auth/callback` works too) |
-| `/console` | `staffer` or `admin` | **Start assistant** (`POST /api/v1/sessions`), the identity card, the live feed |
+| `/console` | `staffer` or `admin` | The chat (first message calls `POST /api/v1/sessions`), the review queue and autonomy (right rail, or the **Review** drawer under 1024 px), a "Working… / Done" disclosure per turn. Admins also see **Technical details**: the identity card and the live feed with Cedar and ATLAS ids |
 | `/admin` | `admin` only | **Offboard** each staffer (`POST /api/v1/staff/{id}/offboard`, with a confirm step) and the full audit log |
 | `/account` | anyone signed in, even with no group | `GET /api/v1/me` (username, sub, email, groups, read-only) and sign-out |
 | `/monitoring` | anyone | Old link; redirects to `/console` (the in-memory gateway demo was removed) |
@@ -79,7 +81,11 @@ navbar only appears for admins, and a staffer who types `/admin` gets "Not allow
 - **Live feed:** `src/lib/useEventFeed.ts` calls `GET /api/v1/events?since=<cursor>` every second. The first call has
   no cursor; each answer's `next` (the last event's sort key, `<ts>#<id>`) becomes the next cursor. An empty answer
   keeps the old cursor. New events are merged by id (no duplicates), newest first (`src/lib/events.ts`).
-- The identity card counts down to the session's `expiresAt` and shows which tools are allowed and which are never
+- **Who sees what** (`src/pages/Console.tsx`, `isAdmin` from `src/lib/roles.ts`): staff get plain words only
+  (`src/lib/agentActivity.ts` turns each decision into a sentence such as "Blocked: export all constituent records
+  (never allowed)") and a one-line identity ("agent-1 acts for you · Access ends at 1:23 AM"). Session ids, policy
+  ids, ATLAS ids, guardrail flags and the feed are admin-only. The Revoked banner shows for everyone.
+- The identity card (admins) counts down to the session's `expiresAt` and shows which tools are allowed and which are never
   allowed (from the contract's tool list).
 - Types (`DecisionEvent`, `ToolName`), tool names and sample events come straight from `packages/mandate-contracts` (`ts/index.ts`,
   `samples/events.json`), so they cannot drift from the backend's contract.

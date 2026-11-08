@@ -217,4 +217,4 @@ public_env
 step "Frontend env for the Vite app (public values)"
 echo "VITE_COGNITO_DOMAIN=$COGNITO_DOMAIN"
 echo "VITE_COGNITO_CLIENT_ID=$STAFF_CLIENT_ID"
-echo "VITE_COGNITO_REDIRECT_URI=http://localhost:5173/"
+echo "VITE_COGNITO_REDIRECT_URI=http://localhost:3000/"

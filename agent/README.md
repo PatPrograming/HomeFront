@@ -30,7 +30,7 @@ denials honestly, and the agent stopping when Maya is offboarded.
 
 ## How a run works
 
-1. Maya logs in and presses "Start assistant". The gateway creates a session and shows its id.
+1. Maya logs in and sends her first chat message. The gateway creates a session and shows its id.
 2. `python agent/agent.py --sid <id>` gets the agent's Cognito token using its own client id and
    secret, and sends it to `POST /api/v1/sessions/<id>/mandate`. The broker returns a 15-minute
    mandate token that says "agent-1, acting for maya, office rep-x".
@@ -89,6 +89,16 @@ mandate token with its own client credentials and answers the chat until the ses
 ```bash
 agent/.venv/bin/python agent/agent.py --sid <session id> --chat
 ```
+
+Or let the console start it: set `HOMEFRONT_AUTOSTART_AGENT=1` in the root `.env` before starting the
+gateway. Maya's first message then starts exactly that command as a child process of the gateway
+(`Backend/app/services/agent_supervisor.py`), with the same identity steps: its own Cognito secret
+from `agent/.env`, the broker, a mandate token on every call. The backend never reads that secret or
+sees a mandate token, and the child gets only an allowlist from the gateway (AWS credentials and
+region, `PATH`, `HOME`, the CA bundle, the gateway URLs), never `MANDATE_SIGNING_SECRET`. One process per session; it is stopped when the session is revoked,
+Maya is offboarded, the session's hour ends, or the gateway shuts down; a session gets at most 3
+starts. If it can't start, Maya's message is refused with the reason (HTTP 503), so the chat never
+waits on an agent that isn't there. Starts and stops are logged in the gateway's terminal.
 
 Staged compromised agent (same identity and gateway, scripted attack, no LLM; about 80 s, so
 there is time to offboard Maya mid-run):

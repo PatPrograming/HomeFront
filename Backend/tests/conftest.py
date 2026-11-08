@@ -24,6 +24,7 @@ os.environ.update(
         "HOMEFRONT_EMAIL_FROM": "",
         "HOMEFRONT_SES_REGION": "",
         "HOMEFRONT_LIVE_DATAGOV": "0",
+        "HOMEFRONT_AUTOSTART_AGENT": "0",  # never start a real agent process
     }
 )
 os.environ.pop("AWS_PROFILE", None)

@@ -34,6 +34,10 @@ chmod +x scripts/*.sh
 
 Copy [`.env.example`](.env.example) to `.env` at the **repo root**. Both the API and the Vite frontend load it. Only `VITE_*` values reach the browser, and none of them are secrets.
 
+### Chat agent auto-start
+
+Set `HOMEFRONT_AUTOSTART_AGENT=1` in `.env` and restart `./scripts/run-gateway.sh`: the staffer's first chat message then starts the agent (`agent/agent.py --sid <sid> --chat`) for them, so nobody needs a terminal. It needs `agent/.venv` and `agent/.env` on the server; starts and stops print in the gateway's terminal. Off by default. Details in [`agent/README.md`](agent/README.md).
+
 ### api.data.gov key
 
 1. Set in `.env`: `DATA_GOV_API_KEY=your_key_here`

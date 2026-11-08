@@ -4,7 +4,17 @@ import { api, type Draft, type DraftEdits } from "../lib/api";
 // Only the text can change; the recipient or account is what the gateway's policy already checked.
 const EDITABLE: Record<Draft["tool"], (keyof DraftEdits)[]> = { email_send: ["subject", "body"], social_post: ["text"] };
 
-function DraftCard({ draft, locked, onDone }: { draft: Draft; locked: boolean; onDone: () => Promise<void> }) {
+function DraftCard({
+  draft,
+  locked,
+  onDone,
+  onGrant,
+}: {
+  draft: Draft;
+  locked: boolean;
+  onDone: () => Promise<void>;
+  onGrant?: (sid: string, category: string) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<DraftEdits>({});
   const [busy, setBusy] = useState(false);
@@ -66,6 +76,7 @@ function DraftCard({ draft, locked, onDone }: { draft: Draft; locked: boolean; o
             title={`Send "${draft.categoryLabel}" without review until this session ends`}
             onClick={() => decide(async () => {
               await api.grant(draft.sid!, draft.category);
+              onGrant?.(draft.sid!, draft.category);
               await api.approveDraft(draft.id, edits);
             })}
           >
@@ -87,10 +98,12 @@ export default function ReviewQueue({
   drafts,
   locked,
   onDone,
+  onGrant,
 }: {
   drafts: Draft[];
   locked: Set<string>; // categories that always need review: no "allow for this session" offer
   onDone: () => Promise<void>;
+  onGrant?: (sid: string, category: string) => void; // so the chat's disclosure can list the grant
 }) {
   return (
     <section className="panel" aria-labelledby="review-title">
@@ -103,7 +116,7 @@ export default function ReviewQueue({
       ) : (
         <ul className="drafts">
           {drafts.map((d) => (
-            <DraftCard key={d.id} draft={d} locked={locked.has(d.category)} onDone={onDone} />
+            <DraftCard key={d.id} draft={d} locked={locked.has(d.category)} onDone={onDone} onGrant={onGrant} />
           ))}
         </ul>
       )}

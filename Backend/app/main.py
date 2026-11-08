@@ -9,9 +9,18 @@ from app.core.config import apply_aws_env, apply_datagov_env, get_settings
 ensure_package_paths()  # the routers below import the gateway packages
 
 from app.routers import assistant, events, health, home, profiles, sessions, staff  # noqa: E402
-from identity_gateway.app import lifespan  # noqa: E402
+from identity_gateway.app import lifespan as gateway_lifespan  # noqa: E402
+
+from app.services.agent_supervisor import supervision  # noqa: E402
 
 API_PREFIX = "/api/v1"
+
+
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    """The MCP endpoint's session manager, and the chat agents the console started (stopped on shutdown)."""
+    async with gateway_lifespan(app), supervision():
+        yield
 
 
 def create_app() -> FastAPI:

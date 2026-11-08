@@ -1,0 +1,64 @@
+{
+  "round": 0,
+  "at": "2026-11-08T08:14:15.756Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162",
+  "passed": [],
+  "failed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4"
+  ],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Role gate: staff never sees Cedar/ATLAS ids, sid or feed; admin does",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleRoles.test.tsx -t \"role gate\" 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 892,
+      "note": "",
+      "stdoutTail": "     36|   clientId: import.meta.env.VITE_COGNITO_CLIENT_ID || \"\",\n     37|   // Must be one of the staff-web client's callback URLs (lane A set t…\n     38|   redirectUri: import.meta.env.VITE_COGNITO_REDIRECT_URI || `${window.…\n       |                                                                ^\n     39| };\n     40| \n ❯ src/lib/api.ts:1:1\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\n Test Files  1 failed (1)\n      Tests  no tests\n   Start at  00:14:13\n   Duration  280ms (transform 62ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 40ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Inline disclosure shows plain-word permissions and actions from a fixture",
+      "command": "cd Frontend && npx vitest run src/components/AgentActivity.test.tsx src/lib/agentActivity.test.ts 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 676,
+      "note": "",
+      "stdoutTail": "      2| import type { DecisionEvent } from \"../../../packages/mandate-contract…\n       |                               ^\n      3| import { describeEvent, permissionLines, toolLabel, turnEvents } from …\n      4| import type { AutonomyCategory, SessionCard } from \"./api\";\n\nCaused by: Error: Failed to load url ./agentActivity (resolved id: ./agentActivity) in /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend/src/lib/agentActivity.test.ts. Does the file exist?\n ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-CDnG8rE7.js:51858:17\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯\n\n\n Test Files  2 failed (2)\n      Tests  no tests\n   Start at  00:14:14\n   Duration  220ms (transform 28ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 85ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Revoked path visible to staff and admin with \"Start a new conversation\"",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleRoles.test.tsx -t \"revoked\" 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 703,
+      "note": "",
+      "stdoutTail": "     36|   clientId: import.meta.env.VITE_COGNITO_CLIENT_ID || \"\",\n     37|   // Must be one of the staff-web client's callback URLs (lane A set t…\n     38|   redirectUri: import.meta.env.VITE_COGNITO_REDIRECT_URI || `${window.…\n       |                                                                ^\n     39| };\n     40| \n ❯ src/lib/api.ts:1:1\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\n Test Files  1 failed (1)\n      Tests  no tests\n   Start at  00:14:15\n   Duration  254ms (transform 57ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 38ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Types, build and the full suite are green",
+      "command": "cd Frontend && npx tsc --noEmit && npm run build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 383,
+      "note": "",
+      "stdoutTail": "src/components/AgentActivity.test.tsx(5,27): error TS2307: Cannot find module './AgentActivity' or its corresponding type declarations.\nsrc/lib/agentActivity.test.ts(3,71): error TS2307: Cannot find module './agentActivity' or its corresponding type declarations.\nsrc/lib/agentActivity.test.ts(51,84): error TS7006: Parameter 'e' implicitly has an 'any' type.\nsrc/lib/agentActivity.test.ts(52,66): error TS7006: Parameter 'e' implicitly has an 'any' type.",
+      "stderrTail": ""
+    }
+  ]
+}
