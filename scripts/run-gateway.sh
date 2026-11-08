@@ -4,7 +4,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 if [[ ! -d .venv ]]; then
-  python3 -m venv .venv
+  /usr/local/bin/python3.12 -m venv .venv  # the default python3 here is a broken Intel build
 fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
@@ -33,6 +33,8 @@ load_env_file() {
 }
 
 load_env_file "$ROOT/.env"
+# AVP policy store id and policy-name map written by Backend/infra/setup.sh (untracked).
+load_env_file "$ROOT/Backend/infra/.env.aws"
 
 export PYTHONPATH="$ROOT/Backend:$ROOT/packages/mandate-contracts/src:$ROOT/packages/atlas-enricher/src:$ROOT/packages/mcp-tools/src:$ROOT/packages/identity-gateway/src${PYTHONPATH:+:$PYTHONPATH}"
 
@@ -45,5 +47,6 @@ if [[ -z "${HOMEFRONT_LIVE_DATAGOV:-}" ]]; then
   fi
 fi
 
-# Unified API: Supabase user auth (/api/v1/*) + agent IAM + ATLAS (/, /atlas, /mcp, …)
-exec python -m uvicorn app.main:app --app-dir Backend --host 0.0.0.0 --port 8080
+# Unified API: broker + admin + events (/api/v1/*), gateway REST (/api/v1/mcp/call), MCP (/mcp).
+# Loopback only: nothing on the venue network can reach the gateway.
+exec python -m uvicorn app.main:app --app-dir Backend --host 127.0.0.1 --port 8080
