@@ -317,19 +317,53 @@ def check_scrape_url(url: str, resolve: bool = True) -> str:
     return url
 
 
+def host_matches_domains(host: str, patterns: list[str] | tuple[str, ...]) -> bool:
+    """Per-agent scrape allowlist. `*.example.gov` matches example.gov and any
+    subdomain (suffix on a dot boundary); a bare pattern matches exactly."""
+    host = (host or "").rstrip(".").lower()
+    if not host:
+        return False
+    for pattern in patterns:
+        if pattern.startswith("*."):
+            suffix = pattern[2:]
+            if host == suffix or host.endswith("." + suffix):
+                return True
+        elif host == pattern:
+            return True
+    return False
+
+
+def check_scrape_domain(url: str, patterns: list[str] | tuple[str, ...] | None) -> None:
+    """Raise UrlNotAllowed if a domain policy is set and the URL's host is outside it."""
+    if not patterns:
+        return
+    try:
+        host = urllib.parse.urlsplit(url).hostname or ""
+    except ValueError:
+        host = ""
+    if not host_matches_domains(host, patterns):
+        raise UrlNotAllowed(f"{host or 'this URL'} is outside the agent's allowed domains ({', '.join(patterns)})")
+
+
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Re-validate every redirect target, so a public page can't bounce the
-    fetch to the metadata endpoint or an internal host."""
+    fetch to the metadata endpoint, an internal host, or (when the agent has a
+    domain policy) a site outside it."""
 
     max_redirections = 5
 
+    def __init__(self, allowed_domains: list[str] | None = None) -> None:
+        super().__init__()
+        self.allowed_domains = allowed_domains
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
         check_scrape_url(newurl, resolve=True)
+        check_scrape_domain(newurl, self.allowed_domains)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _scrape_opener() -> urllib.request.OpenerDirector:
-    return urllib.request.build_opener(_SafeRedirectHandler)
+def _scrape_opener(allowed_domains: list[str] | None = None) -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(_SafeRedirectHandler(allowed_domains))
 
 
 def _scrape_denied(url: str, reason: str, simulated: bool) -> dict[str, Any]:
@@ -349,9 +383,13 @@ def handle_web_scrape(args: dict[str, Any]) -> dict[str, Any]:
     # Demo-safe: do not perform live scraping unless HOMEFRONT_LIVE_SCRAPE=1.
     # Return a stub that still models the untrusted-input risk surface.
     live = os.environ.get("HOMEFRONT_LIVE_SCRAPE") == "1"
+    # Injected by the gateway from the agent's scrape_domains policy (the
+    # gateway also checks the first URL); here it also covers redirects.
+    allowed_domains = [d for d in (args.get("allowed_domains") or []) if isinstance(d, str)] or None
     try:
         # Offline checks run in both modes so the policy is testable without network.
         check_scrape_url(url, resolve=live)
+        check_scrape_domain(url, allowed_domains)
     except UrlNotAllowed as exc:
         return _scrape_denied(url, str(exc), simulated=not live)
 
@@ -360,7 +398,7 @@ def handle_web_scrape(args: dict[str, Any]) -> dict[str, Any]:
             # Residual risk: DNS can change between this check and the fetch
             # (rebinding). Pinning the resolved IP would close that gap.
             req = urllib.request.Request(url, headers={"User-Agent": "HomeFront/0.1"})
-            with _scrape_opener().open(req, timeout=10) as resp:
+            with _scrape_opener(allowed_domains).open(req, timeout=10) as resp:
                 text = resp.read(8000).decode("utf-8", errors="replace")
             return {
                 "status": "ok",

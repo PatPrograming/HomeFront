@@ -73,14 +73,14 @@ def test_simulated_scrape_allows_public_hostname_without_dns(monkeypatch):
 
 def test_live_scrape_blocks_hostname_resolving_to_private_ip(live, monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", _fake_dns({"internal.example.gov": "10.1.2.3"}))
-    monkeypatch.setattr(handlers, "_scrape_opener", lambda: pytest.fail("must not fetch"))
+    monkeypatch.setattr(handlers, "_scrape_opener", lambda *_: pytest.fail("must not fetch"))
     out = handlers.handle_web_scrape({"url": "https://internal.example.gov/"})
     assert out["status"] == "denied"
     assert "10.1.2.3" in out["reason"]
 
 
 def test_live_scrape_blocks_metadata_ip_without_fetching(live, monkeypatch):
-    monkeypatch.setattr(handlers, "_scrape_opener", lambda: pytest.fail("must not fetch"))
+    monkeypatch.setattr(handlers, "_scrape_opener", lambda *_: pytest.fail("must not fetch"))
     out = handlers.handle_web_scrape({"url": "http://169.254.169.254/latest/meta-data/"})
     assert out["status"] == "denied" and out["simulated"] is False
 
@@ -119,7 +119,9 @@ def _install_web(monkeypatch, pages):
     monkeypatch.setattr(
         handlers,
         "_scrape_opener",
-        lambda: urllib.request.build_opener(handlers._SafeRedirectHandler, web),
+        lambda allowed_domains=None: urllib.request.build_opener(
+            handlers._SafeRedirectHandler(allowed_domains), web
+        ),
     )
     return web
 

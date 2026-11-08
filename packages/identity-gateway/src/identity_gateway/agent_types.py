@@ -29,6 +29,8 @@ class AgentType:
     # None = no ceiling (any registered tool).
     allowed_tools: frozenset[str] | None
     default_max_steps: int
+    # Default web.scrape domain allowlist for new agents; empty = any public host.
+    default_scrape_domains: tuple[str, ...] = ()
 
     def allows(self, tool: str) -> bool:
         return self.allowed_tools is None or tool in self.allowed_tools
@@ -115,6 +117,7 @@ AGENT_TYPES: dict[str, AgentType] = {
             {"web.scrape", "datagov.search", "usaspending.search", "sam.entity_lookup", "report.save"}
         ),
         default_max_steps=25,
+        default_scrape_domains=("*.gov",),
     ),
     "custom": AgentType(
         kind="custom",
@@ -159,4 +162,5 @@ def agent_type_view(agent_type: AgentType) -> dict[str, Any]:
             sorted(agent_type.allowed_tools) if agent_type.allowed_tools is not None else None
         ),
         "default_max_steps": agent_type.default_max_steps,
+        "default_scrape_domains": list(agent_type.default_scrape_domains),
     }

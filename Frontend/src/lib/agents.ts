@@ -17,6 +17,8 @@ export interface Agent {
   recipients: string[];
   // Missing on APIs older than email settings; read via emailSettingsOf().
   email_settings?: EmailSettings;
+  // web.scrape domain allowlist ("*.gov", "sam.gov"); empty = any public host.
+  scrape_domains?: string[];
   token_version: number;
   active: boolean;
 }
@@ -51,6 +53,7 @@ export interface AgentType {
   // null = no ceiling (any registered tool).
   allowed_tools: string[] | null;
   default_max_steps: number;
+  default_scrape_domains?: string[];
 }
 
 export interface Tool {

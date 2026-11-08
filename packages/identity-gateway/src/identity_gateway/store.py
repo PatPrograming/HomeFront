@@ -52,6 +52,39 @@ def normalize_recipients(addresses: Iterable[str]) -> list[str]:
     return sorted(cleaned)
 
 
+# Per-agent web.scrape domain allowlist (empty = any public host).
+MAX_SCRAPE_DOMAINS = 50
+_DOMAIN_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_DOMAIN_PATTERN_RE = re.compile(rf"^(?:\*\.)?{_DOMAIN_LABEL}(?:\.{_DOMAIN_LABEL})*$")
+
+
+class InvalidScrapeDomainsError(ValueError):
+    def __init__(self, invalid: list[str], message: str | None = None) -> None:
+        self.invalid = invalid
+        super().__init__(message or f"Invalid domain patterns: {', '.join(invalid)}")
+
+
+def normalize_scrape_domains(patterns: Iterable[str] | None) -> list[str]:
+    """Lower-cased, de-duplicated, sorted patterns: `example.gov` (exact) or
+    `*.gov` (that domain and its subdomains). Raises InvalidScrapeDomainsError."""
+    cleaned = {p.strip().lower().rstrip(".") for p in (patterns or ()) if p and p.strip()}
+    invalid = sorted(
+        p for p in cleaned if len(p) > 253 or not _DOMAIN_PATTERN_RE.match(p) or p.replace(".", "").isdigit()
+    )
+    if invalid:
+        raise InvalidScrapeDomainsError(invalid)
+    if len(cleaned) > MAX_SCRAPE_DOMAINS:
+        raise InvalidScrapeDomainsError([], f"At most {MAX_SCRAPE_DOMAINS} domain patterns are allowed.")
+    return sorted(cleaned)
+
+
+def widens_scrape_policy(before: list[str], after: list[str]) -> bool:
+    """True if `after` may allow a host `before` didn't (like adding a grant)."""
+    if not before:
+        return False  # was unrestricted; nothing can widen it
+    return not after or bool(set(after) - set(before))
+
+
 MAX_FROM_NAME = 80
 MAX_SIGNATURE = 1000
 
@@ -124,6 +157,8 @@ class AgentRecord:
     # Mailing list (normalized, see normalize_recipients).
     recipients: list[str] = field(default_factory=list)
     email_settings: EmailSettings = field(default_factory=EmailSettings)
+    # web.scrape domain allowlist (normalized patterns). Empty = any public host.
+    scrape_domains: list[str] = field(default_factory=list)
     token_version: int = 1
     active: bool = True
     created_at: float = field(default_factory=time.time)
@@ -167,6 +202,7 @@ def _copy(agent: AgentRecord) -> AgentRecord:
         tool_grants=set(agent.tool_grants),
         recipients=list(agent.recipients),
         email_settings=replace(agent.email_settings),
+        scrape_domains=list(agent.scrape_domains),
     )
 
 
@@ -298,6 +334,7 @@ class GatewayStore:
         owner_id: str | None = None,
         kind: str = "custom",
         recipients: Iterable[str] = (),
+        scrape_domains: Iterable[str] = (),
     ) -> AgentRecord:
         rec = AgentRecord(
             agent_id=agent_id or f"agent-{uuid.uuid4().hex[:8]}",
@@ -310,6 +347,7 @@ class GatewayStore:
             owner_id=owner_id,
             kind=kind,
             recipients=normalize_recipients(recipients),
+            scrape_domains=normalize_scrape_domains(scrape_domains),
         )
         with self._lock:
             return self._agents.insert(rec)
@@ -330,6 +368,18 @@ class GatewayStore:
 
         def apply(agent: AgentRecord) -> None:
             agent.recipients = recipients
+
+        return self._mutate(agent_id, apply)
+
+    def set_scrape_domains(self, agent_id: str, patterns: Iterable[str]) -> AgentRecord:
+        domains = normalize_scrape_domains(patterns)
+
+        def apply(agent: AgentRecord) -> None:
+            # Like grants: widening invalidates tokens; narrowing applies to the
+            # next call (the policy is read fresh per call) without ending the run.
+            if widens_scrape_policy(agent.scrape_domains, domains):
+                agent.token_version += 1
+            agent.scrape_domains = domains
 
         return self._mutate(agent_id, apply)
 

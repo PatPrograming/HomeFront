@@ -38,6 +38,7 @@ def agent_to_item(agent: AgentRecord) -> dict[str, Any]:
         "tool_grants": sorted(agent.tool_grants),
         "recipients": list(agent.recipients),
         "email_settings": agent.email_settings.view(),
+        "scrape_domains": list(agent.scrape_domains),
         "token_version": agent.token_version,
         "active": agent.active,
         "created_at": _iso(agent.created_at),
@@ -61,6 +62,8 @@ def agent_from_item(item: dict[str, Any]) -> AgentRecord:
         recipients=list(item.get("recipients") or []),
         # Rows written before email settings existed have none.
         email_settings=EmailSettings.from_dict(item.get("email_settings")),
+        # Rows written before domain policies existed are unrestricted.
+        scrape_domains=list(item.get("scrape_domains") or []),
         token_version=int(item["token_version"]),
         active=bool(item["active"]),
         created_at=datetime.fromisoformat(created).timestamp() if created else 0.0,

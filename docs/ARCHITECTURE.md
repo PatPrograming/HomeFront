@@ -117,12 +117,13 @@ User-defined agents. Read and written by the gateway (`AGENT_STORE=dynamodb`). R
 |---------------|---------|-------------------------------------------------------------|
 | id            | S       | `^[a-z0-9][a-z0-9-]{2,63}$` (used in URLs)                  |
 | owner_id      | S/NULL  | Cognito `sub`. null = shared demo agent                     |
-| kind          | S       | `email` / `social` / `research` / `custom`. Fixed at creation; missing = `custom` |
+| kind          | S       | `email` / `social` / `research` / `market_research` / `custom`. Fixed at creation; missing = `custom` |
 | name / agency | S       | 1–80 / 1–120 chars                                          |
 | instructions  | S       | ≤ 8000 chars. The agent's purpose and system prompt         |
 | model         | S/NULL  | null = runner default                                       |
 | max_steps     | N       | 1–50, default 10. Caps turns per run (AML.T0034)            |
 | tool_grants   | L       | Tool names, checked against `TOOL_REGISTRY` by the API      |
+| scrape_domains | L      | `web.scrape` allowlist: `sam.gov` (exact) or `*.gov` (domain + subdomains), ≤ 50. Empty/missing = any public host. Default `["*.gov"]` for `market_research`. Widening bumps `token_version`; narrowing applies to the next call |
 | token_version | N       | Bumped on grant changes to invalidate workload tokens       |
 | active        | BOOL    | Inactive agents can't get tokens or run                     |
 | created_at / updated_at | S | ISO 8601 UTC                                      |

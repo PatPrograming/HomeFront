@@ -89,6 +89,23 @@ def _mailing_list_note(agent: AgentRecord) -> str:
     ) + sender_note
 
 
+def _policy_notes(agent: AgentRecord) -> str:
+    tools = [t for t in (get_tool(n) for n in sorted(agent.tool_grants)) if t is not None]
+    notes = ""
+    if "web.scrape" in agent.tool_grants and agent.scrape_domains:
+        notes += (
+            f"\n- web_scrape can only fetch these domains: {', '.join(agent.scrape_domains)} "
+            "(`*.` covers the domain and its subdomains). Other URLs are refused."
+        )
+    if any(t.outbound for t in tools) and any(t.untrusted_input and not t.outbound for t in tools):
+        notes += (
+            "\n- Once you read untrusted content in a run (web pages, external records), "
+            "sending and posting tools are disabled for the rest of that run. Send or queue "
+            "anything you were asked to send before you research."
+        )
+    return notes
+
+
 def system_prompt(agent: AgentRecord) -> str:
     purpose = agent.instructions.strip() or "Complete the task you are given."
     return (
@@ -105,7 +122,7 @@ def system_prompt(agent: AgentRecord) -> str:
         "- Some tools (sending email, posting, replying) need a person's approval. They "
         "return status pending_approval: the action is queued, not done. Don't call them "
         "again for the same content, and say in your summary what is awaiting approval."
-        f"{_mailing_list_note(agent)}\n"
+        f"{_mailing_list_note(agent)}{_policy_notes(agent)}\n"
         "- When you're done, reply with a short summary of what you did and the result."
     )
 
