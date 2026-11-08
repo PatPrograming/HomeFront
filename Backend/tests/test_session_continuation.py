@@ -257,3 +257,18 @@ def test_deleting_through_the_first_session_hides_the_later_ones(client, store):
     assert client.delete(f"/api/v1/sessions/{old}").status_code == 200
     assert client.get(f"/api/v1/sessions/{newest}/messages").status_code == 404
     assert client.post(f"/api/v1/sessions/{newest}/messages", json={"text": "hi"}).status_code in (403, 404)
+
+
+def test_a_tab_that_loses_the_race_after_the_pre_check_gets_409_not_an_orphan_session(client, store, monkeypatch):
+    """The pre-check saw nothing, but another tab claimed the old session a moment later: refuse, create nothing."""
+    from app.services import conversations
+
+    old = open_conversation(client, "first question")
+    expire(store, old)
+    monkeypatch.setattr(conversations, "claim_continuation", lambda *args: False)
+    before = {sid for sid, _ in store.sessions_for("maya")}
+
+    r = continue_(client, old)
+
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "already_continued"
+    assert {sid for sid, _ in store.sessions_for("maya")} == before, "no orphan session for the losing tab"
