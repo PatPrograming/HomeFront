@@ -2,43 +2,37 @@
 
 AWS × A10 Hackathon — **Prompt 1: Agentic Identity**
 
-Government-agency agents that email, post/reply on social, scrape the web, and query **api.data.gov** — behind **Supabase user auth** plus **agent workload identity**, fine-grained MCP tool grants, mid-task revoke, and **MITRE ATLAS** labels on every allow/deny.
+Government-office AI agents that read the inbox and cases, query **api.data.gov**, scrape the web, send email and post to social, each acting **for one staffer** under a short-lived **mandate token**. Staff sign in with **Amazon Cognito**; every MCP tool call is checked live against **DynamoDB** (session and staffer still active) and **Amazon Verified Permissions** (Cedar), scanned by Bedrock Guardrails, and logged with **MITRE ATLAS** labels. Fail closed everywhere.
 
 ## What the demo shows
 
-1. Authenticate an agency agent (workload token)
-2. Allow selected MCP tools (`web.scrape`, `datagov.search`, `email.send`, …)
-3. Revoke a grant mid-task
-4. Block the next call — response tagged **`AML.T0053`** / **`AML.M0028`**
+1. **Authenticate an agent:** Maya signs in (Cognito), presses **Start assistant** (`POST /api/v1/sessions`); the agent uses its own Cognito client credentials to get a 15-minute mandate token for that session (`POST /api/v1/sessions/{sid}/mandate`).
+2. **Allow selected MCP tools:** the agent calls the 7 tools at `/mcp` with that token; Cedar allows routine work and denies bulk export, unknown recipients and campaign posts.
+3. **Revoke mid-task:** the Chief of Staff presses **Offboard** (`POST /api/v1/staff/{id}/offboard`).
+4. **Block subsequent requests:** the agent's very next call is denied (`session revoked / delegator inactive`) and shows up in the live feed (`GET /api/v1/events`).
 
-ATLAS data is **vendored** from [mitre-atlas/atlas-data](https://github.com/mitre-atlas/atlas-data) (Agentic AI subset). Runtime does not call MITRE’s authoring API.
+There is no route that issues an agent token on its own. How the gateway decides is in [`packages/identity-gateway/README.md`](packages/identity-gateway/README.md); lane setup in [`docs/LANES.md`](docs/LANES.md).
+
+ATLAS data is **vendored** from [mitre-atlas/atlas-data](https://github.com/mitre-atlas/atlas-data) (Agentic AI subset). Runtime does not call MITRE's authoring API.
 
 ## Quick start
 
 ```bash
-cp .env.example .env   # once — fill SUPABASE_* and DATA_GOV_API_KEY
+cp .env.example .env   # once: public Cognito ids are filled in; add MANDATE_SIGNING_SECRET, AVP ids, DATA_GOV_API_KEY
 
 chmod +x scripts/*.sh
-./scripts/run-gateway.sh    # API on :8080
-./scripts/run-frontend.sh   # main app on :3000
+./scripts/run-gateway.sh    # API + /mcp on :8080
+./scripts/run-frontend.sh   # console on :3000 (VITE_MOCK_API=1 for a no-backend demo)
 ```
 
-### Demo (inside the product UI)
-
-1. Open http://localhost:3000 → **Sign in** (or sign up)
-2. Nav → **Monitoring** (http://localhost:3000/monitoring)
-3. **Authenticate agent** → **2. datagov.search** (live Catalog data) → **3. email.send**
-4. **4. Revoke email.send** → **5. Retry** → blocked as **`AML.T0053`** / **`AML.M0028`**
-
-- API docs: http://127.0.0.1:8080/docs  
-- Everything is under `/api/v1`; Frontend proxies `/api` to :8080  
-- User API: `/api/v1/home`, `/api/v1/health`, `/api/v1/me` (Supabase JWT)  
-- Agent IAM: `/api/v1/auth/token`, `/api/v1/mcp/call`, `/api/v1/atlas/*`, `/api/v1/agents/...`  
-- Set `AGENT_ADMIN_REQUIRES_LOGIN=true` in `.env` to require a Supabase login for `/agents*`, `/auth/token` and `/audit`  
+- API docs: http://127.0.0.1:8080/docs. Everything except `/mcp` is under `/api/v1`; the frontend proxies `/api` to :8080.
+- Console pages: `/console` (staffer: start the assistant, live decisions), `/admin` (Chief of Staff: offboard, audit log), `/account` (`GET /api/v1/me`).
+- AWS resources (Cognito pool `us-east-1_MLfQpodxG`, the `mandate` DynamoDB table, the AVP policy store) are created by `Backend/infra/cognito.sh` and `Backend/infra/setup.sh`; see [`Backend/infra/README.md`](Backend/infra/README.md).
+- `infra/` holds the teammates' alternative CloudFormation stack (its own pool and `homefront-*` tables). The running app does not use it; see [`infra/README.md`](infra/README.md).
 
 ### Env (one file for Backend + Frontend)
 
-Copy [`.env.example`](.env.example) → `.env` at the **repo root**. Both the API and Vite frontend load it (`SUPABASE_*` for the server; Vite maps the same URL/anon key into the browser — service role and `DATA_GOV_API_KEY` never ship to the client).
+Copy [`.env.example`](.env.example) to `.env` at the **repo root**. Both the API and the Vite frontend load it. Only `VITE_*` values reach the browser, and none of them are secrets.
 
 ### api.data.gov key
 
@@ -48,14 +42,16 @@ Copy [`.env.example`](.env.example) → `.env` at the **repo root**. Both the AP
 ## Layout
 
 ```
-Backend/                   # FastAPI — Supabase auth + mounted agent IAM/ATLAS
-Frontend/                  # Main product UI — Monitoring = agent IAM demo
+Backend/                   # FastAPI: Cognito auth, broker (/sessions), offboard, events; infra/ scripts
+Frontend/                  # React + TypeScript: public site, staff console, admin page
+agent/                     # the AI agent (Claude on Bedrock) that calls /mcp with a mandate token
 packages/atlas-pack/       # vendored ATLAS Agentic pack + build script
 packages/atlas-enricher/   # local ATLAS lookup + annotate
-packages/identity-gateway/ # agent workload identity, grants, MCP authZ
+packages/identity-gateway/ # /mcp endpoint and guarded(): token, DynamoDB, Cedar, guardrail, events
+packages/mandate-contracts/ # shared tool names, token claims, events, DynamoDB keys, Cedar
 packages/mcp-tools/        # email / social / scrape / data.gov tools
+infra/                     # teammates' alternative CloudFormation stack (not used by the app)
 references/                # design/reference assets
-supabase/migrations/       # profiles + RLS
 docs/ARCHITECTURE.md       # system design
 ```
 

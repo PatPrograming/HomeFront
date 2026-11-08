@@ -101,7 +101,7 @@
   color: var(--ink);
 }
 
-.alert {
+.mandate-console .alert {
   padding: 10px 14px;
   background: var(--flag-tint);
   color: #4d3000;
@@ -132,12 +132,12 @@
   cursor: default;
 }
 
-.btn-primary {
+.mandate-console .btn-primary {
   background: var(--accent);
   color: #fff;
 }
 
-.btn-primary:hover:not(:disabled) {
+.mandate-console .btn-primary:hover:not(:disabled) {
   background: #003b72;
 }
 
@@ -162,7 +162,7 @@
   background: var(--deny-tint);
 }
 
-.icon-btn {
+.mandate-console .icon-btn {
   min-height: 36px !important;
   width: 36px;
   padding: 0 !important;
@@ -173,7 +173,7 @@
   vertical-align: middle;
 }
 
-.icon-btn:hover {
+.mandate-console .icon-btn:hover {
   background: var(--line);
 }
 
@@ -340,7 +340,7 @@
   }
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 1120px) {
   .feed-row.feed-head {
     display: none;
   }

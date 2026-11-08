@@ -20,12 +20,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Defaults allow local agent-IAM demos without a filled .env; real Supabase
-    # values are required for /api/v1/me and other user-auth routes.
-    supabase_url: str = "https://example.supabase.co"
-    supabase_anon_key: str = "dev-anon-key"
-    supabase_service_role_key: str = ""
-    supabase_jwt_secret: str = ""  # legacy HS256 projects only
     allowed_origins: str = "http://localhost:3000,http://localhost:5173"
 
     # Amazon Cognito (printed by Backend/infra/cognito.sh). Empty ids mean every
@@ -36,24 +30,32 @@ class Settings(BaseSettings):
     cognito_agent_client_id: str = ""
     cognito_domain: str = ""
 
-    # When true, agent management routes (/agents*, /auth/token, /audit) need a
-    # Supabase user JWT. Off by default for local demos.
-    agent_admin_requires_login: bool = False
+    # Teammates' alternative stack only (infra/cloudformation/homefront.yaml,
+    # scripts/create_tables.py, app/core/dynamodb.py). The running app uses the
+    # `mandate` table, not these.
+    aws_region: str = ""
+    dynamodb_table_prefix: str = "homefront-"
+    dynamodb_endpoint_url: str = ""  # http://localhost:8000 for DynamoDB Local
 
     # api.data.gov — gateway-held only; never returned to agents (AML.M0026).
     data_gov_api_key: str = ""
     # When empty, live mode auto-enables if data_gov_api_key is set.
     homefront_live_datagov: str = ""
 
-    @field_validator("supabase_url")
+    @field_validator("dynamodb_endpoint_url")
     @classmethod
-    def _normalize_url(cls, v: str) -> str:
-        # Accept URLs copied from the dashboard with an API path, e.g. .../rest/v1/
-        v = v.strip().rstrip("/")
-        for suffix in ("/rest/v1", "/auth/v1"):
-            if v.endswith(suffix):
-                v = v[: -len(suffix)]
-        return v
+    def _strip(cls, v: str) -> str:
+        return v.strip()
+
+    @property
+    def resolved_aws_region(self) -> str:
+        import os
+
+        return (
+            self.aws_region.strip()
+            or os.environ.get("AWS_REGION", "").strip()
+            or os.environ.get("AWS_DEFAULT_REGION", "").strip()
+        )
 
     @property
     def cors_origins(self) -> list[str]:
