@@ -85,6 +85,41 @@ curl -s -u "$COGNITO_AGENT_CLIENT_ID:$COGNITO_AGENT_CLIENT_SECRET" \
   "$COGNITO_DOMAIN/oauth2/token"
 ```
 
+## Test accounts (`test-users.sh`)
+
+Self-signup is off: the pool has `AllowAdminCreateUserOnly=true`, so nobody can register on the login page. Every account comes from an admin running `test-users.sh`. Keep self-signup off.
+
+The script creates the hackathon test accounts in the pool `us-east-1_MLfQpodxG` (override with `COGNITO_USER_POOL_ID`). Edit the `TEST_USERS` list at the top of the script to change them.
+
+| Username | Group | Office |
+|---|---|---|
+| `bronco`, `scuawm`, `a10`, `aws` | `staffer` | `rep-x` |
+| `admin` | `admin` | `rep-x` |
+
+For each account it creates the Cognito user without sending email, sets a permanent password, adds the user to its group, and writes the `STAFFER#<username>` / `META` item (`active=true`) to the `mandate` table. The gateway refuses sessions for a user without that item.
+
+### Run it
+
+Print the plan. This calls nothing and needs no credentials:
+
+```bash
+bash Backend/infra/test-users.sh
+```
+
+Ask Huy before the real run. It needs the `aws` CLI with admin credentials:
+
+```bash
+bash Backend/infra/test-users.sh --apply
+```
+
+Running it again creates nothing new and keeps existing passwords. Pass `--reset-passwords` with `--apply` to give every listed account a new password. A re-run also sets `active=true` again, like `seed.py`.
+
+### Passwords
+
+The script generates a 20-character password per account and never prints it. It writes `username<TAB>password` lines to `Backend/infra/test-users.local.txt`, which is git-ignored and mode 600. Only the usernames and the file path appear on screen.
+
+Share each password through a password manager (a shared vault item or a one-time share link). Never paste passwords into chat, email or a commit. After sharing, delete the file or keep it only on the admin's machine.
+
 ## Gateway resources (`setup.sh`, `seed.py`)
 
 `setup.sh` creates, in us-east-1, what the gateway needs. It reuses anything that already exists
