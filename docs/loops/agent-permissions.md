@@ -10,6 +10,13 @@ Branch: Agent-Permissions-Huy
 
 > "In the agents tab, we have agents for email, social media and research, ensure that in the your assitant console tab can perform all the following functions from the user prompt. Also when creating an agent, add a selection of permission it can do and then provide the recommended permissions, when the user change the permission before enter, it should warn on the side how the change in permission affects. test for edge cases of users trying to get extra privilege"
 
+Added 2026-11-08 (from Huy, relayed by the lead), verbatim:
+
+> "it is good that it asks for further detail, later it should run a research agent to do research and then it gives a draft, which allows the user to directly edit on it or prompt for edit, until the user is satisfied, in the session will show what social media platform the user want to post. The workflow like this should work for sending email as well."
+
+Lead rulings folded in: `email_send_list` is a locked tool (chief_of_staff only, always held); when the
+assistant can't send because Gmail/X isn't connected, the chat itself says so with a Connect button.
+
 ## Desired Outcome
 
 A staffer can ask the "Your assistant" chat to do anything the Agents-tab agents (email, social,
@@ -34,6 +41,9 @@ enforces the same caps on create, edit and every run, and tests prove each escal
 | C9 | Permission picker + side warning UI tests | `cd Frontend && npx vitest run src/pages/NewAgent.test.tsx src/lib/permissions.test.ts` | exit 0 |
 | C10 | Frontend typecheck, all tests, build | `cd Frontend && npm run -s build && npx vitest run` | exit 0 |
 | C11 | New Cedar policies validate in the local Cedar engine and setup.sh deploys them only as a dry run by default | `scripts/offline-pytest.sh -q Backend/tests/test_setup_role_policies.py packages/identity-gateway/tests/test_gw_roles.py` | exit 0 |
+| C12 | Draft edit API: staffer PATCH of own pending draft (version++, audited), approve re-runs Cedar/role/connection on edited content; escalation: other's draft, after approve, stale version, unknown recipient / forbidden or unconnected platform then approve = DENY | `scripts/offline-pytest.sh -q Backend/tests/test_draft_edit.py` | exit 0 |
+| C13 | Agent `draft_revise` through guarded(): revises only its own session's pending draft in place (no duplicate), Cedar + role checked, ATLAS event | `scripts/offline-pytest.sh -q packages/identity-gateway/tests/test_gw_draft_revise.py` | exit 0 |
+| C14 | Assistant workflow: prompt says clarify, research, one draft with platform/recipient, revise on follow-up; scripted model revises instead of duplicating | `scripts/offline-pytest.sh -q agent/tests/test_draft_workflow.py` | exit 0 |
 
 ## Not Checkable By Command
 
@@ -324,6 +334,30 @@ below the form.
   `TOOL_ACTIONS` phrases plus "always held for review" for outbound tools, and let Huy edit them later.
   This does not block the build.
 
+### Design addendum: research → one draft → edit until satisfied (C12–C14)
+
+- Contracts: `DraftItem.version: int = 1`. New MCP tool `draft_revise(draft_id, subject?, body?, to?, text?, platform?)`
+  (not in the mcp_tools registry: it has no Agents-tab twin), Cedar action + starter permit `draft-revise`
+  (`when { context.delegatorActive }`), held in every role's ROLE_TOOLS (revising sends nothing; approval re-checks
+  everything). New Reason literal `"edited by staff"`.
+- Gateway `draft_revise` in guarded(): the draft must exist, be pending and have `draft.sid == claims.sid`; otherwise
+  DENY ("denied by policy"). Only the draft tool's editable fields are accepted (email_send: subject, body, to;
+  email_send_list: subject, body; social_post/social_reply: text, platform in {x, bluesky, linkedin, facebook});
+  `account`, `in_reply_to`, `tool` never change. Updates the same draft, version += 1, `edited` stays False (agent
+  revision), returns the new draft view. ALLOW event with ATLAS labels. No new draft is ever created.
+- Staffer API (Backend/app/routers/assistant.py): `GET /drafts` items add `version`, `recipient` (args.to or null),
+  `platform` (args.platform or null), `platforms`, `editable`. `PATCH /drafts/{id}` body (extra=forbid)
+  `{expectedVersion, subject?, body?, to?, text?, platform?}`, only keys in `editable` (else 422); 404 not yours;
+  409 not pending or `{"error":"stale_version","draft":…}`; 200 updated draft, version+1, `edited=True`, DecisionEvent
+  reason "edited by staff". Approve/reject accept optional `expectedVersion` (mismatch → 409). Approve runs
+  send_draft, which re-runs Cedar (recipientKnown, role, account), Lane I's connection check for the (possibly
+  edited) platform, then sends: an edit to an unknown recipient or an unconnected/forbidden platform comes back DENY
+  or needs_connection, never sent.
+- Assistant prompt: ask for missing details first; research with research tools (all through the gateway); produce
+  ONE draft naming the platform(s) (social) or recipient/subject (email); on "make it shorter"-style follow-ups call
+  `draft_revise` on that draft instead of drafting again; tell the staffer they can edit the card directly.
+- API agreed with Lane F (editable draft card) by message; Lane F owns the UI.
+
 ## Task Ledger
 
 Parallel groups (disjoint files):
@@ -352,6 +386,12 @@ Parallel groups (disjoint files):
 | 15 | setup.sh: new permits gated with role policies, `forbid-campaign-reply` always; header comment; tests | team-implementer | `Backend/infra/{setup.sh,README.md}`, `Backend/tests/test_setup_role_policies.py` | C11 (`test_setup_role_policies.py`) | 2 | todo |
 | 16 | Docs: ROLES.md table + guarantees rows for new tools and Agents-tab caps | team-implementer | `docs/ROLES.md` | `grep -c 'email_send_list' docs/ROLES.md` ≥ 1 and C1 still passes | 2, 9 | todo |
 | 17 | Full check C1–C11 + 375px/1280px screenshots | team-verifier | none | every C exits 0 | all | todo |
+| 18 | Failing tests: draft_revise contracts (C1 additions) + gateway (C13) | team-test-author | `packages/mandate-contracts/tests/test_capability_parity.py`, `packages/identity-gateway/tests/test_gw_draft_revise.py` | fail for the right reason | 17 | todo |
+| 19 | Failing tests: staffer draft edit API + escalation (C12) | team-test-author | `Backend/tests/test_draft_edit.py` | fail for the right reason | — | todo |
+| 20 | Failing tests: assistant draft workflow (C14) | team-test-author | `agent/tests/test_draft_workflow.py` | fail for the right reason | — | todo |
+| 21 | Contracts + gateway: version, draft_revise, permit, Reason | team-implementer | `packages/mandate-contracts/{src/**,policies/**,schemas/tools.json,ts/index.ts}`, `packages/identity-gateway/src/identity_gateway/{gateway.py,authz.py}` | C1, C13, C7 | 18 | todo |
+| 22 | Staffer API: GET fields, PATCH, expectedVersion | team-implementer | `Backend/app/routers/assistant.py` | C12, C6 | 19, 21 | todo |
+| 23 | Prompt + stub draft_revise | team-implementer | `agent/mandate_agent/runner.py`, `agent/stub_server.py` | C14, C8 | 20, 21 | todo |
 
 ## Rounds
 
