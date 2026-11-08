@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
+import re
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -225,15 +228,138 @@ def handle_social_reply(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# --- web.scrape SSRF guard ------------------------------------------------
+# The gateway fetches URLs chosen by the model, which may come from injected
+# content. Only public http(s) hosts are reachable: never the instance
+# metadata endpoint (169.254.169.254), loopback, or private networks.
+
+SCRAPE_SCHEMES = {"http", "https"}
+_BLOCKED_HOSTNAMES = {"localhost", "localhost.localdomain", "metadata", "metadata.google.internal"}
+SSRF_ATLAS_NOTE = (
+    "Blocked a fetch to a non-public address (server-side request forgery). "
+    "AML.T0053 tool misuse; AML.M0033 input validation."
+)
+
+
+class UrlNotAllowed(ValueError):
+    """web.scrape refused a URL (scheme, credentials or a non-public address)."""
+
+
+def _ip_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _literal_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """The address `host` names without DNS, including legacy IPv4 spellings
+    like 2130706433 or 0x7f.1 that the socket layer would accept."""
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    if re.fullmatch(r"[0-9a-fA-FxX.]+", host) and re.search(r"\d", host):
+        try:
+            return ipaddress.IPv4Address(socket.inet_aton(host))
+        except OSError:
+            return None
+    return None
+
+
+def check_scrape_url(url: str, resolve: bool = True) -> str:
+    """Return the URL if web.scrape may fetch it, else raise UrlNotAllowed.
+
+    resolve=False checks only what can be known offline (scheme, literal IPs,
+    localhost names); the live path resolves DNS and checks every address.
+    """
+    try:
+        parts = urllib.parse.urlsplit(url)
+        port = parts.port
+    except ValueError as exc:
+        raise UrlNotAllowed(f"malformed URL: {exc}") from exc
+    scheme = (parts.scheme or "").lower()
+    if scheme not in SCRAPE_SCHEMES:
+        raise UrlNotAllowed(f"scheme {scheme or '(none)'!r} is not allowed; use http or https")
+    if parts.username or parts.password:
+        raise UrlNotAllowed("credentials in URLs are not allowed")
+    host = (parts.hostname or "").rstrip(".").lower()
+    if not host:
+        raise UrlNotAllowed("URL has no host")
+    if host in _BLOCKED_HOSTNAMES or host.endswith(".localhost"):
+        raise UrlNotAllowed(f"{host} is a local address")
+    ip = _literal_ip(host)
+    if ip is not None:
+        if _ip_blocked(ip):
+            raise UrlNotAllowed(f"{ip} is not a public address")
+        return url
+    if resolve:
+        try:
+            infos = socket.getaddrinfo(
+                host, port or (443 if scheme == "https" else 80), proto=socket.IPPROTO_TCP
+            )
+        except (socket.gaierror, UnicodeError) as exc:
+            raise UrlNotAllowed(f"couldn't resolve {host}: {exc}") from exc
+        if not infos:
+            raise UrlNotAllowed(f"couldn't resolve {host}")
+        for info in infos:
+            addr = ipaddress.ip_address(info[4][0].split("%", 1)[0])
+            if _ip_blocked(addr):
+                raise UrlNotAllowed(f"{host} resolves to {addr}, which is not a public address")
+    return url
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-validate every redirect target, so a public page can't bounce the
+    fetch to the metadata endpoint or an internal host."""
+
+    max_redirections = 5
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        check_scrape_url(newurl, resolve=True)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _scrape_opener() -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(_SafeRedirectHandler)
+
+
+def _scrape_denied(url: str, reason: str, simulated: bool) -> dict[str, Any]:
+    return {
+        "status": "denied",
+        "error": "url_not_allowed",
+        "simulated": simulated,
+        "url": url,
+        "reason": reason,
+        "untrusted": True,
+        "atlas_note": SSRF_ATLAS_NOTE,
+    }
+
+
 def handle_web_scrape(args: dict[str, Any]) -> dict[str, Any]:
-    url = args.get("url") or "https://example.gov"
-    # Demo-safe: do not perform unrestricted live scraping by default.
+    url = str(args.get("url") or "https://example.gov").strip()
+    # Demo-safe: do not perform live scraping unless HOMEFRONT_LIVE_SCRAPE=1.
     # Return a stub that still models the untrusted-input risk surface.
     live = os.environ.get("HOMEFRONT_LIVE_SCRAPE") == "1"
+    try:
+        # Offline checks run in both modes so the policy is testable without network.
+        check_scrape_url(url, resolve=live)
+    except UrlNotAllowed as exc:
+        return _scrape_denied(url, str(exc), simulated=not live)
+
     if live:
         try:
+            # Residual risk: DNS can change between this check and the fetch
+            # (rebinding). Pinning the resolved IP would close that gap.
             req = urllib.request.Request(url, headers={"User-Agent": "HomeFront/0.1"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with _scrape_opener().open(req, timeout=10) as resp:
                 text = resp.read(8000).decode("utf-8", errors="replace")
             return {
                 "status": "ok",
@@ -242,6 +368,8 @@ def handle_web_scrape(args: dict[str, Any]) -> dict[str, Any]:
                 "untrusted": True,
                 "atlas_note": "Treat scraped content as AML.T0051.001 risk surface.",
             }
+        except UrlNotAllowed as exc:  # a redirect pointed somewhere non-public
+            return _scrape_denied(url, f"redirect blocked: {exc}", simulated=False)
         except (urllib.error.URLError, TimeoutError, ValueError) as exc:
             return {"status": "error", "url": url, "error": str(exc), "untrusted": True}
 
