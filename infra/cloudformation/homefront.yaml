@@ -132,6 +132,31 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  # Activity log: one item per gateway decision or agent change, queried
+  # newest-first per agent. Items expire after 90 days (expires_at).
+  AuditTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${Prefix}audit"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: agent_id
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: agent_id
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   # --- Access -----------------------------------------------------------
   # Attach to whatever runs the backend (an IAM user for local dev, or the
   # App Runner / ECS / Lambda role). Browsers never touch DynamoDB: this
@@ -151,11 +176,13 @@ Resources:
               - dynamodb:UpdateItem
               - dynamodb:DeleteItem
               - dynamodb:Scan
+              - dynamodb:Query
               - dynamodb:ConditionCheckItem
             Resource:
               - !GetAtt ProfilesTable.Arn
               - !GetAtt UsernamesTable.Arn
               - !GetAtt AgentsTable.Arn
+              - !GetAtt AuditTable.Arn
 
 Outputs:
   Region:

@@ -267,6 +267,48 @@
   min-width: 5.5rem;
 }
 
+.monitoring-console .agent-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
+.monitoring-console .agent-picker label {
+  color: var(--ink-soft);
+}
+
+.monitoring-console .agent-picker select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 0.4rem 0.5rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.monitoring-console .audit-title {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+}
+
+.monitoring-console .audit-links {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+}
+
+.monitoring-console .locked {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 .monitoring-console .yes {
   color: var(--ok);
   font-size: 0.8rem;

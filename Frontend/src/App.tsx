@@ -5,6 +5,9 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Account from "./pages/Account";
 import Monitoring from "./pages/Monitoring";
+import Agents from "./pages/Agents";
+import NewAgent from "./pages/NewAgent";
+import Activity from "./pages/Activity";
 import SocialPlatform from "./pages/SocialPlatform";
 
 export default function App() {
@@ -20,6 +23,30 @@ export default function App() {
             element={
               <RequireAuth>
                 <Account />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/agents"
+            element={
+              <RequireAuth>
+                <Agents />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/agents/new"
+            element={
+              <RequireAuth>
+                <NewAgent />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/activity"
+            element={
+              <RequireAuth>
+                <Activity />
               </RequireAuth>
             }
           />

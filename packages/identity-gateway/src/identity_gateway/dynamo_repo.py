@@ -67,6 +67,8 @@ def _conditional_failed(exc: ClientError) -> bool:
 
 
 class DynamoAgentRepository:
+    backend = "dynamodb"
+
     def __init__(self, table: Any) -> None:
         self._table = table
 

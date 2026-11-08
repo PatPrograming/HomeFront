@@ -9,6 +9,8 @@ Tables (names are <DYNAMODB_TABLE_PREFIX><name>):
 - profiles   pk id        one row per Cognito user (`sub`)
 - usernames  pk username  reservation row; makes profile usernames unique
 - agents     pk id        agent definitions (see identity_gateway.dynamo_repo)
+- audit      pk agent_id  activity log, sk "<ts>#<id>", 90-day TTL on expires_at
+                          (see identity_gateway.audit)
 """
 from __future__ import annotations
 
@@ -31,6 +33,16 @@ TABLES: dict[str, dict[str, Any]] = {
     "agents": {
         "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
         "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
+    },
+    "audit": {
+        "KeySchema": [
+            {"AttributeName": "agent_id", "KeyType": "HASH"},
+            {"AttributeName": "sk", "KeyType": "RANGE"},
+        ],
+        "AttributeDefinitions": [
+            {"AttributeName": "agent_id", "AttributeType": "S"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+        ],
     },
 }
 

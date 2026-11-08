@@ -81,6 +81,8 @@ class AuthResponse(BaseModel):
     agency: str
     tool_grants: list[str]
     token_version: int
+    # Trace id for this token's calls in the activity log.
+    session_id: str
     atlas: dict[str, Any]
 
 
@@ -148,6 +150,11 @@ class Actor:
 
     def can_access(self, agent: AgentRecord) -> bool:
         return agent.owner_id is None or agent.owner_id == self.user_id
+
+    @property
+    def label(self) -> str:
+        """How this caller appears in the activity log."""
+        return f"user:{self.user_id}" if self.user_id else "anonymous"
 
 
 ActorResolver = Callable[[str | None], Actor]
@@ -249,7 +256,7 @@ def _kind_denial(kind: str, tools: list[str]) -> dict[str, Any]:
     }
 
 
-def _enforce_kind_ceiling(agent: AgentRecord, tools: list[str]) -> None:
+def _enforce_kind_ceiling(agent: AgentRecord, tools: list[str], actor: Actor) -> None:
     """Raise 403 (and audit a deny) if any of `tools` is outside the agent's type."""
     blocked = disallowed_tools(agent.kind, tools)
     if not blocked:
@@ -267,6 +274,7 @@ def _enforce_kind_ceiling(agent: AgentRecord, tools: list[str]) -> None:
             "type": "grant_denied",
             "decision": "deny",
             "agent_id": agent.agent_id,
+            "actor": actor.label,
             "tool": blocked[0],
             "tools": blocked,
             "kind": agent.kind,
@@ -317,6 +325,17 @@ def create_agent(
         )
     except DuplicateAgentError:
         raise HTTPException(status_code=409, detail=f"Agent {body.agent_id} already exists")
+    store.append_audit(
+        {
+            "type": "agent_created",
+            "decision": "info",
+            "agent_id": agent.agent_id,
+            "actor": actor.label,
+            "kind": agent.kind,
+            "tool_grants": sorted(agent.tool_grants),
+            "detail": f"Created {agent.kind} agent \"{agent.name}\"",
+        }
+    )
     return _agent_view(agent)
 
 
@@ -338,6 +357,17 @@ def update_agent(
         agent = store.update_agent(agent_id, **changes)
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown agent")
+    if changes:
+        store.append_audit(
+            {
+                "type": "agent_updated",
+                "decision": "info",
+                "agent_id": agent_id,
+                "actor": actor.label,
+                "fields": sorted(changes),
+                "detail": f"Changed {', '.join(sorted(changes))}",
+            }
+        )
     return _agent_view(agent)
 
 
@@ -360,6 +390,8 @@ def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthRe
             "type": "authenticate",
             "decision": "allow",
             "agent_id": agent.agent_id,
+            "trace_id": tok.session_id,
+            "actor": actor.label,
             "tool": None,
             "atlas": atlas.model_dump(),
         }
@@ -370,6 +402,7 @@ def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthRe
         agency=agent.agency,
         tool_grants=sorted(agent.tool_grants),
         token_version=tok.token_version,
+        session_id=tok.session_id,
         atlas={
             "mitigation_ids": ["AML.M0028", "AML.M0024"],
             "narrative": "Agent authenticated; tool grants enforced per AML.M0028.",
@@ -391,7 +424,7 @@ def replace_grants(
     unknown = [t for t in body.tools if get_tool(t) is None]
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown tools: {unknown}")
-    _enforce_kind_ceiling(current, body.tools)
+    _enforce_kind_ceiling(current, body.tools, actor)
     agent = store.set_grants(agent_id, body.tools)
     atlas = enricher.annotate(
         AnnotateRequest(event=AnnotateEvent.revoke, agent_id=agent_id, reason="grants replaced")
@@ -399,6 +432,7 @@ def replace_grants(
     store.append_audit(
         {
             "type": "grants_replaced",
+            "actor": actor.label,
             "decision": "revoke",
             "agent_id": agent_id,
             "tool": None,
@@ -433,6 +467,7 @@ def revoke_tool(
     store.append_audit(
         {
             "type": "grant_revoked",
+            "actor": actor.label,
             "decision": "revoke",
             "agent_id": agent_id,
             "tool": tool_name,
@@ -460,7 +495,7 @@ def grant_tool(
     current = _accessible_agent(agent_id, actor)
     if get_tool(tool_name) is None:
         raise HTTPException(status_code=404, detail="Unknown tool")
-    _enforce_kind_ceiling(current, [tool_name])
+    _enforce_kind_ceiling(current, [tool_name], actor)
     agent = store.grant_tool(agent_id, tool_name)
     atlas = enricher.annotate(
         AnnotateRequest(
@@ -473,6 +508,7 @@ def grant_tool(
     store.append_audit(
         {
             "type": "grant_added",
+            "actor": actor.label,
             "decision": "allow",
             "agent_id": agent_id,
             "tool": tool_name,
@@ -530,6 +566,8 @@ def call_tool(
             {
                 "type": "tool_call",
                 "run_id": run_id,
+                "trace_id": run_id or getattr(tok, "session_id", None),
+                "actor": f"agent:{agent.agent_id}",
                 "decision": "deny",
                 "agent_id": agent.agent_id,
                 "tool": tool_name,
@@ -562,6 +600,8 @@ def call_tool(
             {
                 "type": "tool_call",
                 "run_id": run_id,
+                "trace_id": run_id or getattr(tok, "session_id", None),
+                "actor": f"agent:{agent.agent_id}",
                 "decision": "deny",
                 "agent_id": agent.agent_id,
                 "tool": tool_name,
@@ -591,6 +631,8 @@ def call_tool(
             {
                 "type": "tool_call",
                 "run_id": run_id,
+                "trace_id": run_id or getattr(tok, "session_id", None),
+                "actor": f"agent:{agent.agent_id}",
                 "decision": "deny",
                 "agent_id": agent.agent_id,
                 "tool": tool_name,
@@ -642,6 +684,8 @@ def call_tool(
         {
             "type": "tool_call",
             "run_id": run_id,
+            "trace_id": run_id or getattr(tok, "session_id", None),
+            "actor": f"agent:{agent.agent_id}",
             "decision": "allow",
             "agent_id": agent.agent_id,
             "tool": tool_name,
@@ -671,13 +715,16 @@ def configure_runner(new_runner: AgentRunner | None) -> None:
     runner = new_runner
 
 
-def _issue_run_token(agent_id: str) -> str:
-    tok = store.issue_token(agent_id, ttl_seconds=3600)
+def _issue_run_token(agent_id: str, run_id: str | None = None) -> str:
+    tok = store.issue_token(agent_id, ttl_seconds=3600, session_id=run_id)
     store.append_audit(
         {
             "type": "authenticate",
             "decision": "allow",
             "agent_id": agent_id,
+            "run_id": run_id,
+            "trace_id": tok.session_id,
+            "actor": f"agent:{agent_id}",
             "tool": None,
             "reason": "workload token issued for agent run",
         }
@@ -702,8 +749,36 @@ def start_run(
     if not agent.active:
         raise HTTPException(status_code=403, detail="Agent is inactive")
     run = runs.add(new_run(agent, body.task, runner.model_for(agent), actor.user_id))
-    background.add_task(runner.execute, run, agent)
+    store.append_audit(
+        {
+            "type": "run_started",
+            "decision": "info",
+            "agent_id": agent.agent_id,
+            "run_id": run.run_id,
+            "trace_id": run.run_id,
+            "actor": actor.label,
+            "detail": body.task[:200],
+        }
+    )
+    background.add_task(_execute_and_audit, runner, run, agent)
     return run.view()
+
+
+def _execute_and_audit(active_runner: AgentRunner, run: Any, agent: AgentRecord) -> None:
+    active_runner.execute(run, agent)
+    store.append_audit(
+        {
+            "type": "run_finished",
+            "decision": "info" if run.status == "completed" else "deny",
+            "agent_id": agent.agent_id,
+            "run_id": run.run_id,
+            "trace_id": run.run_id,
+            "actor": f"agent:{agent.agent_id}",
+            "status": run.status,
+            "model_turns": run.model_turns,
+            "detail": run.error or f"Finished in {run.model_turns} model turn(s)",
+        }
+    )
 
 
 @app.get("/agents/{agent_id}/runs")
@@ -722,11 +797,36 @@ def get_run(agent_id: str, run_id: str, actor: Actor = Depends(get_actor)) -> di
 
 
 @app.get("/audit")
-def audit(limit: int = 100, actor: Actor = Depends(get_actor)) -> list[dict[str, Any]]:
+def audit(
+    limit: int = 100,
+    agent_id: str | None = None,
+    trace_id: str | None = None,
+    decision: str | None = None,
+    type: str | None = None,
+    actor: Actor = Depends(get_actor),
+) -> list[dict[str, Any]]:
+    """Activity log for the caller's agents, newest first. Filter by agent,
+    trace (a run id or token session id), decision or event type."""
     visible = {a.agent_id for a in store.list_agents() if actor.can_access(a)}
+    if agent_id is not None:
+        visible &= {agent_id}
     limit = max(0, min(limit, 500))
-    events = [e for e in store.list_audit(limit=500) if e.get("agent_id") in visible]
-    return events[:limit]
+    return store.list_audit(
+        visible, limit, trace_id=trace_id, decision=decision, type_=type
+    )
+
+
+@app.get("/status")
+def storage_status() -> dict[str, Any]:
+    """Where agents and the activity log are actually being stored right now."""
+    return {
+        "agent_store": store.agent_backend,
+        "audit_store": store.audit_backend,
+        "audit_write_errors": store.audit_write_errors,
+        "last_audit_error": store.last_audit_error,
+        "warnings": list(store.storage_warnings),
+        "runner_configured": runner is not None,
+    }
 
 
 @app.get("/demo/matrix")

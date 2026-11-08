@@ -4,6 +4,8 @@ import { getIdToken } from "./AuthProvider";
 // In production set VITE_API_BASE to the deployed API origin + /api/v1.
 const BASE = import.meta.env.VITE_API_BASE || "/api/v1";
 
+const API_DOWN = "Can't reach the API server. Start it with ./scripts/run-gateway.sh (port 8080).";
+
 export class ApiError extends Error {
   constructor(status, data) {
     const detail = data?.detail;
@@ -27,13 +29,20 @@ async function request(path, { auth = true, method = "GET", body, headers } = {}
     if (token) finalHeaders.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: finalHeaders,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers: finalHeaders,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new ApiError(0, { detail: API_DOWN });
+  }
 
   const text = await res.text();
+  // The Vite dev proxy answers 5xx with an empty body when the API isn't running.
+  if (!res.ok && res.status >= 500 && !text) throw new ApiError(res.status, { detail: API_DOWN });
   let data = null;
   try {
     data = text ? JSON.parse(text) : null;
@@ -49,6 +58,7 @@ export const api = {
   home: () => request("/home", { auth: false }),
   health: () => request("/health", { auth: false }),
   tools: () => request("/tools", { auth: false }),
+  agentTypes: () => request("/agent-types", { auth: false }),
   matrix: () => request("/demo/matrix", { auth: false }),
 
   // signed-in user
@@ -57,7 +67,19 @@ export const api = {
 
   // agent management (needs login when AGENT_ADMIN_REQUIRES_LOGIN=true)
   agents: () => request("/agents"),
-  audit: (limit = 80) => request(`/audit?limit=${limit}`),
+  agent: (agentId) => request(`/agents/${encodeURIComponent(agentId)}`),
+  // Fields left out (instructions, tool_grants, max_steps) take the kind's template defaults.
+  createAgent: (body) => request("/agents", { method: "POST", body }),
+  replaceGrants: (agentId, tools) =>
+    request(`/agents/${encodeURIComponent(agentId)}/grants`, { method: "PUT", body: { tools } }),
+  // filters: { agent_id, trace_id, decision, type } (any subset)
+  audit: (limit = 80, filters = {}) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
+    return request(`/audit?${params}`);
+  },
+  // Where agents and the activity log are actually stored right now.
+  status: () => request("/status", { auth: false }),
   revokeTool: (agentId, tool) =>
     request(`/agents/${agentId}/grants/${encodeURIComponent(tool)}/revoke`, { method: "POST" }),
   grantTool: (agentId, tool) =>

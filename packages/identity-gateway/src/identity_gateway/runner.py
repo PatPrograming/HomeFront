@@ -148,7 +148,8 @@ class RunStore:
 
 
 ToolCaller = Callable[[str, str, dict[str, Any], str | None], dict[str, Any]]
-TokenIssuer = Callable[[str], str]
+# (agent_id, run_id) -> workload token; the run id becomes the token's trace id.
+TokenIssuer = Callable[[str, str], str]
 
 
 class AgentRunner:
@@ -197,7 +198,7 @@ class AgentRunner:
 
     def _loop(self, run: RunRecord, agent: AgentRecord) -> None:
         client = self._get_client()
-        token = self._issue_token(agent.agent_id)
+        token = self._issue_token(agent.agent_id, run.run_id)
 
         # Offer only the tools granted at the start of the run. A tool revoked
         # mid-run stays offered, and the gateway denies the call: that's the
