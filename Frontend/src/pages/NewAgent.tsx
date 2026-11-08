@@ -3,6 +3,19 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import { agentsApi as api } from "../lib/agentsApi";
 import { describeError, type Agent, type AgentKind, type AgentType, type Tool } from "../lib/agents";
+import {
+  badLinks,
+  buildBrief,
+  buildFirstTask,
+  EMAIL_ACTIONS,
+  MAIL_SYSTEMS,
+  MAIL_TYPES,
+  MAILBOXES,
+  SOCIAL_ACTIONS,
+  type BriefInput,
+} from "../lib/agentBrief";
+import PlatformIcon, { PLATFORMS as SOCIAL_PLATFORMS } from "../components/PlatformIcons/PlatformIcons";
+import { OptionGroup } from "./Emails";
 import "./Agents.css";
 
 // The agent types users pick from. `custom` and the generic `research` type
@@ -11,6 +24,8 @@ import "./Agents.css";
 const KINDS: AgentKind[] = ["email", "social", "market_research"];
 
 const KIND_ICON: Record<string, string> = { email: "✉", social: "◎", research: "⌕", market_research: "▤" };
+
+const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
 export default function NewAgent() {
   const navigate = useNavigate();
@@ -26,6 +41,19 @@ export default function NewAgent() {
   const [maxSteps, setMaxSteps] = useState(10);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The key inputs from the Social platform, Email and research flows, answered here instead.
+  const [platformIds, setPlatformIds] = useState<string[]>([]);
+  const [mailboxes, setMailboxes] = useState<string[]>([]);
+  const [mailSystems, setMailSystems] = useState<string[]>([]);
+  const [mailType, setMailType] = useState("");
+  const [perDay, setPerDay] = useState("");
+  const [action, setAction] = useState("");
+  const [restrictions, setRestrictions] = useState("");
+  const [message, setMessage] = useState("");
+  const [links, setLinks] = useState("");
+  // The agent exists but its first task didn't start: show where to go instead of re-creating it.
+  const [createdButNotRun, setCreatedButNotRun] = useState(false);
 
   const kind = params.get("kind") as AgentKind | null;
   const type = useMemo(() => types.find((t) => t.kind === kind), [types, kind]);
@@ -46,6 +74,8 @@ export default function NewAgent() {
     setGrants(type.default_tools);
     setMaxSteps(type.default_max_steps);
     setError(null);
+    setAction("");
+    setCreatedButNotRun(false);
   }, [type]);
 
   const choose = (k: AgentKind) => setParams({ kind: k }, { replace: true });
@@ -59,23 +89,58 @@ export default function NewAgent() {
   const toggleGrant = (tool: string) =>
     setGrants((cur) => (cur.includes(tool) ? cur.filter((t) => t !== tool) : [...cur, tool]));
 
+  const brief: BriefInput = {
+    platforms: SOCIAL_PLATFORMS.filter((p) => platformIds.includes(p.id)).map((p) => ({ id: p.id, name: p.name })),
+    mailboxes,
+    mailSystems,
+    mailType,
+    perDay,
+    action,
+    restrictions,
+    message,
+    links,
+  };
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!type) return;
+    const firstTask = buildFirstTask(type.kind, brief);
+    if (type.kind === "social" && firstTask && brief.platforms.length === 0) {
+      setError("Select at least one platform to post to, or clear the message.");
+      return;
+    }
+    if (type.kind === "social" && badLinks(links)) {
+      setError("One of the links isn't a valid web address.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
+    let agent: Agent;
     try {
-      const agent: Agent = await api.createAgent({
+      const standing = buildBrief(type.kind, brief);
+      agent = await api.createAgent({
         kind: type.kind,
         name: name.trim(),
         agency: agency.trim(),
-        instructions,
+        instructions: standing ? `${instructions.trim()}\n\n${standing}` : instructions,
         tool_grants: grants,
         max_steps: maxSteps,
       });
-      navigate(`/monitoring?agent=${encodeURIComponent(agent.agent_id)}`);
     } catch (err) {
       setError(describeError(err, types));
+      setSubmitting(false);
+      return;
+    }
+    if (!firstTask) {
+      navigate(`/monitoring?agent=${encodeURIComponent(agent.agent_id)}`);
+      return;
+    }
+    try {
+      await api.startRun(agent.agent_id, firstTask);
+      navigate("/agents");
+    } catch (err) {
+      setError(`The agent was created, but its first task didn't start: ${describeError(err)}`);
+      setCreatedButNotRun(true);
       setSubmitting(false);
     }
   }
@@ -95,6 +160,22 @@ export default function NewAgent() {
           </p>
 
           {loadError && <p className="alert alert-error">Couldn't load agent types: {loadError}</p>}
+
+          <div className="start-comm" aria-label="Start a communication">
+            <p className="field-label">Start a communication</p>
+            <p className="field-hint">
+              Share the essentials and let an agent do the outreach. A social media agent is created for you if
+              you don't have one.
+            </p>
+            <div className="form-actions">
+              <Link to="/social-platform" className="btn btn-primary">
+                Social platform
+              </Link>
+              <Link to="/emails" className="btn btn-outline">
+                Email
+              </Link>
+            </div>
+          </div>
 
           <div className="type-grid" role="radiogroup" aria-label="Agent type">
             {KINDS.map((k) => {
@@ -155,7 +236,8 @@ export default function NewAgent() {
               <label className="field">
                 <span className="field-label">Instructions</span>
                 <span className="field-hint">
-                  The agent's purpose and rules. Pre-filled from the {type.label.toLowerCase()} template.
+                  The agent's purpose and rules. Pre-filled from the {type.label.toLowerCase()} template. Your
+                  answers below are added to it when you create the agent.
                 </span>
                 <textarea
                   className="textarea"
@@ -174,6 +256,139 @@ export default function NewAgent() {
                   </button>
                 )}
               </label>
+
+              {type.kind === "social" && (
+                <fieldset className="field brief">
+                  <legend className="field-label">Social media brief</legend>
+                  <span className="field-hint">
+                    Where this agency posts and what the agent may do. Added to its instructions.
+                  </span>
+                  <div className="brief-platforms" role="group" aria-label="Platforms">
+                    {SOCIAL_PLATFORMS.map((p) => (
+                      <label key={p.id} className={`brief-platform${platformIds.includes(p.id) ? " is-on" : ""}`}>
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={platformIds.includes(p.id)}
+                          onChange={() => setPlatformIds((c) => toggle(c, p.id))}
+                        />
+                        <PlatformIcon name={p.id} size={18} />
+                        {p.name}
+                      </label>
+                    ))}
+                  </div>
+                  <OptionGroup
+                    legend="What may the agent do?"
+                    options={SOCIAL_ACTIONS}
+                    type="radio"
+                    name="social-action"
+                    isOn={(o) => action === o}
+                    onChange={setAction}
+                  />
+                </fieldset>
+              )}
+
+              {type.kind === "email" && (
+                <fieldset className="field brief">
+                  <legend className="field-label">Email brief</legend>
+                  <span className="field-hint">Which mail the agent handles. Added to its instructions.</span>
+                  <OptionGroup
+                    legend="Which mailboxes should it handle?"
+                    options={MAILBOXES}
+                    type="checkbox"
+                    name="mailboxes"
+                    isOn={(o) => mailboxes.includes(o)}
+                    onChange={(o) => setMailboxes((c) => toggle(c, o))}
+                  />
+                  <OptionGroup
+                    legend="Which mailing system do you use?"
+                    options={MAIL_SYSTEMS}
+                    type="checkbox"
+                    name="mail-systems"
+                    isOn={(o) => mailSystems.includes(o)}
+                    onChange={(o) => setMailSystems((c) => toggle(c, o))}
+                  />
+                  <OptionGroup
+                    legend="What mail type is most common?"
+                    options={MAIL_TYPES}
+                    type="radio"
+                    name="mail-type"
+                    isOn={(o) => mailType === o}
+                    onChange={setMailType}
+                  />
+                  <label className="field steps-field">
+                    <span className="field-label">Emails per day</span>
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      value={perDay}
+                      placeholder="e.g. 250"
+                      onChange={(e) => setPerDay(e.target.value.replace(/\D/g, ""))}
+                    />
+                  </label>
+                  <OptionGroup
+                    legend="May it draft, send, prioritize, or only summarize?"
+                    options={EMAIL_ACTIONS}
+                    type="radio"
+                    name="email-action"
+                    isOn={(o) => action === o}
+                    onChange={setAction}
+                  />
+                </fieldset>
+              )}
+
+              <label className="field">
+                <span className="field-label">Restrictions (optional)</span>
+                <span className="field-hint">
+                  Topics the agent must never touch, or other rules. Added to its instructions.
+                </span>
+                <textarea
+                  className="textarea"
+                  rows={3}
+                  value={restrictions}
+                  onChange={(e) => setRestrictions(e.target.value)}
+                  placeholder="e.g. Never comment on pending litigation or give legal advice."
+                />
+              </label>
+
+              <fieldset className="field brief">
+                <legend className="field-label">
+                  {type.kind === "social"
+                    ? "First post (optional)"
+                    : type.kind === "email"
+                      ? "First email (optional)"
+                      : "First research request (optional)"}
+                </legend>
+                <span className="field-hint">
+                  {type.kind === "market_research"
+                    ? "Describe what to research. The agent starts as soon as it's created and saves a report."
+                    : "The facts that must reach the public. The agent starts as soon as it's created. Nothing is sent or posted until you approve it."}
+                </span>
+                <textarea
+                  className="textarea"
+                  rows={4}
+                  aria-label="First task"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder={
+                    type.kind === "market_research"
+                      ? "e.g. Find small-business vendors that have won cloud migration contracts under $5M."
+                      : "e.g. The CDC confirms a new outbreak reaching 14 states…"
+                  }
+                />
+                {type.kind === "social" && (
+                  <label className="field">
+                    <span className="field-label">Relevant links (one per line)</span>
+                    <textarea
+                      className="textarea"
+                      rows={2}
+                      value={links}
+                      onChange={(e) => setLinks(e.target.value)}
+                      placeholder="https://www.agency.gov/update"
+                    />
+                  </label>
+                )}
+              </fieldset>
 
               <fieldset className="field tool-picker">
                 <legend className="field-label">Tools</legend>
@@ -218,9 +433,19 @@ export default function NewAgent() {
               )}
 
               <div className="form-actions">
-                <button className="btn btn-primary" type="submit" disabled={submitting}>
-                  {submitting ? "Creating…" : `Create ${type.label.toLowerCase()} agent`}
-                </button>
+                {createdButNotRun ? (
+                  <Link to="/agents" className="btn btn-primary">
+                    Go to My agents
+                  </Link>
+                ) : (
+                  <button className="btn btn-primary" type="submit" disabled={submitting}>
+                    {submitting
+                      ? "Creating…"
+                      : message.trim()
+                        ? `Create agent and start`
+                        : `Create ${type.label.toLowerCase()} agent`}
+                  </button>
+                )}
                 <Link to="/agents" className="btn btn-outline">
                   Cancel
                 </Link>
