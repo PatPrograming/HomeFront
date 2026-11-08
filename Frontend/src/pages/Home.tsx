@@ -2,10 +2,8 @@ import Layout from "../components/Layout";
 import Hero from "../components/Hero/Hero";
 import "./Home.css";
 
-const DEFAULTS = {
-  mission: ["Agentic Outreach for", "Federal Agencies."],
-  buttons: ["Social Platform", "button2"],
-};
+// "Agentic Outreach / for Federal Agencies." — second line is accented in the hero.
+const MISSION = ["Agentic Outreach for", "Federal Agencies."];
 
 const STEPS = [
   {
