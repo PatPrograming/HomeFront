@@ -1,13 +1,18 @@
-import type { Draft } from "../lib/api";
+import type { ChatMessage, Draft } from "../lib/api";
 
-// The drafts one turn of the chat produced: created after the previous message and up to the reply.
-export function draftsForTurn(drafts: Draft[], fromTs: string, toTs: string): Draft[] {
-  const from = Date.parse(fromTs);
-  const to = Date.parse(toTs);
-  return drafts.filter((d) => {
+// Which reply each draft belongs under: the first assistant reply at or after the draft was made. A draft newer
+// than every reply (the server's clock a little ahead of the chat's) goes under the latest reply, so no draft is
+// left without a card. With no reply yet, none is placed; the "N waiting" badge still opens them.
+export function draftsByReply(messages: ChatMessage[], drafts: Draft[]): Map<string, Draft[]> {
+  const replies = messages.filter((m) => m.role === "assistant");
+  const placed = new Map<string, Draft[]>();
+  if (!replies.length) return placed;
+  for (const d of drafts) {
     const t = Date.parse(d.createdAt);
-    return t > from && t <= to;
-  });
+    const reply = replies.find((m) => Date.parse(m.ts) >= t) ?? replies[replies.length - 1];
+    placed.set(reply.id, [...(placed.get(reply.id) ?? []), d]);
+  }
+  return placed;
 }
 
 const what = (d: Draft) => (d.tool === "email_send" ? `Reply to ${d.args.to}` : `Post on @${d.args.account}`);

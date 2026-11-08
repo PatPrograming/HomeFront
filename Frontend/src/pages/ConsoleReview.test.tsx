@@ -64,7 +64,8 @@ describe("Console: review from the chat", () => {
     expect(html).toContain('role="dialog"');
     expect(html).toContain("Body d2");
     expect(html).not.toContain("Body d1");
-    expect(html).toMatch(/<input[^>]*readOnly[^>]*value="rosa@example.com"|<input[^>]*value="rosa@example.com"[^>]*readOnly/i);
+    const recipient = html.match(/<input[^>]*value="rosa@example\.com"[^>]*>/)?.[0] ?? "";
+    expect(recipient).toMatch(/\sreadonly=""/); // React's real attribute, not aria-readonly or a class
   });
 
   it("says it can't reach the server instead of the browser's 'Failed to fetch'", () => {

@@ -5,7 +5,7 @@ import { turnEvents } from "../lib/agentActivity";
 import { connectionMessage } from "../lib/errors";
 import type { Chat } from "../lib/useChat";
 import AgentActivity from "./AgentActivity";
-import ReviewCards, { draftsForTurn } from "./ReviewCards";
+import ReviewCards, { draftsByReply } from "./ReviewCards";
 
 const SUGGESTIONS = [
   "Check my email, answer what you can and show me what I need to review.",
@@ -138,6 +138,8 @@ export default function ChatPanel({
     }
   }
 
+  const placed = review ? draftsByReply(chat.messages, review.drafts) : new Map<string, Draft[]>();
+
   const disclosure = (fromTs: string, toTs: string | null, working: boolean) =>
     card && (
       <AgentActivity
@@ -187,9 +189,7 @@ export default function ChatPanel({
                   <span className="sr-only">Assistant: </span>
                   {i > 0 && disclosure(chat.messages[i - 1].ts, m.ts, false)}
                   <p className="bubble-text">{m.text}</p>
-                  {review && i > 0 && draftsForTurn(review.drafts, chat.messages[i - 1].ts, m.ts).length > 0 && (
-                    <ReviewCards drafts={draftsForTurn(review.drafts, chat.messages[i - 1].ts, m.ts)} onOpen={review.onOpen} />
-                  )}
+                  {placed.get(m.id) && <ReviewCards drafts={placed.get(m.id)!} onOpen={review!.onOpen} />}
                   <div className="msg-foot">
                     <time className="msg-time" dateTime={m.ts}>
                       {time(m.ts)}

@@ -1,8 +1,8 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { Draft } from "../lib/api";
-import ReviewCards, { draftsForTurn } from "./ReviewCards";
+import type { ChatMessage, Draft } from "../lib/api";
+import ReviewCards, { draftsByReply } from "./ReviewCards";
 
 const draft = (id: string, createdAt: string, to: string): Draft => ({
   id, status: "pending", tool: "email_send", category: "case_status", categoryLabel: "Case status updates",
@@ -18,8 +18,18 @@ function buttons(node: ReactNode): ReactElement<{ onClick: () => void; "aria-lab
 }
 
 describe("ReviewCards: review from the chat", () => {
-  it("takes the drafts a turn produced", () => {
-    expect(draftsForTurn(drafts, "2026-11-08T08:00:00Z", "2026-11-08T08:00:05Z").map((d) => d.id)).toEqual(["d1"]);
+  it("puts each draft under the first reply at or after it, and a late one under the latest reply", () => {
+    const replies: ChatMessage[] = [
+      { id: "u1", ts: "2026-11-08T08:00:00Z", role: "user", text: "a" },
+      { id: "a1", ts: "2026-11-08T08:00:05Z", role: "assistant", text: "b" },
+      { id: "u2", ts: "2026-11-08T08:00:06Z", role: "user", text: "c" },
+      { id: "a2", ts: "2026-11-08T08:00:08Z", role: "assistant", text: "d" },
+    ];
+    const late = draft("d3", "2026-11-08T08:00:30Z", "late@example.com"); // a server clock ahead of the chat's
+    const placed = draftsByReply(replies, [...drafts, late]);
+    expect(placed.get("a1")?.map((d) => d.id)).toEqual(["d1"]);
+    expect(placed.get("a2")?.map((d) => d.id)).toEqual(["d2", "d3"]);
+    expect(draftsByReply([], drafts).size).toBe(0); // no reply yet: the badge still reaches them
   });
 
   it("renders one card per draft, saying who it is for and that it needs review", () => {

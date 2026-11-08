@@ -65,3 +65,14 @@ with the recipient locked; the waiting count is always visible; connection failu
 - Browser (mock, Maya): 1280 px cards + panel, Approve marks the card Sent and focus returns to the composer,
   Reject marks Rejected, badge opens the next, Stop then a late reply shows; 1024 px side panel; 375 px full-screen
   sheet, Esc closes; scrollWidth equals the viewport at all three.
+- Trial (lite) on 9c74831: FALSIFIED on test proof only. The recipient read-only test's `/i` regex also matched
+  `aria-readonly` / the `is-readonly` class, so removing the real `readOnly` attribute passed (runtime was correct).
+  Risk noted: draft cards placed by a strict turn time window would vanish if the server's draft clock ran ahead.
+
+### Round 2 — 2026-11-08
+- Built: exact, case-sensitive `readonly=""` check (React renders lowercase) in ReviewPanel and ConsoleReview
+  tests; removing `readOnly` by hand now fails 3 tests (file restored). Cards placed by `draftsByReply` (first reply
+  at or after the draft, else the latest reply), with a test for a late draft.
+- Outcome checks: 4/4 (round-2.json); 90 tests. Browser: tapping a card at 375 px opens that draft as a
+  full-screen sheet (375×812), drawer closed, no sideways scroll.
+- Decision: DONE. Both trial findings fixed with killing tests; no second trial run (cost), so no trial ACCEPT.
