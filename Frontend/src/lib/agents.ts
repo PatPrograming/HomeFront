@@ -19,6 +19,8 @@ export interface Agent {
   email_settings?: EmailSettings;
   // web.scrape domain allowlist ("*.gov", "sam.gov"); empty = any public host.
   scrape_domains?: string[];
+  // Social media agents: the platforms they're for (x, bluesky, ...), shown on the card.
+  platforms?: string[];
   token_version: number;
   active: boolean;
 }

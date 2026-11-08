@@ -233,3 +233,33 @@ def test_reply_queues_and_hands_off():
     ).json()
     done = client.post(f"/api/v1/approvals/{queued['approval_id']}/approve", json={}).json()
     assert _query(done["result"]["share_url"])["in_reply_to"] == "42"
+
+
+# --- agent platforms (icons on the agent card) -------------------------------------------
+
+
+def _create(**body):
+    return client.post(
+        "/api/v1/agents",
+        json={"agent_id": f"agent-plat-{uuid.uuid4().hex[:8]}", "name": "S", "agency": "City", **body},
+    )
+
+
+def test_social_agent_keeps_its_platforms_normalized_and_deduped():
+    r = _create(kind="social", platforms=["Twitter", "x", "bluesky"])
+    assert r.status_code == 201, r.text
+    assert r.json()["platforms"] == ["x", "bluesky"]
+    assert client.get(f"/api/v1/agents/{r.json()['agent_id']}").json()["platforms"] == ["x", "bluesky"]
+
+
+def test_agents_default_to_no_platforms():
+    assert _create(kind="email").json()["platforms"] == []
+
+
+@pytest.mark.parametrize("platforms", [["instagram"], ["tiktok"]])
+def test_unsupported_agent_platform_is_rejected(platforms):
+    assert _create(kind="social", platforms=platforms).status_code == 422
+
+
+def test_only_social_agents_have_platforms():
+    assert _create(kind="email", platforms=["x"]).status_code == 422

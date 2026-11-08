@@ -1,11 +1,77 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import { agentsApi as api } from "../lib/agentsApi";
 import { describeError, kindLabel, sendsEmail, type Agent, type AgentType } from "../lib/agents";
 import EmailSetup, { NoEmailNote } from "./EmailSetup";
 import RunTask from "./RunTask";
+import PlatformIcon, { PLATFORMS } from "../components/PlatformIcons/PlatformIcons";
 import "./Agents.css";
+
+// The social platforms a social media agent is for, in the card's top right corner.
+function PlatformBadges({ platforms }: { platforms?: string[] }) {
+  const shown = PLATFORMS.filter((p) => platforms?.includes(p.id));
+  if (shown.length === 0) return null;
+  return (
+    <ul className="platform-badges" aria-label={`Platforms: ${shown.map((p) => p.name).join(", ")}`}>
+      {shown.map((p) => (
+        <li key={p.id} title={p.name} style={{ background: p.color, "--glyph-cut": p.color } as CSSProperties}>
+          <PlatformIcon name={p.id} size={14} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Two clicks: Delete, then Confirm. Shared demo agents have no owner and can't be deleted.
+function DeleteAgent({ agent, onDeleted }: { agent: Agent; onDeleted: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (agent.owner_id === null) return null;
+
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deleteAgent(agent.agent_id);
+      onDeleted();
+    } catch (e) {
+      setError(describeError(e));
+      setBusy(false);
+    }
+  }
+
+  if (!confirming) {
+    return (
+      <button type="button" className="btn btn-ghost danger" onClick={() => setConfirming(true)}>
+        Delete agent
+      </button>
+    );
+  }
+  return (
+    <div className="delete-confirm" role="alertdialog" aria-label={`Delete ${agent.name}`}>
+      <p>
+        Delete <strong>{agent.name}</strong>? Its access stops at once and any drafts waiting for approval are
+        rejected. This can't be undone.
+      </p>
+      {error && (
+        <p className="alert alert-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="form-actions">
+        <button type="button" className="btn btn-primary danger-solid" disabled={busy} onClick={remove}>
+          {busy ? "Deleting…" : "Yes, delete"}
+        </button>
+        <button type="button" className="btn btn-outline" disabled={busy} onClick={() => setConfirming(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Agents() {
   const [agents, setAgents] = useState<Agent[] | null>(null);
@@ -64,6 +130,7 @@ export default function Agents() {
                     {a.owner_id === null && <span className="demo-badge">Shared demo</span>}
                     {!a.active && <span className="demo-badge">Inactive</span>}
                   </div>
+                  <PlatformBadges platforms={a.platforms} />
                   <h2>{a.name}</h2>
                   <p className="muted">{a.agency}</p>
                   <div className="type-tools">
@@ -91,6 +158,10 @@ export default function Agents() {
                   >
                     Open in Monitoring
                   </Link>
+                  <DeleteAgent
+                    agent={a}
+                    onDeleted={() => setAgents((list) => list && list.filter((x) => x.agent_id !== a.agent_id))}
+                  />
                 </li>
               ))}
             </ul>
