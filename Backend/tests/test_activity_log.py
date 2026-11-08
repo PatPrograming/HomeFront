@@ -61,7 +61,9 @@ def test_agent_creation_is_logged_with_the_user():
     [event] = _events(alice, agent_id=agent["agent_id"], type="agent_created")
     assert event["actor"] == f"user:{ALICE}"
     assert event["kind"] == "research"
-    assert event["tool_grants"] == ["datagov.search", "web.scrape"]
+    from identity_gateway.agent_types import AGENT_TYPES
+
+    assert event["tool_grants"] == sorted(AGENT_TYPES["research"].default_tools)
 
 
 def test_agent_update_and_grant_changes_name_the_actor():

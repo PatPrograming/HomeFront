@@ -23,6 +23,7 @@ from fastapi import HTTPException
 from mcp_tools.registry import ToolDefinition, get_tool
 
 from .store import AgentRecord
+from .topic_router import select_research_tools, topic_routing_note
 
 log = logging.getLogger(__name__)
 
@@ -89,11 +90,29 @@ def _mailing_list_note(agent: AgentRecord) -> str:
     ) + sender_note
 
 
-def system_prompt(agent: AgentRecord) -> str:
+def _policy_notes(agent: AgentRecord) -> str:
+    tools = [t for t in (get_tool(n) for n in sorted(agent.tool_grants)) if t is not None]
+    notes = ""
+    if "web.scrape" in agent.tool_grants and agent.scrape_domains:
+        notes += (
+            f"\n- web_scrape can only fetch these domains: {', '.join(agent.scrape_domains)} "
+            "(`*.` covers the domain and its subdomains). Other URLs are refused."
+        )
+    if any(t.outbound for t in tools) and any(t.untrusted_input and not t.outbound for t in tools):
+        notes += (
+            "\n- Once you read untrusted content in a run (web pages, external records), "
+            "sending and posting tools are disabled for the rest of that run. Send or queue "
+            "anything you were asked to send before you research."
+        )
+    return notes
+
+
+def system_prompt(agent: AgentRecord, *, routing_note: str = "") -> str:
     purpose = agent.instructions.strip() or "Complete the task you are given."
+    route = f"\n\n{routing_note}" if routing_note else ""
     return (
         f'You are "{agent.name}", an AI agent working for {agent.agency}.\n\n'
-        f"{purpose}\n\n"
+        f"{purpose}{route}\n\n"
         "How you work:\n"
         "- You act only through the tools provided. An authorization gateway checks "
         "every tool call against your current permissions, and an operator can revoke "
@@ -105,7 +124,7 @@ def system_prompt(agent: AgentRecord) -> str:
         "- Some tools (sending email, posting, replying) need a person's approval. They "
         "return status pending_approval: the action is queued, not done. Don't call them "
         "again for the same content, and say in your summary what is awaiting approval."
-        f"{_mailing_list_note(agent)}\n"
+        f"{_mailing_list_note(agent)}{_policy_notes(agent)}\n"
         "- When you're done, reply with a short summary of what you did and the result."
     )
 
@@ -139,6 +158,11 @@ class RunRecord:
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
+    # research_then_email: email agent run that first delegates to a research agent.
+    pipeline: str | None = None
+    research_run_id: str | None = None
+    research_agent_id: str | None = None
+    research_output: str | None = None
 
     def view(self) -> dict[str, Any]:
         return {
@@ -156,6 +180,10 @@ class RunRecord:
             "created_at": self.created_at,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
+            "pipeline": self.pipeline,
+            "research_run_id": self.research_run_id,
+            "research_agent_id": self.research_agent_id,
+            "research_output": self.research_output,
         }
 
 
@@ -237,18 +265,32 @@ class AgentRunner:
         client = self._get_client()
         token = self._issue_token(agent.agent_id, run.run_id)
 
-        # Offer only the tools granted at the start of the run. A tool revoked
+        # Offer only tools granted at the start of the run. A tool revoked
         # mid-run stays offered, and the gateway denies the call: that's the
         # point of the demo. Tools granted mid-run show up on the next run.
+        # Research agents: further filter grants by task topic so the model
+        # sees Census for population, FDA for drugs, etc.
+        tool_names = sorted(agent.tool_grants)
+        routing_note = ""
+        if agent.kind == "research":
+            tool_names, topics = select_research_tools(run.task, agent.tool_grants)
+            routing_note = topic_routing_note(topics, tool_names)
+            run.steps.append(
+                {
+                    "type": "topic_route",
+                    "topics": topics,
+                    "tools": tool_names,
+                }
+            )
         offered = {
             api_tool_name(t.name): t
-            for t in (get_tool(n) for n in sorted(agent.tool_grants))
+            for t in (get_tool(n) for n in tool_names)
             if t is not None
         }
         params: dict[str, Any] = {
             "model": run.model,
             "max_tokens": self.config.max_tokens,
-            "system": system_prompt(agent),
+            "system": system_prompt(agent, routing_note=routing_note),
             "output_config": {"effort": self.config.effort},
         }
         if offered:

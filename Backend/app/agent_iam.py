@@ -105,6 +105,7 @@ def use_dynamodb_stores(store) -> None:
     from identity_gateway.approvals import DynamoApprovalRepository
     from identity_gateway.audit import DynamoAuditRepository
     from identity_gateway.dynamo_repo import DynamoAgentRepository, seed_demo_agent
+    from identity_gateway.reports import DynamoReportRepository
 
     from app.core.dynamodb import table, table_name
 
@@ -137,6 +138,15 @@ def use_dynamodb_stores(store) -> None:
         store.use_approval_repository(DynamoApprovalRepository(approvals_table))
     except (ClientError, BotoCoreError) as exc:
         msg = f"Approvals are in memory only: {table_name('approvals')} unavailable ({_aws_reason(exc)})"
+        store.storage_warnings.append(msg)
+        log.warning("%s; full error: %s. %s", msg, exc, hint)
+
+    try:
+        reports_table = table("reports")
+        reports_table.query(KeyConditionExpression=Key("agent_id").eq("_probe"), Limit=1)
+        store.use_report_repository(DynamoReportRepository(reports_table))
+    except (ClientError, BotoCoreError) as exc:
+        msg = f"Reports are in memory only: {table_name('reports')} unavailable ({_aws_reason(exc)})"
         store.storage_warnings.append(msg)
         log.warning("%s; full error: %s. %s", msg, exc, hint)
 

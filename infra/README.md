@@ -7,12 +7,17 @@
 
 See `Backend/infra/README.md` for those.
 
+**The stack's Cognito pool is retired.** The app uses pool `us-east-1_MLfQpodxG` only. The 5 users of the stack's pool
+`homefront-users` (`us-east-1_x2DFWiwCM`) were migrated to that pool on 2026-11-08, in the `staffer` group, each with a
+`STAFFER` item in the `mandate` table; they set a new password at first sign-in. The old pool is left in place, unused.
+The stack's `homefront-*` DynamoDB tables are still used: the console's Agents, Approvals and Activity tabs read them.
+
 ## What is here
 
 | File | What it does |
 |---|---|
 | `cloudformation/homefront.yaml` | A CloudFormation stack `homefront`: a second Cognito pool `homefront-users` with one SRP app client, the tables `homefront-profiles`, `homefront-usernames`, `homefront-agents`, and an IAM policy for them |
-| `deploy.sh` | Deploys that stack and prints `.env` values for it |
+| `deploy.sh` | Deploys that stack and prints `.env` values (its Cognito lines point at the mandate pool) |
 | `../scripts/create_tables.py`, `../scripts/run-dynamodb-local.sh` | Create the same three tables in DynamoDB Local (Docker) |
 
 `Backend/app/core/dynamodb.py` holds the table definitions, and `Backend/tests/test_infra.py` checks the template matches them.

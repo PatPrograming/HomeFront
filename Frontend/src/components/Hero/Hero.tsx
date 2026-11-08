@@ -35,8 +35,7 @@ export default function Hero({ mission, buttons }: HeroProps) {
             <span className="line-2">{mission[1]}</span>
           </h1>
           <p className="hero-lede">
-            Give agents the essentials: what happened, which links matter, and any supporting
-            visuals. HomeFront handles the outreach across the channels your agency already uses.
+            Federal departments are outdated and inefficient. HomeFront handles the outreach across the channels your agency already uses.
           </p>
           <div className="hero-buttons">
             <div className="reach" ref={menuRef}>

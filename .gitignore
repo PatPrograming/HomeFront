@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+Backend/infra/*.local.txt
 *.pem
 *.key
 

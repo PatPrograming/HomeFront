@@ -1,7 +1,7 @@
 // Shared shapes and helpers for agents, agent types and tools (see GET /agent-types).
 import { ApiError } from "./api";
 
-export type AgentKind = "email" | "social" | "research" | "custom";
+export type AgentKind = "email" | "social" | "research" | "market_research" | "custom";
 
 export interface Agent {
   agent_id: string;
@@ -17,6 +17,8 @@ export interface Agent {
   recipients: string[];
   // Missing on APIs older than email settings; read via emailSettingsOf().
   email_settings?: EmailSettings;
+  // web.scrape domain allowlist ("*.gov", "sam.gov"); empty = any public host.
+  scrape_domains?: string[];
   token_version: number;
   active: boolean;
 }
@@ -51,6 +53,7 @@ export interface AgentType {
   // null = no ceiling (any registered tool).
   allowed_tools: string[] | null;
   default_max_steps: number;
+  default_scrape_domains?: string[];
 }
 
 export interface Tool {
@@ -70,6 +73,19 @@ const TOOL_ACTIONS: Record<string, string> = {
   "social.reply": "reply to comments",
   "web.scrape": "read web pages",
   "datagov.search": "search data.gov",
+  "usaspending.search": "search past federal awards",
+  "sam.entity_lookup": "look up SAM.gov vendors",
+  "report.save": "save reports",
+  "census.query": "query Census data",
+  "openfda.search": "search openFDA",
+  "eia.query": "query EIA energy data",
+  "nasa.search": "search NASA imagery",
+  "noaa.climate": "query NOAA climate data",
+  "nps.parks": "search National Parks",
+  "bls.series": "fetch BLS series",
+  "fec.search": "search FEC candidates",
+  "epa.search": "search EPA facilities",
+  "fcc.search": "search FCC licenses",
 };
 
 export const toolAction = (tool: string) => TOOL_ACTIONS[tool] || `use ${tool}`;
@@ -291,7 +307,7 @@ export type RunStatus = "queued" | "running" | "completed" | "max_steps" | "revo
 export const TERMINAL_RUN_STATUSES: RunStatus[] = ["completed", "max_steps", "revoked", "refused", "failed"];
 
 export interface RunStep {
-  type: "tool_call" | "model_fallback" | string;
+  type: "tool_call" | "model_fallback" | "pipeline" | string;
   tool?: string;
   input?: Record<string, unknown>;
   decision?: "allow" | "deny" | "pending_approval" | string;
@@ -301,6 +317,24 @@ export interface RunStep {
   approval_id?: string;
   from?: string;
   to?: string;
+  stage?: string;
+  agent_id?: string;
+  pipeline_agent?: string;
+  pipeline_stage?: string;
+  research_run_id?: string;
+  research_status?: string;
+}
+
+// A report saved with report.save (GET /agents/{id}/reports). body is Markdown.
+export interface Report {
+  report_id: string;
+  agent_id: string;
+  title: string;
+  body: string;
+  // Run id for agent runs, or the workload-token session for manual calls.
+  trace_id: string | null;
+  run_id: string | null;
+  created_at: number;
 }
 
 export interface Run {
@@ -317,4 +351,8 @@ export interface Run {
   created_at: number;
   started_at: number | null;
   finished_at: number | null;
+  pipeline?: string | null;
+  research_run_id?: string | null;
+  research_agent_id?: string | null;
+  research_output?: string | null;
 }

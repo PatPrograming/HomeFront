@@ -408,23 +408,18 @@ export default function Monitoring() {
             <section className="panel actions">
               <h2>Agent task (MCP calls)</h2>
               <p className="hint">
-                Demo path: scrape → datagov → email (held for <Link to="/approvals">approval</Link>,{" "}
-                <code>AML.M0029</code>) → revoke <code>email.send</code> → retry (blocked as <code>AML.T0053</code>).
+                Demo path: datagov → email (held for <Link to="/approvals">approval</Link>,{" "}
+                <code>AML.M0029</code>) → scrape (untrusted page) → email again with 2 (blocked: this session read
+                untrusted content, <code>AML.M0030</code>) → revoke <code>email.send</code> → retry (blocked as{" "}
+                <code>AML.T0053</code>).
               </p>
               <div className="action-row">
                 <button
                   type="button"
                   disabled={busy || !token}
-                  onClick={() => runTool("web.scrape", { url: "https://www.usa.gov" })}
-                >
-                  1. web.scrape
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !token}
                   onClick={() => runTool("datagov.search", { q: "public health" })}
                 >
-                  2. datagov.search
+                  1. datagov.search
                 </button>
                 <button
                   type="button"
@@ -438,7 +433,14 @@ export default function Monitoring() {
                     })
                   }
                 >
-                  3. email.send
+                  2. email.send
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !token}
+                  onClick={() => runTool("web.scrape", { url: "https://www.usa.gov" })}
+                >
+                  3. web.scrape
                 </button>
                 <button
                   type="button"
