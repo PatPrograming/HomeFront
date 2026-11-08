@@ -101,8 +101,8 @@ export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: st
         )}
         {stalled && !disabled && (
           <p className="alert" role="status">
-            No reply yet: the assistant isn't connected to this session. Start it with{" "}
-            <code>python agent/agent.py --sid {sid} --chat</code>
+            No reply yet: the assistant isn't answering this session. Send your message again to restart it (if the
+            server does not start it for you, run <code>python agent/agent.py --sid {sid} --chat</code>).
           </p>
         )}
         <div ref={endRef} />

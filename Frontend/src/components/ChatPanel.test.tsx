@@ -17,13 +17,14 @@ describe("ChatPanel: no endless 'Working…'", () => {
   it("shows Working… for a fresh message and the 'not connected' notice for an old one", () => {
     const fresh = renderToStaticMarkup(<ChatPanel chat={chatWith(new Date().toISOString())} sid="sid-1" disabled={false} />);
     expect(fresh).toContain("Working…");
-    expect(fresh).not.toContain("isn&#x27;t connected");
+    expect(fresh).not.toContain("isn&#x27;t answering");
 
     const old = renderToStaticMarkup(
       <ChatPanel chat={chatWith(new Date(Date.now() - STALL_MS - 5000).toISOString())} sid="sid-1" disabled={false} />,
     );
     expect(old).not.toContain("Working…");
-    expect(old).toContain("connected to this session");
+    expect(old).toContain("isn&#x27;t answering this session");
+    expect(old).toContain("Send your message again to restart it");
     expect(old).toContain("--sid sid-1 --chat");
   });
 
