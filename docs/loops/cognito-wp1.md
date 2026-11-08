@@ -2,7 +2,7 @@
 
 Status: REVIEWING                  <!-- PLANNING | AWAITING_APPROVAL | BUILDING | REVIEWING | DONE | STUCK | CAPPED -->
 Profile: feature (trial depth: full, because this is auth)
-Round: 1 / 4
+Round: 2 / 4
 Base commit: 839c456
 Branch: claude/cognito-huy-5d029b
 
@@ -29,10 +29,10 @@ first, and the README explains the design in plain words.
 | C2 | Full suite green | `PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests` | exit 0 |
 | C3 | /me works for a Cognito user | `PYTHONPATH=Backend:packages/mandate-contracts/src .venv/bin/python -m pytest -q Backend/tests/test_cognito.py -k me_` | stdout matches /\d+ passed/ |
 | C4 | Script parses | `bash -n Backend/infra/cognito.sh` | exit 0 |
-| C5 | Dry run builds agent client before staff client, in us-east-1 | `PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run 2>&1` | stdout matches /create-user-pool [\s\S]*--region us-east-1[\s\S]*create-user-pool-domain[\s\S]*create-resource-server[\s\S]*mandate\/tools[\s\S]*create-user-pool-client[\s\S]*mandate-agent[\s\S]*client_credentials[\s\S]*create-user-pool-client[\s\S]*staff-web[\s\S]*http:\/\/localhost:5173\// |
-| C6 | Dry run creates groups and users | `PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run 2>&1` | stdout matches /create-group[\s\S]*staffer[\s\S]*create-group[\s\S]*admin[\s\S]*admin-create-user[\s\S]*maya[\s\S]*admin-add-user-to-group[\s\S]*admin-create-user[\s\S]*chiefofstaff[\s\S]*admin-add-user-to-group/ |
-| C7 | Dry run never touches AWS (no aws CLI on PATH) and exits 0 | `PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run` | exit 0 |
-| C8 | Dry run prints the env names the app needs | `PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run 2>&1` | stdout matches /COGNITO_USER_POOL_ID[\s\S]*COGNITO_STAFF_CLIENT_ID[\s\S]*COGNITO_AGENT_CLIENT_ID[\s\S]*COGNITO_DOMAIN/ |
+| C5 | Dry run builds agent client before staff client, in us-east-1 | `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run 2>&1` | stdout matches /create-user-pool [\s\S]*--region us-east-1[\s\S]*create-user-pool-domain[\s\S]*create-resource-server[\s\S]*mandate\/tools[\s\S]*create-user-pool-client[\s\S]*mandate-agent[\s\S]*client_credentials[\s\S]*create-user-pool-client[\s\S]*staff-web[\s\S]*http:\/\/localhost:5173\// |
+| C6 | Dry run creates groups and users | `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run 2>&1` | stdout matches /create-group[\s\S]*staffer[\s\S]*create-group[\s\S]*admin[\s\S]*admin-create-user[\s\S]*maya[\s\S]*admin-add-user-to-group[\s\S]*admin-create-user[\s\S]*chiefofstaff[\s\S]*admin-add-user-to-group/ |
+| C7 | Dry run never touches AWS (no aws CLI on PATH) and exits 0 | `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run` | exit 0 |
+| C8 | Dry run prints the env names the app needs | `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run 2>&1` | stdout matches /COGNITO_USER_POOL_ID[\s\S]*COGNITO_STAFF_CLIENT_ID[\s\S]*COGNITO_AGENT_CLIENT_ID[\s\S]*COGNITO_DOMAIN/ |
 | C9 | README explains revocation | `grep -iE "revoc\|revok" Backend/infra/README.md \| grep -i dynamo` | exit 0 |
 
 ## Not Checkable By Command
@@ -301,6 +301,19 @@ T3 and T4 share a file, so they run in sequence.
 
 ## Rounds
 
+### Round 1 — 2026-11-07
+- Built: T1–T9, commits 738e782..6cddde3 (+ 25331f3 conftest offline guard, lead-approved).
+- Outcome checks: 9/9 pass; fixed [C1, C3–C9], regressed [] (scoreboard: cognito-wp1.rounds/round-1.json).
+- Review: team-reviewer APPROVE, 0 Critical/High, 3 Medium (token_use/exp untested; list lookups swallow errors; real .env would make tests fetch the real JWKS). Security review: security:pass. Trial (full): falsifier FALSIFIED req 4 (tests patched `_signing_key`, not the JWKS; token_use check survives deletion); advocate PARTIAL. Judge skipped: the gap list was already clear and the verdict could not be ACCEPT.
+- INCIDENT: the falsifier ran cognito.sh against real AWS (zsh has no `export -f`). Pool us-east-1_MLfQpodxG created exactly as designed; run 2 created nothing. Huy chose keep + reset temp passwords.
+- Gap list for next round: (1) patch JWKS fetch, not key lookup; (2) token_use test with valid client_id, missing exp/token_use; (3) unconfigured test proves no fetch; (4) list lookups must not swallow errors; (5) env-file path/grep/symlink; (6) domain create output; (7) README PKCE/RevokeToken/CLI password; (8) conftest offline guard.
+- Decision: next round (gaps fixable, 8 checks fixed this round).
+
+### Round 2 — 2026-11-07
+- Built: T10 tests (821c39f), T11 script (a906704), certifi CA fix found by the live done-check (20d922c), README (6fa145a). Live: temp passwords reset; real client_credentials token verified by the backend against the real JWKS.
+- Outcome checks: 9/9 pass; fixed [], regressed [] (scoreboard: cognito-wp1.rounds/round-2.json).
+- Review / trial: running.
+
 ## Decisions
 
 - 2026-11-07: trial depth full (auth). The loop file lives in `docs/loops/`, outside lane A's row; it is
@@ -322,3 +335,4 @@ T3 and T4 share a file, so they run in sequence.
   StaffIdentity. Keep it minimal; lane B also edits nearby. Open Question 1 resolved.
 - 2026-11-07: Huy approved the plan and checks: "Approve, build it." Domain prefix: default
   `mandate-a10-hack-2026` (overridable via `COGNITO_DOMAIN_PREFIX`); Huy did not ask for another name.
+- 2026-11-07 (lead instruction after the incident): C5–C8 now also strip AWS credentials (`env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null`) on top of `--dry-run` and the stripped PATH, so a broken fake can never reach AWS. Stricter, not looser; all four still pass.
