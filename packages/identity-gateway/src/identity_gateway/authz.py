@@ -127,4 +127,6 @@ class StarterPolicyAuthorizer:
             permits.append("email-send-list-office")
         if req.tool == "report_save" and delegator_active:
             permits.append("report-save")
+        if req.tool == "draft_revise" and delegator_active:
+            permits.append("draft-revise")
         return AuthzDecision(bool(permits), permits)

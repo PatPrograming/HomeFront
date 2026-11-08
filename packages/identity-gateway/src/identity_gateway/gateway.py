@@ -50,11 +50,20 @@ Scanner = Callable[[str], GuardrailFlag]
 
 # Tools the gateway answers itself (or never runs); every other tool reuses the mcp_tools handler
 # (and ATLAS label) named like it, with the first underscore as a dot: email_send_list -> email.send_list.
-GATEWAY_ONLY_TOOLS = ("case_read", "inbox_read", "records_bulk_export")
+GATEWAY_ONLY_TOOLS = ("case_read", "inbox_read", "records_bulk_export", "draft_revise")
 LEGACY_TOOLS = {name: name.replace("_", ".", 1) for name in TOOLS if name not in GATEWAY_ONLY_TOOLS}
 SOCIAL_TOOLS = ("social_post", "social_reply")
 # Held for review unless the staffer allowed the category.
 OUTBOUND_TOOLS = ("email_send", "email_send_list", *SOCIAL_TOOLS)
+# What `draft_revise` may change per draft tool. account, in_reply_to and the tool never change, and
+# the mailing list is read at send time, so email_send_list gets no recipient.
+REVISABLE_FIELDS = {
+    "email_send": ("subject", "body", "to"),
+    "email_send_list": ("subject", "body"),
+    "social_post": ("text", "platform"),
+    "social_reply": ("text", "platform"),
+}
+PLATFORMS = ("x", "bluesky", "linkedin", "facebook")
 NEEDS_CONNECTION: Reason = "needs connection"
 # One address, nothing else: "a@b.gov, c@evil.com" is not one address.
 SINGLE_ADDRESS = re.compile(r"^[^@\s,;<>]+@([^@\s,;<>]+)$")
@@ -166,6 +175,9 @@ class Gateway:
                 denied = self._record(claims, tool, resource, "DENY", "denied by policy", decision.policy_ids)
                 denied.office_role = staffer.office_role
                 return denied
+
+            if tool == "draft_revise":  # edits a held draft; sends nothing, so no hold and no connection check
+                return self._revise_draft(claims, resource, params, decision.policy_ids)
 
             # 4b. Earned autonomy. Cedar says the agent *may* send this; the staffer decides whether it
             #     may send it without review. Until then the gateway keeps a draft and sends nothing.
@@ -299,6 +311,24 @@ class Gateway:
             "category": category,
             "note": f"NOT sent. Saved as a draft for {claims.act} to review in the console.",
         }
+
+    def _revise_draft(self, claims: MandateClaims, resource: str | None, params: Any, policy_ids: list[str]) -> Outcome:
+        """Apply the agent's edits to its own session's pending draft, in place."""
+        draft_id = params.draft_id
+        draft = self.store.get_draft(draft_id)
+        if draft is None or draft.status != "pending" or draft.sid != claims.sid:
+            return self._record(claims, "draft_revise", resource, "DENY", "denied by policy")
+        changes = {k: v for k in REVISABLE_FIELDS[draft.tool] if (v := getattr(params, k)) is not None}
+        if changes.get("platform", "x") not in PLATFORMS:
+            return self._record(claims, "draft_revise", resource, "DENY", "denied by policy")
+        revised = draft.model_copy(
+            update={"args": {**draft.args, **changes}, "version": draft.version + 1, "revising": False}
+        )
+        # Written only while still pending, so a revision can never undo an approval or rejection that just happened.
+        if not self.store.decide_draft(draft_id, revised):
+            return self._record(claims, "draft_revise", resource, "DENY", "denied by policy")
+        result = {"status": "revised", "draftId": draft_id, "version": revised.version, "args": revised.args}
+        return self._record(claims, "draft_revise", resource, "ALLOW", "allowed", policy_ids, result=result)
 
     def _deny_needs_connection(
         self, claims: MandateClaims, tool: str, resource: str | None, missing: ConnectionMissing
@@ -438,7 +468,7 @@ class Gateway:
 
 def _resource_label(tool: str, params: Any) -> str | None:
     """What the call touches, for the audit feed (case id, email id, recipient, ...)."""
-    for field_name in ("case_id", "email_id", "to", "url", "account", "query"):
+    for field_name in ("case_id", "email_id", "draft_id", "to", "url", "account", "query"):
         if hasattr(params, field_name):
             return getattr(params, field_name)
     return None

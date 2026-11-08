@@ -48,7 +48,7 @@ ROLE_GOVERNED_TOOLS = tuple(name for name, spec in TOOLS.items() if not spec.alw
 # The Agents tab reads this same table (role_allows), so the assistant and the agents share one cap.
 ROLE_TOOLS: dict[str, tuple[str, ...]] = {
     "chief_of_staff": ROLE_GOVERNED_TOOLS,
-    "caseworker": ("inbox_read", "case_read", "datagov_search", "web_scrape", "email_send", *_RESEARCH, "report_save"),
+    "caseworker": ("inbox_read", "case_read", "datagov_search", "web_scrape", "email_send", *_RESEARCH, "report_save", "draft_revise"),
     "communications_director": (
         "inbox_read",
         "datagov_search",
@@ -58,9 +58,10 @@ ROLE_TOOLS: dict[str, tuple[str, ...]] = {
         "social_reply",
         *_RESEARCH,
         "report_save",
+        "draft_revise",
     ),
-    "legislative_aide": ("inbox_read", "datagov_search", "web_scrape", *_RESEARCH, *_PROCUREMENT, "report_save"),
-    "intern": ("datagov_search", "web_scrape", "census_query", "nasa_search", "nps_parks", "noaa_climate"),
+    "legislative_aide": ("inbox_read", "datagov_search", "web_scrape", *_RESEARCH, *_PROCUREMENT, "report_save", "draft_revise"),
+    "intern": ("datagov_search", "web_scrape", "census_query", "nasa_search", "nps_parks", "noaa_climate", "draft_revise"),
 }
 
 # Tools only the listed roles may hold. An admin role editor can override ROLE_TOOLS but never grant these.
@@ -79,6 +80,7 @@ TOOL_ACTIONS = {
     "usaspending_search": "search federal contract awards",
     "sam_entity_lookup": "look up federal vendors in SAM.gov",
     "report_save": "save reports for the office",
+    "draft_revise": "revise drafts waiting for staff review",
     "census_query": "look up Census data",
     "openfda_search": "search FDA drug, device and food data",
     "eia_query": "look up energy data",
@@ -92,7 +94,8 @@ TOOL_ACTIONS = {
 }
 
 # registry name ("email.send_list") -> mandate name ("email_send_list"). Only the first underscore is a dot.
-_DOTTED_TO_MANDATE = {name.replace("_", ".", 1): name for name in TOOLS}
+# draft_revise has no Agents-tab twin, so it gets no dotted name.
+_DOTTED_TO_MANDATE = {name.replace("_", ".", 1): name for name in TOOLS if name != "draft_revise"}
 
 
 def mandate_tool_name(dotted: str) -> str:

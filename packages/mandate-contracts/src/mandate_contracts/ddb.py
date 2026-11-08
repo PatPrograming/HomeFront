@@ -108,6 +108,8 @@ class DraftItem(WireModel):
     created_at: str
     decided_at: str | None = None
     edited: bool = False  # the staffer changed the text before approving
+    version: int = 1  # +1 on every revision, so a card can tell a stale view from the latest wording
+    revising: bool = False  # the staffer asked the agent to revise; the agent's draft_revise clears it
 
 
 class AutonomyItem(WireModel):

@@ -8,7 +8,7 @@ changing a file here needs the manager's (Huy's) approval.
 
 | File | What it defines | Brief |
 |---|---|---|
-| `src/mandate_contracts/tools.py` | The 21 MCP tools (the Agents-tab tools plus 3 assistant ones), their input models, which outputs are untrusted | §6.1 |
+| `src/mandate_contracts/tools.py` | The 22 MCP tools (the Agents-tab tools plus 4 assistant ones, including `draft_revise`), their input models, which outputs are untrusted | §6.1 |
 | `src/mandate_contracts/token.py` | Mandate token claims (`sub` agent, `act` staffer, `office`, `mode`, `sid`), 15-min lifetime | §6.2 |
 | `src/mandate_contracts/events.py` | The ALLOW/DENY decision event the dashboard shows | §6.3 |
 | `src/mandate_contracts/ddb.py` | `pk`/`sk` keys and item shapes for the single `mandate` table | §6.4 |
@@ -16,7 +16,7 @@ changing a file here needs the manager's (Huy's) approval.
 | `src/mandate_contracts/roles.py` | Office roles (`officeRole` on the STAFFER item), each role's tools (the one table the assistant and the Agents tab both use), `role_allows`, the role `forbid` policies, plain-words deny reasons | `docs/ROLES.md` |
 | `src/mandate_contracts/dev.py` | Dev-only HS256 token until the broker exists | §6.2 |
 | `ts/index.ts` | The same types for the frontend | |
-| `policies/*.cedar` | Generated: one file per policy in `STARTER_POLICIES` (11 starter + 21 `role-*`), for AVP setup | |
+| `policies/*.cedar` | Generated: one file per policy in `STARTER_POLICIES` (12 starter + 22 `role-*`), for AVP setup | |
 | `schemas/tools.json` | Generated JSON schemas for the tools (MCP `inputSchema`) | |
 | `samples/` | Example events and dev token claims for mocks | |
 
@@ -52,5 +52,8 @@ MANDATE_DEV_SECRET=... python -m mandate_contracts.dev
   this reason as "allowed by policy, not sent".
 - `"approved by staff"` is recorded with `decision: "ALLOW"` when the staffer approves a held draft
   and the gateway re-checks it with Cedar and sends it. If that re-check fails, the event is `DENY`.
+- `"edited by staff"` is recorded when the staffer changes a held draft's wording or recipient. The
+  agent's own `draft_revise` revises its session's pending draft in place (`version` + 1) and is an
+  ordinary `"allowed"` event; approval still re-runs every check.
 - An email's `kind` defaults to `"other"`, a locked category: it always needs review and can never
   be set to send alone or granted for a session.

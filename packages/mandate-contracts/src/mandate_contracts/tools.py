@@ -137,6 +137,17 @@ class FccSearchInput(_Input):
     q: str = Field(description="Licensee or callsign search.")
 
 
+class DraftReviseInput(_Input):
+    # Only the fields a draft's tool lets the agent change are applied (the gateway decides which);
+    # account, in_reply_to and the tool itself can never be revised, so they are not here.
+    draft_id: str = Field(description="ID of your pending draft, from the held_for_review result.")
+    subject: str | None = None
+    body: str | None = None
+    to: str | None = None
+    text: str | None = None
+    platform: str | None = Field(default=None, description="One of x, bluesky, linkedin, facebook.")
+
+
 class RecordsBulkExportInput(_Input):
     query: str = Field(description="Which records to export.")
 
@@ -207,6 +218,11 @@ TOOLS: dict[str, ToolSpec] = {
             "Export constituent records in bulk.",
             RecordsBulkExportInput,
             always_denied=True,
+        ),
+        ToolSpec(
+            "draft_revise",
+            "Revise your own pending draft in place (for example 'make it shorter'). Sends nothing.",
+            DraftReviseInput,
         ),
     )
 }

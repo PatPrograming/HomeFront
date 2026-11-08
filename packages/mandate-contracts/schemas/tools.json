@@ -557,5 +557,84 @@
       "title": "RecordsBulkExportInput",
       "type": "object"
     }
+  },
+  {
+    "name": "draft_revise",
+    "description": "Revise your own pending draft in place (for example 'make it shorter'). Sends nothing.",
+    "inputSchema": {
+      "properties": {
+        "draft_id": {
+          "description": "ID of your pending draft, from the held_for_review result.",
+          "title": "Draft Id",
+          "type": "string"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subject"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "platform": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "One of x, bluesky, linkedin, facebook.",
+          "title": "Platform"
+        }
+      },
+      "required": [
+        "draft_id"
+      ],
+      "title": "DraftReviseInput",
+      "type": "object"
+    }
   }
 ]

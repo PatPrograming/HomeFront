@@ -53,6 +53,8 @@ STARTER_POLICIES: dict[str, str] = {
   when { principal.mode == "official" && context.account == "campaign" };""",
     "report-save": """permit(principal, action == Mandate::Action::"report_save", resource)
   when { context.delegatorActive };""",
+    "draft-revise": """permit(principal, action == Mandate::Action::"draft_revise", resource)
+  when { context.delegatorActive };""",
     # One forbid per tool for the staffer's office role (roles.py, docs/ROLES.md).
     **ROLE_POLICIES,
 }
