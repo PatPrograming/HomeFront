@@ -110,6 +110,11 @@ class AuthResponse(BaseModel):
     # Trace id for this token's calls in the activity log.
     session_id: str
     atlas: dict[str, Any]
+    # AAuth when HOMEFRONT_AUTH_PROTOCOLS includes aauth (else legacy_workload).
+    auth_protocol: str = "legacy_workload"
+    agent_jwt: str | None = None
+    aa_auth_jwt: str | None = None
+    jkt: str | None = None
 
 
 class GrantUpdate(BaseModel):
@@ -768,13 +773,25 @@ def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthRe
     agent = _accessible_agent(body.agent_id, actor)
     if not agent.active:
         raise HTTPException(status_code=403, detail="Agent is inactive")
-    tok = store.issue_token(agent.agent_id, body.ttl_seconds)
+    tok = store.issue_token(
+        agent.agent_id,
+        body.ttl_seconds,
+        acting_for=actor.user_id or agent.agent_id,
+        office=agent.agency,
+    )
     atlas = enricher.annotate(
         AnnotateRequest(
             event=AnnotateEvent.allow,
             agent_id=agent.agent_id,
             reason="workload identity issued",
         )
+    )
+    aauth_on = tok.auth_protocol == "aauth"
+    narrative = (
+        "Agent authenticated with AAuth (aa-agent+jwt + PoP-bound aa-auth+jwt); "
+        "tool grants enforced per AML.M0028."
+        if aauth_on
+        else "Agent authenticated; tool grants enforced per AML.M0028."
     )
     # Auth itself is not a tool call; still log under AML.M0024 telemetry.
     store.append_audit(
@@ -785,6 +802,7 @@ def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthRe
             "trace_id": tok.session_id,
             "actor": actor.label,
             "tool": None,
+            "auth_protocol": tok.auth_protocol,
             "atlas": atlas.model_dump(),
         }
     )
@@ -795,9 +813,13 @@ def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthRe
         tool_grants=sorted(agent.tool_grants),
         token_version=tok.token_version,
         session_id=tok.session_id,
+        auth_protocol=tok.auth_protocol,
+        agent_jwt=tok.agent_jwt,
+        aa_auth_jwt=tok.aa_auth_jwt,
+        jkt=tok.jkt,
         atlas={
             "mitigation_ids": ["AML.M0028", "AML.M0024"],
-            "narrative": "Agent authenticated; tool grants enforced per AML.M0028.",
+            "narrative": narrative,
         },
     )
 
@@ -946,6 +968,24 @@ def call_tool(
     run_id: str | None = None,
 ) -> dict[str, Any]:
     """Authorize, execute and audit one tool call. Raises HTTPException on deny."""
+    from .workload_aauth import prove_workload_aauth, tool_call_proof_body
+
+    try:
+        auth_protocol = prove_workload_aauth(
+            tok,
+            method="POST",
+            path="/api/v1/agents/tool-call",
+            body=tool_call_proof_body(tool_name, arguments),
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "aauth_pop_failed", "message": str(exc)},
+        ) from exc
+
+    def _tool_audit(payload: dict[str, Any]) -> dict[str, Any]:
+        return store.append_audit({**payload, "auth_protocol": auth_protocol})
+
     tool = get_tool(tool_name)
     if tool is None:
         raise HTTPException(status_code=404, detail=f"Unknown tool {tool_name}")
@@ -959,7 +999,7 @@ def call_tool(
                 agent_id=agent.agent_id,
             )
         )
-        event = store.append_audit(
+        event = _tool_audit(
             {
                 "type": "tool_call",
                 "run_id": run_id,
@@ -993,7 +1033,7 @@ def call_tool(
                 reason=f"tool outside {agent.kind} agent ceiling",
             )
         )
-        event = store.append_audit(
+        event = _tool_audit(
             {
                 "type": "tool_call",
                 "run_id": run_id,
@@ -1024,7 +1064,7 @@ def call_tool(
                 reason="tool not in grant set",
             )
         )
-        event = store.append_audit(
+        event = _tool_audit(
             {
                 "type": "tool_call",
                 "run_id": run_id,
@@ -1063,7 +1103,7 @@ def call_tool(
                 reason=f"{taint['tool']} returned untrusted content earlier in this trace",
             )
         )
-        event = store.append_audit(
+        event = _tool_audit(
             {
                 "type": "tool_call",
                 "run_id": run_id,
@@ -1106,7 +1146,7 @@ def call_tool(
                 reason=f"{blocked_host or 'URL'} outside agent scrape_domains",
             )
         )
-        event = store.append_audit(
+        event = _tool_audit(
             {
                 "type": "tool_call",
                 "run_id": run_id,
@@ -1149,7 +1189,7 @@ def call_tool(
                 reason="unsupported social platform" if social else "recipient not on agent mailing list",
             )
         )
-        event = store.append_audit(
+        event = _tool_audit(
             {
                 "type": "tool_call",
                 "run_id": run_id,
@@ -1175,7 +1215,7 @@ def call_tool(
 
     # High-risk outbound tools wait for a person (AML.M0029).
     if tool.requires_hitl:
-        return _request_approval(agent, tok, tool_name, arguments, run_id)
+        return _request_approval(agent, tok, tool_name, arguments, run_id, auth_protocol=auth_protocol)
 
     # Annotate untrusted input tools before execution.
     if tool.untrusted_input:
@@ -1212,7 +1252,7 @@ def call_tool(
         # Taint even if the handler refused the URL: conservative and simple.
         store.mark_tainted(trace_id, tool_name)
 
-    event = store.append_audit(
+    event = _tool_audit(
         {
             "type": "tool_call",
             "run_id": run_id,
@@ -1231,6 +1271,7 @@ def call_tool(
         "tool": tool_name,
         "agent_id": agent.agent_id,
         "token_version": tok.token_version,
+        "auth_protocol": auth_protocol,
         "result": result,
         "atlas": atlas.model_dump(),
         "untrusted_input_atlas": untrusted.model_dump() if untrusted else None,
@@ -1255,9 +1296,16 @@ HITL_ATLAS = {
 
 
 def _request_approval(
-    agent: AgentRecord, tok: Any, tool_name: str, arguments: dict[str, Any], run_id: str | None
+    agent: AgentRecord,
+    tok: Any,
+    tool_name: str,
+    arguments: dict[str, Any],
+    run_id: str | None,
+    *,
+    auth_protocol: str | None = None,
 ) -> dict[str, Any]:
     trace_id = run_id or getattr(tok, "session_id", None)
+    protocol = auth_protocol or getattr(tok, "auth_protocol", None) or "legacy_workload"
     rec = store.approvals.insert(
         ApprovalRecord(
             agent_id=agent.agent_id,
@@ -1278,6 +1326,7 @@ def _request_approval(
             "tool": tool_name,
             "approval_id": rec.approval_id,
             "args_hash": _hash_args(arguments),
+            "auth_protocol": protocol,
             "atlas": HITL_ATLAS,
             "detail": f"Waiting for a person to approve {tool_name}",
         }
@@ -1287,6 +1336,7 @@ def _request_approval(
         "tool": tool_name,
         "agent_id": agent.agent_id,
         "token_version": tok.token_version,
+        "auth_protocol": protocol,
         "approval_id": rec.approval_id,
         # What the agent sees as the tool result.
         "result": {
@@ -1628,7 +1678,14 @@ def configure_runner(new_runner: AgentRunner | None) -> None:
 
 
 def _issue_run_token(agent_id: str, run_id: str | None = None) -> str:
-    tok = store.issue_token(agent_id, ttl_seconds=3600, session_id=run_id)
+    agent = store.get_agent(agent_id)
+    tok = store.issue_token(
+        agent_id,
+        ttl_seconds=3600,
+        session_id=run_id,
+        acting_for=agent_id,
+        office=(agent.agency if agent else None),
+    )
     store.append_audit(
         {
             "type": "authenticate",
@@ -1638,6 +1695,7 @@ def _issue_run_token(agent_id: str, run_id: str | None = None) -> str:
             "trace_id": tok.session_id,
             "actor": f"agent:{agent_id}",
             "tool": None,
+            "auth_protocol": tok.auth_protocol,
             "reason": "workload token issued for agent run",
         }
     )

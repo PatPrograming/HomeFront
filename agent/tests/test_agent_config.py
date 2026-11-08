@@ -63,8 +63,14 @@ def test_broker_refusal_raises(clean_env, cognito_status, broker_status):
 
 
 def test_token_order_flag_then_sid_then_env(clean_env, monkeypatch):
+    from mandate_agent.broker import AgentCredentials
+
     settings = Settings.from_env()
-    monkeypatch.setattr(cli, "fetch_mandate_token", lambda api, sid: f"broker:{sid}")
+
+    def fake_creds(api, sid, **kwargs):
+        return AgentCredentials(access_token=f"broker:{sid}", auth_protocol="legacy_mandate")
+
+    monkeypatch.setattr(cli, "fetch_agent_credentials", fake_creds)
     monkeypatch.setenv("MANDATE_TOKEN", "stale-dev-token")
     assert cli.resolve_token(cli.parse_args(["--token", "t1", "--sid", "s"]), settings) == "t1"
     # A real session id must never be silently replaced by a dev token left in the environment.
@@ -78,10 +84,10 @@ def test_no_token_source_exits_with_help(clean_env):
 
 
 def test_broker_refusal_exits_3_without_starting(clean_env, monkeypatch, capsys):
-    def refuse(api, sid):
+    def refuse(api, sid, **kwargs):
         raise BrokerError("The broker refused a mandate for session s (HTTP 403).")
 
-    monkeypatch.setattr(cli, "fetch_mandate_token", refuse)
+    monkeypatch.setattr(cli, "fetch_agent_credentials", refuse)
     assert cli.main(["--sid", "s"]) == 3
     assert "Cannot start" in capsys.readouterr().out
 

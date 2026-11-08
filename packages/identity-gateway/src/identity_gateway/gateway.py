@@ -30,10 +30,11 @@ from mcp_tools.handlers import invoke_tool
 from mandate_contracts import TOOLS, DecisionEvent, GuardrailFlag, MandateClaims, Reason, cedar
 from mandate_contracts.ddb import DraftItem
 
+from .aauth_bridge import resolve_call_identity
 from .authz import Authorizer, AuthzRequest
 from .autonomy import LOCKED, NEW_CONVERSATION, SOCIAL_CATEGORY
 from .storage import MandateStore
-from .tokens import InvalidToken, verify_mandate_token
+from .tokens import InvalidToken
 
 log = logging.getLogger("identity_gateway")
 
@@ -89,10 +90,29 @@ class Gateway:
         self.scan = scan
         self.enricher = enricher or AtlasEnricher()
 
-    def guarded(self, tool: str, args: dict[str, Any], token: str) -> Outcome:
+    def guarded(
+        self,
+        tool: str,
+        args: dict[str, Any],
+        token: str,
+        *,
+        headers: dict[str, str] | None = None,
+        method: str = "POST",
+        path: str = "/mcp",
+        body: bytes | str = b"",
+    ) -> Outcome:
         # 1. Who is calling? A forged or expired token never gets further.
+        #    Accepts legacy HS256 mandate tokens and AAuth (ID-JAG + PoP) credentials.
+        auth_protocol = "legacy_mandate"
         try:
-            claims = verify_mandate_token(token, self.secret)
+            claims, auth_protocol = resolve_call_identity(
+                bearer_token=token,
+                secret=self.secret,
+                headers=headers,
+                method=method,
+                path=path,
+                body=body,
+            )
         except InvalidToken:
             # Unauthenticated callers choose `tool`; only log names we know.
             self._record(None, tool if tool in TOOLS else "unknown", None, "DENY", "invalid token")
@@ -115,13 +135,17 @@ class Gateway:
                 and staffer.active
             )
             if not delegator_active:
-                return self._record(claims, tool, resource, "DENY", "session revoked / delegator inactive")
+                return self._record(
+                    claims, tool, resource, "DENY", "session revoked / delegator inactive", auth_protocol=auth_protocol
+                )
 
             # 3. Facts for Cedar. The agent's office and mode come from the session;
             #    a case's office comes from the CASE item. Tool input only says *which* case.
             case = self.store.get_case(params.case_id) if tool == "case_read" else None
             if tool == "case_read" and case is None:
-                return self._record(claims, tool, resource, "DENY", "denied by policy")
+                return self._record(
+                    claims, tool, resource, "DENY", "denied by policy", auth_protocol=auth_protocol
+                )
             request = AuthzRequest(
                 agent_id=claims.sub,
                 office=session.office,
@@ -138,7 +162,15 @@ class Gateway:
             # 4. Ask Verified Permissions.
             decision = self.authorizer.is_authorized(request)
             if not decision.allowed:
-                return self._record(claims, tool, resource, "DENY", "denied by policy", decision.policy_ids)
+                return self._record(
+                    claims,
+                    tool,
+                    resource,
+                    "DENY",
+                    "denied by policy",
+                    decision.policy_ids,
+                    auth_protocol=auth_protocol,
+                )
 
             # 4b. Earned autonomy. Cedar says the agent *may* send this; the staffer decides whether it
             #     may send it without review. Until then the gateway keeps a draft and sends nothing.
@@ -153,7 +185,14 @@ class Gateway:
                 if category in LOCKED or not allowed_alone:
                     held = self._hold(claims, tool, category, params)
                     return self._record(
-                        claims, tool, resource, "ALLOW", "held for staff review", decision.policy_ids, result=held
+                        claims,
+                        tool,
+                        resource,
+                        "ALLOW",
+                        "held for staff review",
+                        decision.policy_ids,
+                        result=held,
+                        auth_protocol=auth_protocol,
                     )
 
             # 5. Run the tool.
@@ -163,10 +202,20 @@ class Gateway:
             flag = self.scan(json.dumps(result)) if spec.untrusted_output else GuardrailFlag()
 
             # 7. Audit, then hand the result back.
-            return self._record(claims, tool, resource, "ALLOW", "allowed", decision.policy_ids, flag, result)
+            return self._record(
+                claims,
+                tool,
+                resource,
+                "ALLOW",
+                "allowed",
+                decision.policy_ids,
+                flag,
+                result,
+                auth_protocol=auth_protocol,
+            )
         except Exception:
             log.exception("guarded(%s) failed; denying", tool)
-            return self._record(claims, tool, resource, "DENY", "denied by policy")
+            return self._record(claims, tool, resource, "DENY", "denied by policy", auth_protocol=auth_protocol)
 
     def send_draft(self, draft_id: str, draft: DraftItem, text: dict[str, str]) -> Outcome:
         """The staffer approved a held draft, maybe with new wording. Check it again, then send it.
@@ -292,6 +341,7 @@ class Gateway:
         policy_ids: list[str] | None = None,
         flag: GuardrailFlag | None = None,
         result: dict[str, Any] | None = None,
+        auth_protocol: str | None = None,
     ) -> Outcome:
         flag = flag or GuardrailFlag()
         event = DecisionEvent(
@@ -308,6 +358,7 @@ class Gateway:
             policy_ids=policy_ids or [],
             atlas=self._atlas(tool, decision, flag),
             guardrail=flag,
+            auth_protocol=auth_protocol,
         )
         try:
             self.store.put_event(event)

@@ -179,6 +179,7 @@ export interface AuditEvent {
   fields?: string[];
   tool_grants?: string[];
   args_hash?: string;
+  auth_protocol?: string | null;
   atlas?: { narrative?: string; technique_ids?: string[]; mitigation_ids?: string[] };
 }
 

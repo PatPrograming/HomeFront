@@ -27,6 +27,12 @@ os.environ.update(
         "HOMEFRONT_AUTOSTART_AGENT": "0",  # never start a real agent process
     }
 )
+# AAuth on the Agents/Monitoring pathway needs a ≥32-char HS256 secret.
+os.environ.setdefault(
+    "MANDATE_SIGNING_SECRET", "test-mandate-signing-secret-32chars!!"
+)
+os.environ.setdefault("AAUTH_SIGNING_KEY", os.environ["MANDATE_SIGNING_SECRET"])
+os.environ.setdefault("HOMEFRONT_AUTH_PROTOCOLS", "legacy,aauth,idjag")
 os.environ.pop("AWS_PROFILE", None)
 
 import jwt  # noqa: E402

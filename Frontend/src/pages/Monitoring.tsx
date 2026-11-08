@@ -48,6 +48,7 @@ export default function Monitoring() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [types, setTypes] = useState<AgentType[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
+  const [authProtocol, setAuthProtocol] = useState<string | null>(null);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [matrix, setMatrix] = useState<Matrix | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -73,6 +74,7 @@ export default function Monitoring() {
   useEffect(() => {
     setToken(null);
     setSessionId(null);
+    setAuthProtocol(null);
     setLastResult(null);
   }, [agent?.agent_id]);
 
@@ -114,9 +116,10 @@ export default function Monitoring() {
       const res = await api.mintAgentToken(agent.agent_id);
       setToken(res.access_token);
       setSessionId(res.session_id || null);
+      setAuthProtocol(res.auth_protocol || null);
       setFlash({
         kind: "ok",
-        title: "Agent authenticated",
+        title: res.auth_protocol === "aauth" ? "Agent authenticated (AAuth)" : "Agent authenticated",
         body: res.atlas?.narrative || "Workload token issued.",
         mitigation_ids: ["AML.M0028", "AML.M0024"],
       });
@@ -245,6 +248,11 @@ export default function Monitoring() {
               <span className={`pill ${token ? "on" : ""}`}>
                 {token ? "Token live" : "Unauthenticated"}
               </span>
+              {authProtocol && (
+                <span className={`pill ${authProtocol === "aauth" ? "on" : ""}`}>
+                  {authProtocol === "aauth" ? "AAuth PoP" : authProtocol}
+                </span>
+              )}
               <StorageStatus compact />
             </div>
           </header>
@@ -512,6 +520,7 @@ export default function Monitoring() {
                       <span className="decision">{ev.decision}</span>
                       <span>{ev.type}</span>
                       <code>{ev.tool || "—"}</code>
+                      {ev.auth_protocol && <code className="tech">{ev.auth_protocol}</code>}
                       <time>{new Date(ev.ts * 1000).toLocaleTimeString()}</time>
                     </div>
                     <p>{ev.atlas?.narrative}</p>

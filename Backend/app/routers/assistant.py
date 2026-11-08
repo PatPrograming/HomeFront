@@ -91,12 +91,23 @@ def _count_review(staffer_id: str, category: str, outcome: Literal["approved_unc
 
 
 def require_agent_session(creds: HTTPAuthorizationCredentials | None = Depends(bearer)) -> MandateClaims:
-    """The agent's mandate token, for a session that is still active (same rule as the gateway)."""
+    """The agent's mandate or aa-auth token, for a session that is still active."""
     gateway = get_gateway()
+    token = creds.credentials if creds else ""
     try:
-        claims = verify_mandate_token(creds.credentials if creds else "", gateway.secret)
+        claims = verify_mandate_token(token, gateway.secret)
     except InvalidToken:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing mandate token") from None
+        try:
+            import jwt
+            from aauth import verify_aa_auth_jwt
+            from identity_gateway.aauth_bridge import claims_from_aa_auth
+
+            header = jwt.get_unverified_header(token)
+            if header.get("typ") != "aa-auth+jwt":
+                raise InvalidToken("not aa-auth")
+            claims = claims_from_aa_auth(verify_aa_auth_jwt(token, secret=gateway.secret))
+        except Exception:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing mandate token") from None
     session = gateway.store.get_session(claims.sid)
     staffer = gateway.store.get_staffer(claims.act)
     if session is None or session.status != "active" or staffer is None or not staffer.active:
