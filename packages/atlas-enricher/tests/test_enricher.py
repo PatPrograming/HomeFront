@@ -25,3 +25,14 @@ def test_annotate_allow_email_includes_exfil_residual():
     )
     assert "AML.T0086" in res.technique_ids
     assert "AML.M0029" in res.mitigation_ids
+
+
+def test_annotate_authenticate_maps_workload_identity():
+    e = AtlasEnricher()
+    res = e.annotate(
+        AnnotateRequest(event=AnnotateEvent.authenticate, agent_id="a1")
+    )
+    assert res.technique_ids == []
+    assert "AML.M0028" in res.mitigation_ids
+    assert "AML.M0024" in res.mitigation_ids
+    assert "Workload identity" in res.narrative

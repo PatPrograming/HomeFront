@@ -65,9 +65,10 @@ def mcp_call(body: ToolCallRequest, authorization: str | None = Header(default=N
 
 @router.get("/demo/matrix")
 def demo_matrix() -> dict[str, Any]:
-    """Compact Agentic AI technique strip for the dashboard sidebar."""
-    ids = ["AML.T0051", "AML.T0051.001", "AML.T0053", "AML.T0084.001", "AML.T0086", "AML.T0098", "AML.T0101", "AML.T0110"]
-    mitigations = ["AML.M0024", "AML.M0026", "AML.M0028", "AML.M0029", "AML.M0030", "AML.M0033"]
+    """Compact Agentic AI strip for Prompt 1 (auth → allow → revoke → block)."""
+    # Core Prompt 1 IDs first; residual / HITL / taint kept for richer agent demos.
+    ids = ["AML.T0053", "AML.T0051.001", "AML.T0086", "AML.T0098"]
+    mitigations = ["AML.M0024", "AML.M0028", "AML.M0029", "AML.M0030", "AML.M0026", "AML.M0033"]
     return {
         "atlas_version": enricher.version,
         "techniques": [enricher.get_technique(i) or {"id": i, "name": None} for i in ids],

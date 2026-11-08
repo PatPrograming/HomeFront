@@ -161,20 +161,56 @@ def test_usaspending_live_posts_and_normalizes(monkeypatch):
                             "Description": "CAMERAS",
                             "generated_internal_id": "CONT_IDV_47QTCA20D001_4732",
                         }
-                    ]
+                    ],
+                    "page_metadata": {"page": 1, "total": 1},
                 }
             ).encode()
         )
 
     monkeypatch.setattr(handlers.urllib.request, "urlopen", fake_urlopen)
-    out = handlers.handle_usaspending_search({"keywords": "cameras", "fiscal_year": 2024})
+    out = handlers.handle_usaspending_search(
+        {
+            "keyword": "cameras",  # alias of keywords
+            "fiscal_year": 2024,
+            "awarding_agency": "General Services Administration",
+            "limit": 5,
+        }
+    )
     assert seen["url"] == handlers.USASPENDING_AWARD_SEARCH_URL and seen["method"] == "POST"
     assert seen["body"]["filters"]["keywords"] == ["cameras"]
     assert seen["body"]["filters"]["award_type_codes"] == ["A", "B", "C", "D"]
+    assert seen["body"]["filters"]["agencies"] == [
+        {"type": "awarding", "tier": "toptier", "name": "General Services Administration"}
+    ]
+    assert seen["body"]["limit"] == 5
     assert out["simulated"] is False
+    assert out["page_metadata"] == {"page": 1, "total": 1}
     [award] = out["results"]
     assert award["recipient_uei"] == "ABCDEFGHJK12"
     assert award["url"] == "https://www.usaspending.gov/award/CONT_IDV_47QTCA20D001_4732"
+
+
+def test_usaspending_live_smoke_against_public_api():
+    """Hit the real USAspending endpoint (skipped if offline / flag off in CI without network)."""
+    import os
+
+    if os.environ.get("HOMEFRONT_SKIP_LIVE_NETWORK") == "1":
+        import pytest
+
+        pytest.skip("network live checks disabled")
+    out = handlers.handle_usaspending_search(
+        {"keywords": "body worn cameras", "fiscal_year": 2024, "limit": 2}
+    )
+    # Force live for this smoke regardless of caller env.
+    # Re-run with flag on if the first call was simulated.
+    if out.get("simulated"):
+        os.environ["HOMEFRONT_LIVE_USASPENDING"] = "1"
+        out = handlers.handle_usaspending_search(
+            {"keywords": "body worn cameras", "fiscal_year": 2024, "limit": 2}
+        )
+    assert out["status"] == "ok" and out["simulated"] is False
+    assert out["result_count"] >= 1
+    assert out["results"][0]["award_id"]
 
 
 # --- sam.entity_lookup ------------------------------------------------------

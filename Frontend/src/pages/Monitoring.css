@@ -114,12 +114,8 @@
 
 .monitoring-console .grid {
   display: grid;
-  grid-template-columns: 1.1fr 1.2fr 0.9fr;
-  grid-template-areas:
-    'identity actions atlas'
-    'identity email atlas'
-    'run run run'
-    'audit audit audit';
+  grid-template-columns: 1.2fr 1fr;
+  grid-template-areas: "step audit";
   align-items: start;
   gap: 1rem;
 }
@@ -133,60 +129,20 @@
   animation: rise 0.55s ease-out both;
 }
 
-.monitoring-console .identity {
-  grid-area: identity;
-}
-
-.monitoring-console .actions {
-  grid-area: actions;
+.monitoring-console .step-panel {
+  grid-area: step;
   animation-delay: 0.05s;
 }
 
-.monitoring-console .email-panel {
-  grid-area: email;
-  animation-delay: 0.08s;
-}
-
-.monitoring-console .email-panel-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-/* EmailSetup's grids: undo the console's generic dl/dt rules. */
-.monitoring-console .email-panel dl {
-  grid-template-columns: max-content 1fr;
-  gap: 4px 12px;
-  margin: 0;
-}
-
-.monitoring-console .email-panel .mailing-list {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.monitoring-console .email-panel button.btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.monitoring-console .email-panel button.btn-primary:hover:not(:disabled) {
-  background: var(--blue-800);
-  border-color: var(--blue-800);
-}
-
 .monitoring-console .run-panel {
-  grid-area: run;
+  margin-top: 1rem;
   min-width: 0;
-  animation-delay: 0.09s;
+  animation-delay: 0.12s;
 }
 
 .monitoring-console .run-panel .run-task {
   border-top: 0;
-  padding-top: 0;
+  padding-top: 0.75rem;
 }
 
 .monitoring-console .run-panel button.btn-primary {
@@ -200,7 +156,6 @@
   border-color: var(--blue-800);
 }
 
-/* History rows are list items, not console buttons. */
 .monitoring-console .run-panel button.run-history-item {
   border: 1px solid transparent;
   background: none;
@@ -215,14 +170,157 @@
   border-color: var(--line);
 }
 
-.monitoring-console .atlas {
-  grid-area: atlas;
-  animation-delay: 0.1s;
+.monitoring-console .run-toggle {
+  width: 100%;
+  text-align: left;
 }
 
 .monitoring-console .audit {
   grid-area: audit;
-  animation-delay: 0.15s;
+  animation-delay: 0.1s;
+}
+
+.monitoring-console .agent-bar {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.monitoring-console .agent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin: 0;
+}
+
+.monitoring-console .agent-meta div {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.monitoring-console .agent-meta dt {
+  margin: 0;
+}
+
+.monitoring-console .prompt1-stepper {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+.monitoring-console .prompt1-stepper .step {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  opacity: 0.55;
+}
+
+.monitoring-console .prompt1-stepper .step-active,
+.monitoring-console .prompt1-stepper .step.is-current {
+  opacity: 1;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.monitoring-console .prompt1-stepper .step-done {
+  opacity: 1;
+  border-color: var(--ok);
+}
+
+/* Completed steps stay green even if they were the last active step. */
+.monitoring-console .prompt1-stepper .step-done.is-current {
+  border-color: var(--ok);
+  box-shadow: none;
+}
+
+.monitoring-console .prompt1-stepper .step-num {
+  flex: 0 0 auto;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+}
+
+.monitoring-console .prompt1-stepper .step-done .step-num {
+  background: var(--ok);
+  color: #fff;
+}
+
+.monitoring-console .prompt1-stepper .step-active .step-num,
+.monitoring-console .prompt1-stepper .step.is-current .step-num {
+  background: var(--accent);
+  color: #fff;
+}
+
+.monitoring-console .prompt1-stepper strong {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.monitoring-console .prompt1-stepper p {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.monitoring-console .atlas-context {
+  margin-bottom: 1rem;
+}
+
+.monitoring-console .atlas-context h2 {
+  margin-bottom: 0.35rem;
+}
+
+.monitoring-console .focus-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.monitoring-console .focus-row select {
+  flex: 1;
+  min-width: 12rem;
+  font: inherit;
+  padding: 0.4rem 0.5rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.monitoring-console .compact-grants li.is-focus {
+  background: var(--blue-50);
+  border-radius: var(--radius-sm);
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.monitoring-console .done-note {
+  margin-top: 1rem;
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.monitoring-console .step-panel > button.primary,
+.monitoring-console .step-panel > button.danger {
+  margin-top: 0.35rem;
 }
 
 .monitoring-console .panel h2 {
@@ -543,16 +641,22 @@
   .monitoring-console .grid {
     grid-template-columns: 1fr;
     grid-template-areas:
-      'identity'
-      'actions'
-      'email'
-      'run'
-      'atlas'
-      'audit';
+      "step"
+      "audit";
+  }
+
+  .monitoring-console .prompt1-stepper {
+    grid-template-columns: 1fr 1fr;
   }
 
   .monitoring-console .top {
     flex-direction: column;
     align-items: start;
+  }
+}
+
+@media (max-width: 560px) {
+  .monitoring-console .prompt1-stepper {
+    grid-template-columns: 1fr;
   }
 }

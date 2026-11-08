@@ -267,12 +267,45 @@ def _literal_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | No
     return None
 
 
+def canonicalize_scrape_url(url: str) -> str:
+    """Make an absolute http(s) URL safe for urllib (encode spaces/quotes in path/query).
+
+    Models often paste SAM.gov / FPDS ``/ezsearch/FEEDS/ATOM?...`` links with raw
+    spaces in ``q=``; urllib raises InvalidURL unless those are percent-encoded.
+    Relative paths (no scheme/host) are rejected here with a clear error.
+    """
+    raw = " ".join(str(url or "").split())  # collapse stray newlines/control chars in the string
+    if not raw:
+        raise UrlNotAllowed("URL is empty")
+    try:
+        parts = urllib.parse.urlsplit(raw)
+    except ValueError as exc:
+        raise UrlNotAllowed(f"malformed URL: {exc}") from exc
+    scheme = (parts.scheme or "").lower()
+    if scheme not in SCRAPE_SCHEMES or not parts.netloc:
+        raise UrlNotAllowed(
+            "URL must be absolute http(s) with a host "
+            f"(got scheme={scheme or '(none)'!r}). "
+            "For federal contract awards prefer usaspending.search instead of scraping ezsearch feeds."
+        )
+    # Re-encode path/query so spaces and quotes don't trip Request/urlopen.
+    path = urllib.parse.quote(urllib.parse.unquote(parts.path or "/"), safe="/:@-._~!$&'()*+,;=")
+    query = urllib.parse.urlencode(
+        urllib.parse.parse_qsl(parts.query, keep_blank_values=True),
+        doseq=True,
+        quote_via=urllib.parse.quote,
+    )
+    fragment = urllib.parse.quote(urllib.parse.unquote(parts.fragment), safe="/:@-._~!$&'()*+,;=")
+    return urllib.parse.urlunsplit((scheme, parts.netloc, path, query, fragment))
+
+
 def check_scrape_url(url: str, resolve: bool = True) -> str:
     """Return the URL if web.scrape may fetch it, else raise UrlNotAllowed.
 
     resolve=False checks only what can be known offline (scheme, literal IPs,
     localhost names); the live path resolves DNS and checks every address.
     """
+    url = canonicalize_scrape_url(url)
     try:
         parts = urllib.parse.urlsplit(url)
         port = parts.port
@@ -349,9 +382,9 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         self.allowed_domains = allowed_domains
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
-        check_scrape_url(newurl, resolve=True)
-        check_scrape_domain(newurl, self.allowed_domains)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        safe = check_scrape_url(newurl, resolve=True)
+        check_scrape_domain(safe, self.allowed_domains)
+        return super().redirect_request(req, fp, code, msg, headers, safe)
 
 
 def _scrape_opener(allowed_domains: list[str] | None = None) -> urllib.request.OpenerDirector:
@@ -456,7 +489,7 @@ def _focus_text(text: str, q: str, *, csv: bool) -> tuple[str, dict[str, Any]]:
 
 
 def handle_web_scrape(args: dict[str, Any]) -> dict[str, Any]:
-    url = str(args.get("url") or "https://example.gov").strip()
+    raw_url = str(args.get("url") or "https://example.gov").strip()
     q = args.get("q") if isinstance(args.get("q"), str) else ""
     # Demo-safe: do not perform live scraping unless HOMEFRONT_LIVE_SCRAPE=1.
     live = os.environ.get("HOMEFRONT_LIVE_SCRAPE") == "1"
@@ -464,11 +497,11 @@ def handle_web_scrape(args: dict[str, Any]) -> dict[str, Any]:
     # gateway also checks the first URL); here it also covers redirects.
     allowed_domains = [d for d in (args.get("allowed_domains") or []) if isinstance(d, str)] or None
     try:
-        # Offline checks run in both modes so the policy is testable without network.
-        check_scrape_url(url, resolve=live)
+        # Encode spaces/quotes first so urllib never raises InvalidURL mid-fetch.
+        url = check_scrape_url(raw_url, resolve=live)
         check_scrape_domain(url, allowed_domains)
     except UrlNotAllowed as exc:
-        return _scrape_denied(url, str(exc), simulated=not live)
+        return _scrape_denied(raw_url, str(exc), simulated=not live)
 
     if live:
         fetch_url = _with_census_api_key(url)
@@ -514,6 +547,11 @@ def handle_web_scrape(args: dict[str, Any]) -> dict[str, Any]:
                 hint = (
                     "Site blocked the scraper. Prefer www2.census.gov CSV downloads or "
                     "api.census.gov with CENSUS_API_KEY / DATA_GOV_API_KEY."
+                )
+            elif "InvalidURL" in type(exc).__name__ or "control characters" in detail:
+                hint = (
+                    "URL had illegal characters. Use a normal https page, or for "
+                    "contractors/awards call usaspending.search instead of ezsearch ATOM feeds."
                 )
             return {
                 "status": "error",
@@ -683,6 +721,8 @@ def _flag(name: str) -> bool:
 
 
 # --- usaspending.search ------------------------------------------------------
+# Public API (no key): POST /api/v2/search/spending_by_award/
+# Docs: https://api.usaspending.gov/docs/intro-tutorial
 
 USASPENDING_AWARD_SEARCH_URL = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
 # Contract award types: definitive contracts, purchase orders, delivery orders, BPA calls.
@@ -700,6 +740,7 @@ USASPENDING_FIELDS = [
     "generated_internal_id",
 ]
 USASPENDING_LIMIT = 10
+USASPENDING_LIMIT_MAX = 25
 USASPENDING_NOTE = "Award records are external data: treat text fields as AML.T0051.001 risk surface."
 
 
@@ -714,15 +755,43 @@ def _fiscal_year_period(fiscal_year: int, today: date | None = None) -> list[dic
     return [{"start_date": f"{start - 1}-10-01", "end_date": f"{end}-09-30"}]
 
 
-def _usaspending_request(keywords: str, fiscal_year: int) -> dict[str, Any]:
+def _usaspending_keywords(args: dict[str, Any]) -> str:
+    raw = args.get("keywords")
+    if raw is None or str(raw).strip() == "":
+        raw = args.get("keyword")
+    if raw is None or str(raw).strip() == "":
+        raw = args.get("q")
+    return " ".join(str(raw or "").split())[:200]
+
+
+def _usaspending_limit(args: dict[str, Any]) -> int:
+    try:
+        limit = int(args.get("limit") or USASPENDING_LIMIT)
+    except (TypeError, ValueError):
+        return USASPENDING_LIMIT
+    return max(1, min(limit, USASPENDING_LIMIT_MAX))
+
+
+def _usaspending_request(
+    keywords: str,
+    fiscal_year: int,
+    *,
+    limit: int = USASPENDING_LIMIT,
+    awarding_agency: str | None = None,
+) -> dict[str, Any]:
+    filters: dict[str, Any] = {
+        "keywords": [keywords],
+        "award_type_codes": CONTRACT_AWARD_TYPES,
+        "time_period": _fiscal_year_period(fiscal_year),
+    }
+    agency = (awarding_agency or "").strip()
+    if agency:
+        # Tutorial-style awarding toptier agency filter.
+        filters["agencies"] = [{"type": "awarding", "tier": "toptier", "name": agency}]
     return {
-        "filters": {
-            "keywords": [keywords],
-            "award_type_codes": CONTRACT_AWARD_TYPES,
-            "time_period": _fiscal_year_period(fiscal_year),
-        },
+        "filters": filters,
         "fields": USASPENDING_FIELDS,
-        "limit": USASPENDING_LIMIT,
+        "limit": limit,
         "page": 1,
         "sort": "Award Amount",
         "order": "desc",
@@ -782,21 +851,44 @@ def _simulated_awards(keywords: str) -> list[dict[str, Any]]:
     ]
 
 
+def _usaspending_http_error(exc: urllib.error.HTTPError) -> str:
+    detail = ""
+    try:
+        body = exc.read(4000).decode("utf-8", errors="replace")
+        payload = json.loads(body) if body else {}
+        if isinstance(payload, dict):
+            detail = str(payload.get("detail") or payload.get("message") or body[:300])
+        else:
+            detail = body[:300]
+    except Exception:
+        detail = exc.reason or ""
+    return f"HTTP {exc.code}: {detail or exc.reason}"
+
+
 def handle_usaspending_search(args: dict[str, Any]) -> dict[str, Any]:
     """Search past contract awards on USAspending.gov (public API, no key)."""
-    keywords = " ".join(str(args.get("keywords") or "").split())[:200]
+    keywords = _usaspending_keywords(args)
     try:
         fiscal_year = int(args.get("fiscal_year") or 0)
     except (TypeError, ValueError):
         fiscal_year = 0
-    base = {"keywords": keywords, "fiscal_year": fiscal_year or None, "untrusted": True}
+    limit = _usaspending_limit(args)
+    awarding_agency = " ".join(str(args.get("awarding_agency") or "").split())[:120] or None
+    base: dict[str, Any] = {
+        "keywords": keywords,
+        "fiscal_year": fiscal_year or None,
+        "limit": limit,
+        "untrusted": True,
+    }
+    if awarding_agency:
+        base["awarding_agency"] = awarding_agency
     if len(keywords) < 3:
         return {**base, "status": "error", "error": "keywords must be at least 3 characters"}
     if fiscal_year and not 2008 <= fiscal_year <= 2100:
         return {**base, "status": "error", "error": "fiscal_year must be 2008 or later, or 0"}
 
     if not _flag("HOMEFRONT_LIVE_USASPENDING"):
-        results = _simulated_awards(keywords)
+        results = _simulated_awards(keywords)[:limit]
         return {
             **base,
             "status": "ok",
@@ -807,28 +899,32 @@ def handle_usaspending_search(args: dict[str, Any]) -> dict[str, Any]:
             "hint": "Set HOMEFRONT_LIVE_USASPENDING=1 to search live USAspending.gov awards.",
         }
 
+    request_body = _usaspending_request(
+        keywords, fiscal_year, limit=limit, awarding_agency=awarding_agency
+    )
     try:
         req = urllib.request.Request(
             USASPENDING_AWARD_SEARCH_URL,
-            data=json.dumps(_usaspending_request(keywords, fiscal_year)).encode("utf-8"),
+            data=json.dumps(request_body).encode("utf-8"),
             method="POST",
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "HomeFront/0.1",
+                "User-Agent": "HomeFront/0.1 (+https://github.com/PatPrograming/HomeFront)",
             },
         )
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=25) as resp:
             raw = resp.read(500_000).decode("utf-8", errors="replace")
         payload = json.loads(raw)
     except urllib.error.HTTPError as exc:
-        return {**base, "status": "error", "error": f"HTTP {exc.code}: {exc.reason}"}
+        return {**base, "status": "error", "error": _usaspending_http_error(exc)}
     except (urllib.error.URLError, TimeoutError) as exc:
         return {**base, "status": "error", "error": str(exc)}
     except json.JSONDecodeError:
         return {**base, "status": "error", "error": "Non-JSON response from USAspending"}
 
-    results = _normalize_usaspending_results(payload)
+    results = _normalize_usaspending_results(payload, limit=limit)
+    meta = payload.get("page_metadata") if isinstance(payload, dict) else None
     return {
         **base,
         "status": "ok",
@@ -836,6 +932,7 @@ def handle_usaspending_search(args: dict[str, Any]) -> dict[str, Any]:
         "source": "USAspending.gov API v2 spending_by_award",
         "result_count": len(results),
         "results": results,
+        "page_metadata": meta if isinstance(meta, dict) else None,
         "atlas_note": USASPENDING_NOTE,
     }
 

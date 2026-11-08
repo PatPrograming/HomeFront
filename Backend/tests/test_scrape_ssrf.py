@@ -73,6 +73,31 @@ def test_simulated_scrape_allows_public_hostname_without_dns(monkeypatch):
     assert out["status"] == "ok" and out["simulated"] is True
 
 
+def test_canonicalize_encodes_spaces_in_query():
+    raw = (
+        'https://sam.gov/ezsearch/FEEDS/ATOM?FEEDNAME=PUBLIC&q=FUNDING_OFFICE_NAME:'
+        '"ENERGY INFORMATION ADMINISTRATION"'
+    )
+    safe = handlers.canonicalize_scrape_url(raw)
+    assert " " not in safe
+    assert "ENERGY" in safe
+    assert safe.startswith("https://sam.gov/ezsearch/FEEDS/ATOM?")
+
+
+def test_relative_ezsearch_path_is_denied_clearly(monkeypatch):
+    monkeypatch.delenv("HOMEFRONT_LIVE_SCRAPE", raising=False)
+    out = handlers.handle_web_scrape(
+        {
+            "url": (
+                '/ezsearch/FEEDS/ATOM?FEEDNAME=PUBLIC&q=FUNDING_OFFICE_NAME:'
+                '"ENERGY INFORMATION ADMINISTRATION"'
+            )
+        }
+    )
+    assert out["status"] == "denied"
+    assert "absolute" in out["reason"].lower() or "usaspending" in out["reason"].lower()
+
+
 def test_live_scrape_blocks_hostname_resolving_to_private_ip(live, monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", _fake_dns({"internal.example.gov": "10.1.2.3"}))
     monkeypatch.setattr(handlers, "_scrape_opener", lambda *_: pytest.fail("must not fetch"))

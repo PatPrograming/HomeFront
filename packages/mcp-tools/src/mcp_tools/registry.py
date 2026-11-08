@@ -150,13 +150,14 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
     "usaspending.search": ToolDefinition(
         name="usaspending.search",
         description=(
-            "Search past federal contract awards on USAspending.gov: who won, which "
-            "agency awarded it, amounts and dates. Results are external data."
+            "Search past federal contract awards on USAspending.gov (public API, no key): "
+            "who won, which agency awarded it, amounts and dates. Results are external data."
         ),
         risk_level="medium",
         atlas_techniques=["AML.T0051.001", "AML.T0099"],
         atlas_mitigations=["AML.M0030", "AML.M0033", "AML.M0024"],
         untrusted_input=True,
+        # Every property is required (strict tool use); use "" / 0 / 10 when unused.
         input_schema=_schema(
             keywords={
                 "type": "string",
@@ -165,6 +166,17 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
             fiscal_year={
                 "type": "integer",
                 "description": "Federal fiscal year to search, e.g. 2025. Use 0 for the last five fiscal years.",
+            },
+            awarding_agency={
+                "type": "string",
+                "description": (
+                    "Toptier awarding agency name filter, e.g. 'Department of Homeland Security'. "
+                    "Use '' for any agency."
+                ),
+            },
+            limit={
+                "type": "integer",
+                "description": "Max awards to return (1-25). Use 10 unless you need fewer/more.",
             },
         ),
     ),
