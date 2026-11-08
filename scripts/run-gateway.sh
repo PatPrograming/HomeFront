@@ -40,7 +40,7 @@ load_env_file "$ROOT/.env"
 # AVP policy store id and policy-name map written by Backend/infra/setup.sh (untracked).
 load_env_file "$ROOT/Backend/infra/.env.aws"
 
-export PYTHONPATH="$ROOT/Backend:$ROOT/packages/mandate-contracts/src:$ROOT/packages/atlas-enricher/src:$ROOT/packages/mcp-tools/src:$ROOT/packages/identity-gateway/src:$ROOT/packages/guardrail-scanner/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$ROOT/Backend:$ROOT/packages/mandate-contracts/src:$ROOT/packages/aauth/src:$ROOT/packages/atlas-enricher/src:$ROOT/packages/mcp-tools/src:$ROOT/packages/identity-gateway/src:$ROOT/packages/guardrail-scanner/src${PYTHONPATH:+:$PYTHONPATH}"
 
 # Live api.data.gov when a key is present, unless HOMEFRONT_LIVE_DATAGOV is set explicitly.
 if [[ -z "${HOMEFRONT_LIVE_DATAGOV:-}" ]]; then

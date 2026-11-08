@@ -42,3 +42,5 @@ class DecisionEvent(WireModel):
     policy_ids: list[str] = Field(default_factory=list)
     atlas: list[str] = Field(default_factory=list)
     guardrail: GuardrailFlag = Field(default_factory=GuardrailFlag)
+    # How the agent authenticated this call: legacy_mandate | idjag+aauth | None
+    auth_protocol: str | None = None

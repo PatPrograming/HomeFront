@@ -202,13 +202,24 @@ class MandateGuard(HookProvider):
 
 
 class BearerAuth(httpx.Auth):
-    """Adds `Authorization: Bearer <mandate token>` to every MCP request and watches for 401/403."""
+    """Adds mandate / AAuth headers to every MCP request and watches for 401/403.
 
-    def __init__(self, token: str, guard: MandateGuard):
-        self.token, self.guard = token, guard
+    When `credentials` carries an agent key, each request is proof-of-possession signed.
+    """
+
+    def __init__(self, token: str, guard: MandateGuard, credentials: Any = None):
+        self.token, self.guard, self.credentials = token, guard, credentials
 
     def auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response, None]:
-        request.headers["Authorization"] = f"Bearer {self.token}"
+        if self.credentials is not None and getattr(self.credentials, "agent_key", None) is not None:
+            from urllib.parse import urlparse
+
+            path = urlparse(str(request.url)).path or "/mcp"
+            body = request.content or b""
+            for key, value in self.credentials.mcp_headers(request.method, path, body).items():
+                request.headers[key] = value
+        else:
+            request.headers["Authorization"] = f"Bearer {self.token}"
         response = yield request
         if response.status_code in (401, 403):
             self.guard.unauthorized = True

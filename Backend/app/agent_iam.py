@@ -31,6 +31,7 @@ from app.core.config import get_settings
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PACKAGE_SRC = [
     _REPO_ROOT / "packages" / "mandate-contracts" / "src",
+    _REPO_ROOT / "packages" / "aauth" / "src",
     _REPO_ROOT / "packages" / "atlas-enricher" / "src",
     _REPO_ROOT / "packages" / "mcp-tools" / "src",
     _REPO_ROOT / "packages" / "identity-gateway" / "src",

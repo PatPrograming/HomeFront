@@ -175,6 +175,14 @@ class TokenRecord:
     session_id: str = field(default_factory=lambda: f"ses_{uuid.uuid4().hex[:12]}")
     issued_at: float = field(default_factory=time.time)
     expires_at: float = field(default_factory=lambda: time.time() + 3600)
+    # AAuth / PoP binding for the Agents + Monitoring pathway (opaque gr_* stays
+    # the revoke handle; key_blob never leaves the gateway process).
+    auth_protocol: str = "legacy_workload"
+    jkt: str | None = None
+    key_blob: str | None = None
+    agent_jwt: str | None = None
+    aa_auth_jwt: str | None = None
+    acting_for: str | None = None
 
 
 class DuplicateAgentError(Exception):
@@ -473,7 +481,13 @@ class GatewayStore:
     # --- workload tokens --------------------------------------------------
 
     def issue_token(
-        self, agent_id: str, ttl_seconds: int = 3600, session_id: str | None = None
+        self,
+        agent_id: str,
+        ttl_seconds: int = 3600,
+        session_id: str | None = None,
+        *,
+        acting_for: str | None = None,
+        office: str | None = None,
     ) -> TokenRecord:
         agent = self._agents.get(agent_id)
         if agent is None:
@@ -485,9 +499,19 @@ class GatewayStore:
             agent_id=agent_id,
             token_version=agent.token_version,
             expires_at=time.time() + ttl_seconds,
+            acting_for=acting_for,
         )
         if session_id:
             rec.session_id = session_id
+        from .workload_aauth import bind_workload_aauth
+
+        bind_workload_aauth(
+            rec,
+            agent_id=agent_id,
+            acting_for=acting_for or agent_id,
+            office=office or agent.agency or "homefront",
+            ttl_seconds=ttl_seconds,
+        )
         with self._lock:
             self.tokens[rec.token] = rec
         return rec

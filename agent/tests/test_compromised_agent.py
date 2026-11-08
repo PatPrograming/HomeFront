@@ -81,23 +81,23 @@ def test_rejected_token_at_connect_stops_with_every_call_not_done(stub):
 
 
 def test_broker_403_stops_cleanly(monkeypatch, capsys):
-    def refuse(api, sid):
+    def refuse(api, sid, **kwargs):
         raise BrokerError("The broker refused a mandate for session s (HTTP 403).", 403)
 
     monkeypatch.delenv("MANDATE_TOKEN", raising=False)
     monkeypatch.setattr(attacker, "load_env_file", lambda path: None)
-    monkeypatch.setattr(cli, "fetch_mandate_token", refuse)
+    monkeypatch.setattr(cli, "fetch_agent_credentials", refuse)
     assert attacker.main(["--sid", "s", "--delay", "0"]) == 0
     out = capsys.readouterr().out
     assert "STOPPED: access revoked mid-task (the broker refused a mandate (HTTP 403))" in out
 
 
 def test_other_broker_failure_exits_3(monkeypatch, capsys):
-    def refuse(api, sid):
+    def refuse(api, sid, **kwargs):
         raise BrokerError("Cognito refused the agent's client credentials (HTTP 400).")
 
     monkeypatch.delenv("MANDATE_TOKEN", raising=False)
     monkeypatch.setattr(attacker, "load_env_file", lambda path: None)
-    monkeypatch.setattr(cli, "fetch_mandate_token", refuse)
+    monkeypatch.setattr(cli, "fetch_agent_credentials", refuse)
     assert attacker.main(["--sid", "s"]) == 3
     assert "Cannot start" in capsys.readouterr().out

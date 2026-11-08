@@ -93,6 +93,7 @@ def read_session(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dic
 
 @router.post("/sessions/{sid}/mandate")
 def issue_mandate(sid: str, agent: AgentClientIdentity = Depends(require_agent_client)) -> dict:
+    """Legacy HS256 mandate mint. Prefer POST /oauth/token (ID-JAG + aa-auth) when available."""
     gateway = get_gateway()
     session = gateway.store.get_session(sid)
     if session is None:
@@ -112,4 +113,9 @@ def issue_mandate(sid: str, agent: AgentClientIdentity = Depends(require_agent_c
         iat=now,
         exp=now + TTL_SECONDS,
     )
-    return {"mandateToken": mint_mandate_token(claims, gateway.secret), "expiresAt": _iso(claims.exp)}
+    return {
+        "mandateToken": mint_mandate_token(claims, gateway.secret),
+        "expiresAt": _iso(claims.exp),
+        "auth_protocol": "legacy_mandate",
+        "oauth_token_endpoint": "/api/v1/oauth/token",
+    }

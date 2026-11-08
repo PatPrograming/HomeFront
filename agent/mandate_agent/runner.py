@@ -65,12 +65,16 @@ def _converse(
     history: list[Any] | None = None,
     model: Any = None,
     callback_handler: Any = None,
+    credentials: Any = None,
 ) -> tuple[str | None, list[Any]]:
     """One agent run over MCP. Returns (the model's answer, the conversation so far).
 
     The answer is None when the gateway rejected the mandate token before anything ran.
     """
-    client = MCPClient(url=settings.gateway_url, auth_provider=BearerAuth(token, guard))
+    client = MCPClient(
+        url=settings.gateway_url,
+        auth_provider=BearerAuth(token, guard, credentials=credentials),
+    )
     model = model or BedrockModel(model_id=settings.model_id, region_name=settings.region)
     answer, messages = None, history or []
     try:
@@ -106,11 +110,21 @@ def run_inbox(
     model: Any = None,
     out: Callable[[str], None] = print,
     callback_handler: Any = None,
+    credentials: Any = None,
 ) -> tuple[int, MandateGuard]:
     """Work the inbox once. Returns (exit code, guard with the ledger of what happened)."""
     guard = MandateGuard(log=out)
     try:
-        summary, _ = _converse(prompt, token, settings, guard, SYSTEM_PROMPT, model=model, callback_handler=callback_handler)
+        summary, _ = _converse(
+            prompt,
+            token,
+            settings,
+            guard,
+            SYSTEM_PROMPT,
+            model=model,
+            callback_handler=callback_handler,
+            credentials=credentials,
+        )
         if summary is None:
             out("Stopping: the gateway rejected the mandate token (HTTP 401). Nothing was done.")
         else:
@@ -131,6 +145,7 @@ def run_chat_turn(
     history: list[Any],
     model: Any = None,
     out: Callable[[str], None] = print,
+    credentials: Any = None,
 ) -> tuple[str, MandateGuard, list[Any]]:
     """Answer one chat message. Returns (the reply to post, the guard, the conversation so far).
 
@@ -139,7 +154,16 @@ def run_chat_turn(
     """
     guard = MandateGuard(log=out)
     system_prompt = CHAT_SYSTEM_PROMPT.format(inbox=", ".join(inbox))
-    answer, history = _converse(message, token, settings, guard, system_prompt, history=history, model=model)
+    answer, history = _converse(
+        message,
+        token,
+        settings,
+        guard,
+        system_prompt,
+        history=history,
+        model=model,
+        credentials=credentials,
+    )
     lines = [answer or "The gateway rejected my access token, so I did nothing."]
     lines += [line for line in (guard.held_note(), guard.correction()) if line]
     if guard.stop_reason:

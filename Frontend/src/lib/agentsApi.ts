@@ -39,6 +39,10 @@ export interface WorkloadToken {
   tool_grants: string[];
   token_version: number;
   session_id: string;
+  auth_protocol?: string;
+  agent_jwt?: string | null;
+  aa_auth_jwt?: string | null;
+  jkt?: string | null;
   atlas?: AtlasNote;
 }
 
@@ -47,6 +51,7 @@ export interface ToolCallResult {
   tool: string;
   result: unknown;
   approval_id?: string;
+  auth_protocol?: string;
   atlas?: AtlasNote;
 }
 

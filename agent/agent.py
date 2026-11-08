@@ -29,7 +29,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "packages" / "mandate-contracts" / "src"))
 sys.path.insert(0, str(REPO / "agent"))
 
-from mandate_agent.broker import BrokerError, fetch_mandate_token  # noqa: E402
+from mandate_agent.broker import AgentCredentials, BrokerError, fetch_agent_credentials, fetch_mandate_token  # noqa: E402
 from mandate_agent.config import Settings  # noqa: E402
 
 DEFAULT_EMAILS = "email-1,email-2,email-3"
@@ -53,23 +53,34 @@ def build_prompt(email_ids: list[str]) -> str:
     return f"Work today's inbox. The new emails are: {', '.join(email_ids)}. Handle each one."
 
 
-def token_source(args: argparse.Namespace, settings: Settings) -> Callable[[], str]:
-    """--token, then the broker for --sid, then MANDATE_TOKEN. Calling the result gets a token.
+def credentials_source(args: argparse.Namespace, settings: Settings) -> Callable[[], AgentCredentials]:
+    """--token, then the broker for --sid (AAuth when STAFF_*_TOKEN is set), then MANDATE_TOKEN.
 
     An explicit --sid beats a MANDATE_TOKEN left in the shell or agent/.env: otherwise the agent
     would quietly run under the dev session, and offboarding Maya would not stop it.
     """
     if args.token:
-        return lambda: args.token
+        return lambda: AgentCredentials(access_token=args.token, auth_protocol="legacy_mandate")
     if args.sid:
-        return lambda: fetch_mandate_token(settings.api_url, args.sid)
+        return lambda: fetch_agent_credentials(settings.api_url, args.sid)
     if os.environ.get("MANDATE_TOKEN"):
-        return lambda: os.environ["MANDATE_TOKEN"]
+        return lambda: AgentCredentials(
+            access_token=os.environ["MANDATE_TOKEN"], auth_protocol="legacy_mandate"
+        )
     raise SystemExit("Give --sid <session id> (real flow) or --token / MANDATE_TOKEN (dev flow).")
 
 
+def token_source(args: argparse.Namespace, settings: Settings) -> Callable[[], str]:
+    src = credentials_source(args, settings)
+    return lambda: src().access_token
+
+
+def resolve_credentials(args: argparse.Namespace, settings: Settings) -> AgentCredentials:
+    return credentials_source(args, settings)()
+
+
 def resolve_token(args: argparse.Namespace, settings: Settings) -> str:
-    return token_source(args, settings)()
+    return resolve_credentials(args, settings).access_token
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -92,16 +103,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.chat:
         return chat(args, settings)
     try:
-        token = resolve_token(args, settings)
+        creds = resolve_credentials(args, settings)
     except BrokerError as error:
         print(f"Cannot start: {error}")
         return 3
 
     from mandate_agent.runner import run_inbox  # imported late so --help works without Strands
 
-    print(f"HomeFront agent -> {settings.gateway_url} (model {settings.model_id}, {settings.region})")
+    print(
+        f"HomeFront agent -> {settings.gateway_url} "
+        f"(model {settings.model_id}, {settings.region}, auth={creds.auth_protocol})"
+    )
     prompt = args.prompt or build_prompt((args.emails or DEFAULT_EMAILS).split(","))
-    code, _ = run_inbox(prompt, token, settings)
+    code, _ = run_inbox(prompt, creds.access_token, settings, credentials=creds)
     return code
 
 
