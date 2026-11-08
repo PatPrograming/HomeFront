@@ -79,7 +79,7 @@ def test_a_staffer_lists_each_of_their_open_conversations(client, store):
     assert rows[first]["title"] == "Check my email please"
     assert rows[first]["waitingDrafts"] == 2 and rows[second]["waitingDrafts"] == 1
     for row in rows.values():
-        assert set(row) == {"sid", "title", "createdAt", "expiresAt", "status", "waitingDrafts"}
+        assert {"sid", "title", "createdAt", "expiresAt", "status", "waitingDrafts"} <= set(row)  # + sidebar fields
         assert row["status"] == "active"
 
 

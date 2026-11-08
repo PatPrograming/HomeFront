@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,6 +27,7 @@ except ModuleNotFoundError as exc:  # STUB until lane A (WP1) merges Backend/app
     from identity_gateway.auth_stub import StaffIdentity, require_staff
 
 from app.routers.sessions import SESSION_TTL_SECONDS, _created_epoch  # noqa: E402  (same session clock as the broker)
+from app.services import conversations  # noqa: E402
 from app.services.agent_supervisor import AgentStartError, get_supervisor  # noqa: E402
 
 router = APIRouter(tags=["assistant"])
@@ -68,7 +69,7 @@ def _own_active_session(sid: str, staff: StaffIdentity) -> None:
     """Only the session's own staffer chats in it; anyone else gets 404, as if it did not exist."""
     store = get_gateway().store
     session = store.get_session(sid)
-    if session is None or session.acting_for != staff.username:
+    if session is None or session.acting_for != staff.username or conversations.get_meta(sid, staff.username).deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")
     staffer = store.get_staffer(staff.username)
     if session.status != "active" or staffer is None or not staffer.active:
@@ -110,7 +111,7 @@ def require_agent_session(creds: HTTPAuthorizationCredentials | None = Depends(b
 @router.get("/sessions/{sid}/messages")
 def read_messages(sid: str, after: str | None = None, staff: StaffIdentity = Depends(require_staff)) -> dict:
     session = get_gateway().store.get_session(sid)
-    if session is None or session.acting_for != staff.username:
+    if session is None or session.acting_for != staff.username or conversations.get_meta(sid, staff.username).deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")
     return _chat_page(sid, after)
 
@@ -133,10 +134,14 @@ def _ensure_agent(sid: str, staff: StaffIdentity) -> None:
 
 
 @router.post("/sessions/{sid}/messages")
-def send_message(sid: str, body: MessageIn, staff: StaffIdentity = Depends(require_staff)) -> dict:
+def send_message(
+    sid: str, body: MessageIn, background: BackgroundTasks, staff: StaffIdentity = Depends(require_staff)
+) -> dict:
     _own_active_session(sid, staff)
     _ensure_agent(sid, staff)
-    return _post(sid, "user", body.text)
+    message = _post(sid, "user", body.text)
+    background.add_task(conversations.refresh_title, sid, staff.username)  # after the reply, so the chat never waits
+    return message
 
 
 # --- chat: agent side -----------------------------------------------------------

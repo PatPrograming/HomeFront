@@ -241,6 +241,13 @@ class MandateStore:
         items = page.get("Items", [])
         return ChatMessageItem.model_validate(items[0]) if items else None
 
+    def last_chat_message(self, sid: str) -> ChatMessageItem | None:
+        page = self.table.query(
+            KeyConditionExpression=Key("pk").eq(f"CHAT#{sid}"), ConsistentRead=True, Limit=1, ScanIndexForward=False
+        )
+        items = page.get("Items", [])
+        return ChatMessageItem.model_validate(items[0]) if items else None
+
     # --- decision events ---------------------------------------------------
 
     def put_event(self, event: DecisionEvent) -> None:

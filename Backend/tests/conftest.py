@@ -25,6 +25,7 @@ os.environ.update(
         "HOMEFRONT_SES_REGION": "",
         "HOMEFRONT_LIVE_DATAGOV": "0",
         "HOMEFRONT_AUTOSTART_AGENT": "0",  # never start a real agent process
+        "HOMEFRONT_AUTO_TITLE": "0",  # never call Bedrock for conversation titles
     }
 )
 os.environ.pop("AWS_PROFILE", None)
