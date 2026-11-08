@@ -36,7 +36,9 @@ STAFFER item is an active admin, so a demoted admin loses the tab at once.
 - **Change what a role may do.** The editor shows, before saving, what the change lets every person in that role
   newly do or stop doing, and who it reaches. The server refuses:
   - an always-denied tool (`records_bulk_export`);
-  - an admin-only tool for any role but the Chief of Staff (`ADMIN_ONLY_TOOLS` in `roles.py`);
+  - a locked tool for any role it is not locked to (`LOCKED_TOOLS` in `roles.py`: `email_send_list`, the bulk
+    send to the office mailing list, stays with the Chief of Staff). The editor shows it greyed out, "locked by
+    policy", and its Cedar forbid also names the Chief of Staff, so Cedar keeps the lock on its own;
   - an unknown or duplicated tool, or a role that does not exist.
   The gateway also drops any such tool from a stored list, so a bad item written straight to DynamoDB still
   cannot reach Cedar.
@@ -161,7 +163,7 @@ a category outside the role.
 ## Turn it on in AWS
 
 For the admin-editable table, after the steps below have been done once: run the new gateway code, then
-`bash Backend/infra/setup.sh --apply --update-role-policies`, which rewrites the six `role-*` policies to read
+`bash Backend/infra/setup.sh --apply --update-role-policies`, which rewrites every `role-*` policy to read
 `principal.roleTools`. The order matters: the old gateway does not send `roleTools`, so the new policies would deny
 it everything.
 

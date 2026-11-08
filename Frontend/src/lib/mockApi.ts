@@ -134,6 +134,21 @@ const ACTIONS: Record<string, string> = {
   web_scrape: "read public web pages",
   email_send: "send email for the office",
   social_post: "post on the office's official account",
+  email_send_list: "email the whole office mailing list",
+  social_reply: "reply to comments on the office's official account",
+  usaspending_search: "search federal contract awards",
+  sam_entity_lookup: "look up federal vendors in SAM.gov",
+  report_save: "save reports for the office",
+  census_query: "look up Census data",
+  openfda_search: "search FDA drug, device and food data",
+  eia_query: "look up energy data",
+  nasa_search: "search NASA images",
+  noaa_climate: "look up NOAA climate data",
+  nps_parks: "look up National Park Service parks",
+  bls_series: "look up labor statistics",
+  fec_search: "search campaign finance records",
+  epa_search: "search EPA facility records",
+  fcc_search: "search FCC licenses",
   records_bulk_export: "export constituent records in bulk",
 };
 
@@ -172,6 +187,7 @@ function adminRoute(state: MockState, method: string, pathname: string, body: un
     for (const t of tools) {
       if (t === "records_bulk_export") throw new MockError(400, `${t} is blocked for everyone by policy and cannot be given to a role.`);
       if (!TOOL_NAMES.includes(t)) throw new MockError(400, `There is no tool called '${t}'.`);
+      if (t === "email_send_list" && role !== "chief_of_staff") throw new MockError(400, `${t} is locked by policy to the Chief of Staff only.`);
     }
     const r = role as Role;
     const before = toolsOf(state, r);
@@ -184,10 +200,10 @@ function adminRoute(state: MockState, method: string, pathname: string, body: un
     return {
       roles: ROLES.map((r) => ({
         id: r, label: ROLE_LABELS[r], tools: toolsOf(state, r), defaultTools: [...ROLE_TOOLS[r]],
-        assignable: TOOL_NAMES.filter((t) => t !== "records_bulk_export"), customized: Boolean(a.roleTools[r]),
+        assignable: TOOL_NAMES.filter((t) => t !== "records_bulk_export" && (t !== "email_send_list" || r === "chief_of_staff")), customized: Boolean(a.roleTools[r]),
         updatedBy: a.log.find((e) => e.type === "role_tools_changed" && e.target === r)?.actor ?? null, updatedAt: null, people: usernames.filter((u) => a.roles[u] === r),
       })),
-      tools: TOOL_NAMES.map((t) => ({ name: t, action: ACTIONS[t] ?? t, alwaysDenied: t === "records_bulk_export", adminOnly: false })),
+      tools: TOOL_NAMES.map((t) => ({ name: t, action: ACTIONS[t] ?? t, alwaysDenied: t === "records_bulk_export", lockedTo: t === "email_send_list" ? ["Chief of Staff"] : [] })),
     };
   }
   if (method === "GET" && pathname === "/admin/audit") return { events: a.log };

@@ -120,7 +120,8 @@ export interface ToolInfo {
   name: string;
   action: string;
   alwaysDenied: boolean;
-  adminOnly: boolean;
+  /** Labels of the only roles that may hold this tool ("locked by policy"); empty when not locked. */
+  lockedTo: string[];
 }
 
 /** POST /admin/roles/{role}/preview and PUT /admin/roles/{role}: what the change allows, in plain words. */

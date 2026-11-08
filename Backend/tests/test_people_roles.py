@@ -10,7 +10,7 @@ import time
 
 import pytest
 from identity_gateway.tokens import mint_mandate_token
-from mandate_contracts import MandateClaims, roles
+from mandate_contracts import MandateClaims
 from mandate_contracts.ddb import SessionItem, StafferItem
 from mandate_contracts.roles import ROLE_TOOLS
 
@@ -143,7 +143,7 @@ def test_roles_show_every_role_and_what_it_may_do(client, directory):
     assert [r["label"] for r in body["roles"]] == [
         "Chief of Staff", "Caseworker", "Communications Director", "Legislative Aide", "Intern"
     ]
-    assert roles_by_id["intern"]["tools"] == ["datagov_search", "web_scrape"]
+    assert set(roles_by_id["intern"]["tools"]) == set(ROLE_TOOLS["intern"])
     assert roles_by_id["caseworker"]["people"] == ["dana", "maya", "retired"]
     assert "records_bulk_export" not in roles_by_id["chief_of_staff"]["assignable"]
     tools = {t["name"]: t for t in body["tools"]}
@@ -278,14 +278,31 @@ def test_a_role_can_never_be_given_an_always_denied_tool(client, store, director
     assert _snapshot(store, directory) == before
 
 
-def test_an_admin_only_tool_stays_with_the_chief_of_staff(client, store, directory, monkeypatch):
-    """Guard: validate_role_tools' admin-only check (no tool is admin-only on this base yet, so mark one)."""
-    monkeypatch.setattr(roles, "ADMIN_ONLY_TOOLS", ("social_post",))
-    r = client.put("/api/v1/admin/roles/caseworker", headers=CHIEF, json={"tools": ["web_scrape", "social_post"]})
-    assert r.status_code == 400 and "Chief of Staff only" in r.json()["detail"]
-    assert store.get_role_item("caseworker") is None
-    r = client.put("/api/v1/admin/roles/chief_of_staff", headers=CHIEF, json={"tools": ["social_post"]})
+@pytest.mark.parametrize("role", [r for r in ROLE_TOOLS if r != "chief_of_staff"])
+def test_the_locked_mailing_list_tool_can_never_be_given_below_the_chief_of_staff(client, store, directory, role):
+    """Guard: LOCKED_TOOLS in validate_role_tools (lead ruling). The server refuses whatever the client sends."""
+    before = _snapshot(store, directory)
+    tools = [*ROLE_TOOLS[role], "email_send_list"]
+    for call, path in ((client.put, f"/api/v1/admin/roles/{role}"), (client.post, f"/api/v1/admin/roles/{role}/preview")):
+        r = call(path, headers=CHIEF, json={"tools": tools})
+        assert r.status_code == 400 and "locked by policy" in r.json()["detail"], r.text
+    assert _snapshot(store, directory) == before
+
+
+def test_the_chief_of_staff_keeps_the_locked_tool_and_the_editor_is_told_it_is_locked(client, directory):
+    tools = {t["name"]: t for t in client.get("/api/v1/admin/roles", headers=CHIEF).json()["tools"]}
+    assert tools["email_send_list"]["lockedTo"] == ["Chief of Staff"] and tools["web_scrape"]["lockedTo"] == []
+    r = client.put("/api/v1/admin/roles/chief_of_staff", headers=CHIEF, json={"tools": ["email_send_list"]})
     assert r.status_code == 200
+
+
+def test_a_locked_tool_written_straight_to_dynamodb_still_does_not_reach_an_intern(client, store, table, gateway, directory, maya_session):
+    from mandate_contracts.ddb import role_key
+
+    table.put_item(Item={**role_key("caseworker"), "tools": ["email_send_list"], "updatedBy": "x", "updatedAt": "t"})
+    assert "email_send_list" not in store.get_role_tools("caseworker")
+    out = gateway.guarded("email_send_list", {"subject": "s", "body": "b"}, maya_session)
+    assert out.allowed is False
 
 
 @pytest.mark.parametrize("tools", [["web_scrape", "web_scrape"], ["Web_Scrape"], ["web.scrape"], ["anything"]])
@@ -301,7 +318,8 @@ def test_editing_a_role_that_does_not_exist_is_404(client, store, directory):
 
 def test_preview_says_what_a_change_allows_and_changes_nothing(client, store, directory):
     before = _snapshot(store, directory)
-    r = client.post("/api/v1/admin/roles/intern/preview", headers=CHIEF, json={"tools": ["web_scrape", "email_send"]})
+    tools = [t for t in ROLE_TOOLS["intern"] if t != "datagov_search"] + ["email_send"]
+    r = client.post("/api/v1/admin/roles/intern/preview", headers=CHIEF, json={"tools": tools})
     assert r.status_code == 200
     body = r.json()
     assert body["changes"] == [

@@ -34,6 +34,40 @@ export function ChangeWarning({ change }: { change: RoleChange | null }) {
   );
 }
 
+interface RoleEditorFieldsProps {
+  role: RoleView;
+  tools: ToolInfo[];
+  draft: string[];
+  busy: boolean;
+  onPick: (name: string) => void;
+}
+
+/** One checkbox per tool. A tool the server would refuse for this role (blocked for everyone, or locked by policy
+ *  to other roles) is greyed out; the server checks again whatever the browser sends. */
+export function RoleEditorFields({ role, tools, draft, busy, onPick }: RoleEditorFieldsProps) {
+  return (
+    <fieldset>
+      <legend>Their assistant may</legend>
+      {tools.map((t) => {
+        const blocked = t.alwaysDenied || !role.assignable.includes(t.name);
+        return (
+          <label key={t.name} className={blocked ? "tool-check blocked" : "tool-check"}>
+            <input type="checkbox" checked={!blocked && draft.includes(t.name)} disabled={blocked || busy} onChange={() => onPick(t.name)} />
+            <span>
+              {t.action}
+              {t.alwaysDenied
+                ? " (blocked for everyone)"
+                : !role.assignable.includes(t.name)
+                  ? ` (locked by policy to the ${t.lockedTo.join(" and ")})`
+                  : ""}
+            </span>
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
+
 interface RoleCardProps {
   role: RoleView;
   tools: ToolInfo[];
@@ -93,26 +127,7 @@ export function RoleCard({ role, tools, onSaved }: RoleCardProps) {
       </div>
       {editing ? (
         <div className="role-editor">
-          <fieldset>
-            <legend>Their assistant may</legend>
-            {tools.map((t) => {
-              const blocked = t.alwaysDenied || !role.assignable.includes(t.name);
-              return (
-                <label key={t.name} className={blocked ? "tool-check blocked" : "tool-check"}>
-                  <input
-                    type="checkbox"
-                    checked={!blocked && draft.includes(t.name)}
-                    disabled={blocked || busy}
-                    onChange={() => pick(t.name)}
-                  />
-                  <span>
-                    {t.action}
-                    {t.alwaysDenied ? " (blocked for everyone)" : !role.assignable.includes(t.name) ? " (Chief of Staff only)" : ""}
-                  </span>
-                </label>
-              );
-            })}
-          </fieldset>
+          <RoleEditorFields role={role} tools={tools} draft={draft} busy={busy} onPick={pick} />
           <ChangeWarning change={change} />
           {error && (
             <p className="alert alert-error" role="alert">

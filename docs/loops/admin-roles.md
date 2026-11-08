@@ -3,7 +3,7 @@
 Status: BUILDING
 Profile: feature (authorization: full trial)
 Round: 1 / 4
-Base commit: 679f0ad (Lane G, claude/roles-huy-631b8e)
+Base commit: 0799095 (Lane H, Agent-Permissions-Huy; contracts 404cdff). First built on Lane G 679f0ad (old tip a605f42), then replayed here on the lead's ruling.
 Branch: Admin-Roles-Huy
 
 ## Original Request
@@ -34,9 +34,9 @@ Every command strips AWS credentials (`scripts/offline-pytest.sh`). No check cal
 |----|-------|---------|-----------|
 | C1 | Role table in DynamoDB reaches real Cedar: edits apply on the next call, mid-session, fail closed, forbids win | `scripts/offline-pytest.sh -q packages/identity-gateway/tests/test_gw_role_table.py` | exit 0 |
 | C2 | People & roles API: admin only (real token check), list, assign, edit, preview words, audit, every escalation case | `scripts/offline-pytest.sh -q Backend/tests/test_people_roles.py` | exit 0 |
-| C3 | Contracts: role policies are role-agnostic and match the files; validator rejects always-denied, admin-only, unknown, duplicate | `scripts/offline-pytest.sh -q packages/mandate-contracts/tests` | exit 0 |
+| C3 | Contracts: role policies read principal.roleTools and match the files; validator rejects always-denied, locked, unknown, duplicate | `scripts/offline-pytest.sh -q packages/mandate-contracts/tests` | exit 0 |
 | C4 | setup.sh updates changed role policies only with `--update-role-policies`, dry run by default | `scripts/offline-pytest.sh -q Backend/tests/test_setup_role_policies.py` | exit 0 |
-| C5 | Backend and packages suite stays green | `scripts/offline-pytest.sh -q Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests packages/identity-gateway/tests` | exit 0 |
+| C5 | Backend and packages suite stays green (see Decisions: one Lane H test excluded) | `scripts/offline-pytest.sh -q Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests packages/identity-gateway/tests --deselect packages/identity-gateway/tests/test_gw_guarded.py::test_scan_runs_only_for_untrusted_output_tools` | exit 0 |
 | C6 | Agent suite stays green | `scripts/offline-pytest.sh -q agent/tests packages/guardrail-scanner/tests` | exit 0 |
 | C7 | Console: People page tests, typecheck, build, all tests | `cd Frontend && npx tsc --noEmit && npm run -s build && npx vitest run` | exit 0 |
 | C8 | Console has the People page test | `cd Frontend && npx vitest run src/pages/People.test.tsx` | exit 0 |
@@ -55,10 +55,10 @@ At round 0, C1, C2 and C8 fail because the files do not exist. C3 and C4 fail on
 1. **Contracts** (`roles.py`, `cedar.py`, `ddb.py`, policies):
    - Role policy template becomes role-agnostic: `forbid(action == X) unless { principal has roleTools &&
      principal.roleTools.contains("X") }`. Policy ids stay `role-<tool>`; files regenerated.
-   - `ADMIN_ONLY_TOOLS` (tools only the Chief of Staff role may hold), `assignable_tools(role)`,
-     `validate_role_tools(role, tools)` (unknown role, unknown or duplicate tool, always-denied, admin-only),
-     `effective_role_tools(role, stored)` (unknown role → empty; no stored list → the code default
-     `ROLE_TOOLS`; always intersected with `assignable_tools`), `describe_role_change(role, before, after)`.
+   - Lane H's `LOCKED_TOOLS` and `effective_role_tools(role, tools)` (owned by Lane H) are reused, not
+     duplicated. Added: `assignable_tools(role)`, `validate_role_tools(role, tools)` (unknown role, unknown or
+     duplicate tool, always-denied, locked), `describe_role_change(role, before, after)`. A locked tool's
+     forbid also names its roles.
    - `cedar.agent_entity` gains `roleTools` (a Cedar set). `ddb.role_key`, `RoleItem`, `admin_event_key`,
      `AdminEventItem`.
 2. **Store + gateway** (`storage.py`, `authz.py`, `gateway.py`): `get_role_tools(role)` reads `ROLE#<role>` fresh
@@ -77,13 +77,13 @@ At round 0, C1, C2 and C8 fail because the files do not exist. C3 and C4 fail on
 
 | # | Task | Role | Files it may touch | Done when | Depends on | Status |
 |---|------|------|--------------------|-----------|------------|--------|
-| 1 | Contracts | lead | packages/mandate-contracts/** | C3 | - | todo |
-| 2 | Store + gateway | lead | packages/identity-gateway/src/identity_gateway/{storage,authz,gateway}.py, tests | C1 | 1 | todo |
-| 3 | Role table consumers | lead | Backend/app/routers/{sessions,assistant}.py | C5 | 2 | todo |
-| 4 | API | lead | Backend/app/routers/people.py, Backend/app/services/directory.py, Backend/app/main.py, Backend/tests/test_people_roles.py | C2 | 2 | todo |
-| 5 | setup.sh | lead | Backend/infra/setup.sh, Backend/tests/test_setup_role_policies.py | C4 | 1 | todo |
-| 6 | Console | lead | Frontend/src/** | C7, C8 | 4 | todo |
-| 7 | Docs | lead | docs/ROLES.md, Backend/infra/README.md | review | 4 | todo |
+| 1 | Contracts | lead | packages/mandate-contracts/** | C3 | - | done |
+| 2 | Store + gateway | lead | packages/identity-gateway/src/identity_gateway/{storage,authz,gateway}.py, tests | C1 | 1 | done |
+| 3 | Role table consumers | lead | Backend/app/routers/{sessions,assistant}.py | C5 | 2 | done |
+| 4 | API | lead | Backend/app/routers/people.py, Backend/app/services/directory.py, Backend/app/main.py, Backend/tests/test_people_roles.py | C2 | 2 | done |
+| 5 | setup.sh | lead | Backend/infra/setup.sh, Backend/tests/test_setup_role_policies.py | C4 | 1 | done |
+| 6 | Console | lead | Frontend/src/** | C7, C8 | 4 | done |
+| 7 | Docs | lead | docs/ROLES.md, Backend/infra/README.md | review | 4 | done |
 
 ## Rounds
 
@@ -100,5 +100,12 @@ At round 0, C1, C2 and C8 fail because the files do not exist. C3 and C4 fail on
   never add one; `forbid-bulk-export` and `forbid-campaign-post` still bind every role.
 - Defense in depth: the gateway intersects the stored list with the assignable set, so a bad item written
   straight to DynamoDB still cannot grant an always-denied or admin-only tool.
+- Lead ruling (relayed 2026-11-08): rebase onto Lane H 8f7dba6+ (done on 0799095, after Lane H's gateway commit
+  landed), reuse Lane H's `LOCKED_TOOLS` (`email_send_list` → Chief of Staff only; greyed "locked by policy" in the
+  editor; server refuses whatever the client sends), and keep `role_allows(role, dotted, tools=None)` for Lane H's
+  Agents-tab cap.
+- `test_gw_guarded.py::test_scan_runs_only_for_untrusted_output_tools` fails on Lane H's base 0799095 itself (it
+  asserts only two untrusted tools; Lane H added the research APIs). Not mine to change; reported to Lane H and
+  deselected in C5.
 - Admin routes also check the caller's STAFFER item (`role == "admin"`, active) fresh from DynamoDB, so a demoted
   or offboarded admin loses the tab at once, not when their access token expires.

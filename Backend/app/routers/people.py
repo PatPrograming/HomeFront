@@ -23,7 +23,7 @@ from identity_gateway.storage import MandateStore
 from mandate_contracts import TOOLS
 from mandate_contracts.ddb import AdminEventItem, RoleItem, StafferItem
 from mandate_contracts.roles import (
-    ADMIN_ONLY_TOOLS,
+    LOCKED_TOOLS,
     ROLE_GOVERNED_TOOLS,
     ROLE_LABELS,
     ROLE_TOOLS,
@@ -142,7 +142,8 @@ def list_roles(admin: StaffIdentity = Depends(require_people_admin)) -> dict:
                 "name": name,
                 "action": tool_action(name),
                 "alwaysDenied": spec.always_denied,
-                "adminOnly": name in ADMIN_ONLY_TOOLS,
+                # Roles a locked tool is locked to (lead ruling: only they may ever hold it); [] when not locked.
+                "lockedTo": [ROLE_LABELS[r] for r in ROLE_LABELS if r in LOCKED_TOOLS.get(name, ())],
             }
             for name, spec in TOOLS.items()
         ],

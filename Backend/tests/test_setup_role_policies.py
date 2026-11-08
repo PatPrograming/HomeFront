@@ -11,10 +11,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "Backend" / "infra" / "setup.sh"
-STARTER = ["case-read-same-office", "email-send-known-recipient", "forbid-bulk-export", "forbid-campaign-post",
-           "read-tools", "social-post-official"]
-ROLE = ["role-case-read", "role-datagov-search", "role-email-send", "role-inbox-read", "role-social-post",
-        "role-web-scrape"]
+POLICY_NAMES = sorted(p.stem for p in (ROOT / "packages" / "mandate-contracts" / "policies").glob("*.cedar"))
+STARTER = [n for n in POLICY_NAMES if not n.startswith("role-")]
+ROLE = [n for n in POLICY_NAMES if n.startswith("role-")]
 
 # Stand-in for the aws CLI: an existing table and store, policies by description, STAFFER items from a file.
 FAKE_AWS = f"""#!{sys.executable}
@@ -97,7 +96,7 @@ def test_without_the_flag_no_role_policy_is_added(fake):
     assert result.returncode == 0, result.stderr
     assert sorted(fake.state()["policies"]) == STARTER
     assert ["dynamodb", "scan"] not in fake.state()["calls"]
-    assert result.stdout.count("skipped: role-") == 6
+    assert result.stdout.count("skipped: role-") == len(ROLE)
 
 
 def test_with_the_flag_and_every_role_on_file_the_six_role_policies_are_added_once(fake):
@@ -146,7 +145,7 @@ def test_update_rewrites_only_role_policies_whose_text_changed(fake):
     fake.setup({**EXISTING, **{name: f"avp-{name}" for name in ROLE}}, GOOD, current)
     result = fake.run("--apply", "--update-role-policies")
     assert result.returncode == 0, result.stderr
-    assert result.stdout.count("updated: role-") == 5 and "exists: role-web-scrape" in result.stdout
+    assert result.stdout.count("updated: role-") == len(ROLE) - 1 and "exists: role-web-scrape" in result.stdout
     after = fake.state()
     assert after["texts"] == {f"avp-{n}": t for n, t in files.items()}
     assert ["verifiedpermissions", "create-policy"] not in after["calls"]

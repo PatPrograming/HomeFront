@@ -9,9 +9,10 @@ vi.mock("../lib/api", () => ({ api: {} }));
 const { ChangeLog, ChangeWarning, PersonRow, RoleCard, toggleTool } = await import("./People");
 
 const tools: ToolInfo[] = [
-  { name: "case_read", action: "open constituent case files", alwaysDenied: false, adminOnly: false },
-  { name: "web_scrape", action: "read public web pages", alwaysDenied: false, adminOnly: false },
-  { name: "records_bulk_export", action: "export constituent records in bulk", alwaysDenied: true, adminOnly: false },
+  { name: "case_read", action: "open constituent case files", alwaysDenied: false, lockedTo: [] },
+  { name: "web_scrape", action: "read public web pages", alwaysDenied: false, lockedTo: [] },
+  { name: "email_send_list", action: "email the whole office mailing list", alwaysDenied: false, lockedTo: ["Chief of Staff"] },
+  { name: "records_bulk_export", action: "export constituent records in bulk", alwaysDenied: true, lockedTo: [] },
 ];
 const intern: RoleView = {
   id: "intern", label: "Intern", tools: ["web_scrape"], defaultTools: ["web_scrape"],
@@ -64,6 +65,14 @@ describe("People & roles", () => {
     expect(html).toContain('<option value="" selected="">No role</option>');
     expect(html).toContain("no login");
     expect(html).toMatch(/<select disabled="">\s*<option value="" selected="">No group/);
+  });
+
+  it("greys out a locked tool and a blocked tool in the editor so they cannot be ticked", async () => {
+    const { RoleEditorFields } = await import("./People");
+    const html = renderToStaticMarkup(<RoleEditorFields role={intern} tools={tools} draft={["web_scrape"]} busy={false} onPick={noop} />);
+    expect(html).toContain("email the whole office mailing list (locked by policy to the Chief of Staff)");
+    expect(html).toContain("export constituent records in bulk (blocked for everyone)");
+    expect(html.match(/disabled=""/g)?.length).toBe(2);
   });
 
   it("toggles one tool at a time", () => {
