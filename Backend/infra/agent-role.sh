@@ -84,7 +84,7 @@ if [[ $DRY_RUN == 1 ]]; then
   echo "Dry run (nothing is created). With --apply this would create or update role ${ROLE}:"
   echo "--- trust policy ---"; echo "$TRUST_POLICY"
   echo "--- permissions (inline policy ${ROLE}-bedrock) ---"; echo "$PERMISSIONS"
-  echo "+ aws iam create-role --role-name ${ROLE} --max-session-duration 3600 --tags Key=project,Value=homefront ..."
+  echo "+ aws iam create-role --role-name ${ROLE} --path / --max-session-duration 3600 --tags Key=project,Value=homefront ..."
   echo "+ aws iam put-role-policy --role-name ${ROLE} --policy-name ${ROLE}-bedrock ..."
   echo "Then: HOMEFRONT_AGENT_ROLE_ARN=arn:aws:iam::${ACCOUNT}:role/${ROLE}"
   exit 0
@@ -94,6 +94,7 @@ if aws iam get-role --role-name "$ROLE" >/dev/null 2>&1; then
   echo "Role ${ROLE} exists: updating its trust policy"
   aws iam update-assume-role-policy --role-name "$ROLE" --policy-document "$TRUST_POLICY"
   aws iam update-role --role-name "$ROLE" --max-session-duration 3600
+  aws iam tag-role --role-name "$ROLE" --tags Key=project,Value=homefront  # a role made elsewhere gets the tag too
 else
   aws iam create-role --role-name "$ROLE" --path / --max-session-duration 3600 \
     --description "HomeFront chat agent: Bedrock only (assumed by the gateway per conversation)" \

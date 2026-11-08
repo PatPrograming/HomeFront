@@ -84,8 +84,12 @@ def test_the_role_session_is_named_for_the_conversation_lasts_an_hour_and_is_bed
     actions = {a for statement in policy["Statement"] for a in statement["Action"]}
     assert actions == {"bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream", "bedrock:ApplyGuardrail"}
     assert all(statement["Effect"] == "Allow" for statement in policy["Statement"])
-    resources = [r for statement in policy["Statement"] for r in statement["Resource"]]
-    assert all(r.startswith("arn:aws:bedrock:") for r in resources) and "*" not in resources
+    resources = {a: statement["Resource"] for statement in policy["Statement"] for a in statement["Action"]}
+    assert resources["bedrock:InvokeModel"] == resources["bedrock:InvokeModelWithResponseStream"] == [
+        "arn:aws:bedrock:us-east-1:*:inference-profile/us.anthropic.claude-sonnet-5*",
+        "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5*",
+    ], "Sonnet 5 only"
+    assert resources["bedrock:ApplyGuardrail"] == ["arn:aws:bedrock:us-east-1:*:guardrail/l74ju5pcrcdg"], "one guardrail"
 
 
 def test_a_long_session_id_still_makes_a_valid_session_name():
@@ -228,12 +232,12 @@ def test_staffers_cannot_read_the_assistant_status(client, monkeypatch):
 SCRIPT = Path(__file__).resolve().parents[1] / "infra" / "agent-role.sh"
 
 
-def _dry_run(tmp_path, *args):
-    """Run the script with a fake `aws` that records any call: a dry run must make none."""
+def _dry_run(tmp_path, *args, exit_code=1):
+    """Run the script with a fake `aws` that records every call (a dry run must make none)."""
     calls = tmp_path / "aws-calls"
     fake = tmp_path / "bin"
     fake.mkdir()
-    (fake / "aws").write_text(f'#!/bin/sh\necho "$@" >> {calls}\nexit 1\n')
+    (fake / "aws").write_text(f'#!/bin/sh\necho "$@" >> {calls}\nexit {exit_code}\n')
     (fake / "aws").chmod(0o755)
     env = {"PATH": f"{fake}:/usr/bin:/bin", "AWS_ACCOUNT_ID": "123456789012"}
     result = subprocess.run(["bash", str(SCRIPT), *args], capture_output=True, text=True, env=env)
@@ -259,3 +263,12 @@ def test_the_role_script_is_a_dry_run_by_default_and_calls_nothing(tmp_path):
 def test_the_role_script_refuses_an_assumed_role_session_as_principal(tmp_path):
     result, calls = _dry_run(tmp_path, "--trust-principal", "arn:aws:sts::123456789012:assumed-role/Admin/me")
     assert result.returncode == 2 and "role ARN" in result.stderr and not calls.exists()
+
+
+def test_apply_on_an_existing_role_also_tags_it(tmp_path):
+    result, calls = _dry_run(tmp_path, "--apply", exit_code=0)  # every fake call succeeds, so get-role finds the role
+    assert result.returncode == 0, result.stderr
+    made = calls.read_text().splitlines()
+    assert any(c.startswith("iam update-assume-role-policy --role-name homefront-agent") for c in made)
+    assert "iam tag-role --role-name homefront-agent --tags Key=project,Value=homefront" in made
+    assert not any(c.startswith("iam create-role") for c in made)

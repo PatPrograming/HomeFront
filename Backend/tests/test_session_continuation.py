@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from mandate_contracts.ddb import ChatMessageItem
 
 from .test_conversations import DANA, hold_draft, listed, login, open_conversation
 from .test_gateway_api import _env, as_admin, client, gateway, store, table  # noqa: F401 (fixtures)
@@ -57,7 +58,8 @@ def test_a_revoked_session_can_never_be_continued(client, store):
     old = open_conversation(client, "first question")
     expire(store, old)
     store.put_session(old, store.get_session(old).model_copy(update={"status": "revoked"}))
-    assert continue_(client, old).status_code == 403
+    r = continue_(client, old)
+    assert r.status_code == 403 and r.json()["detail"]["code"] == "revoked"
 
 
 def test_an_offboarded_staffer_cannot_continue(client, store):
@@ -65,7 +67,8 @@ def test_an_offboarded_staffer_cannot_continue(client, store):
     expire(store, old)
     as_admin()
     client.post("/api/v1/staff/maya/offboard")
-    assert continue_(client, old).status_code == 403
+    r = continue_(client, old)
+    assert r.status_code == 403 and r.json()["detail"]["code"] == "revoked", "the console reads the code"
 
 
 def test_nobody_can_continue_someone_elses_conversation(client, store):
@@ -272,3 +275,15 @@ def test_a_tab_that_loses_the_race_after_the_pre_check_gets_409_not_an_orphan_se
 
     assert r.status_code == 409 and r.json()["detail"]["code"] == "already_continued"
     assert {sid for sid, _ in store.sessions_for("maya")} == before, "no orphan session for the losing tab"
+
+
+def test_last_activity_counts_every_link_of_the_conversation(client, store):
+    old = open_conversation(client, "first question")
+    expire(store, old)
+    new = continue_(client, old).json()["sid"]
+    say(client, new, "follow-up in the new session")
+    later = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()  # a stale tab wrote to the old link
+    store.put_chat_message(old, ChatMessageItem(id="stale-tab", ts=later, role="user", text="late"))
+
+    (row,) = listed(client)
+    assert row["sid"] == new and row["lastActivityAt"] == later

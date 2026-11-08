@@ -81,11 +81,13 @@ def create_session(body: NewSessionIn | None = None, staff: StaffIdentity = Depe
     with fresh mandate tokens, and the old session's one-time grants do not carry over."""
     store = get_gateway().store
     staffer = store.get_staffer(staff.username)
+    old_sid = body.continues if body else None
     if staffer is None or not staffer.active:
+        if old_sid:  # same refusal as a revoked session, so the console offers the same way out
+            raise _refuse(status.HTTP_403_FORBIDDEN, "A revoked session can't be continued.", "revoked")
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Staffer is not active")
     started = time.time()
     sid = str(uuid.uuid4())
-    old_sid = body.continues if body else None
     grants_reset = False
     if old_sid:
         grants_reset = _check_continuable(old_sid, staff, started)
