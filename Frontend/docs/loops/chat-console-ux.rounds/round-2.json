@@ -1,0 +1,64 @@
+{
+  "round": 2,
+  "at": "2026-11-08T08:25:06.376Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162",
+  "passed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4"
+  ],
+  "failed": [],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Role gate: staff never sees Cedar/ATLAS ids, sid or feed; admin does",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleRoles.test.tsx -t \"role gate\" 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 872,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/pages/ConsoleRoles.test.tsx (4 tests | 2 skipped) 19ms\n\n Test Files  1 passed (1)\n      Tests  2 passed | 2 skipped (4)\n   Start at  00:24:57\n   Duration  317ms (transform 82ms, setup 0ms, collect 113ms, tests 19ms, environment 0ms, prepare 37ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Inline disclosure shows plain-word permissions and actions from a fixture",
+      "command": "cd Frontend && npx vitest run src/components/AgentActivity.test.tsx src/lib/agentActivity.test.ts 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 628,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/lib/agentActivity.test.ts (6 tests) 3ms\n ✓ src/components/AgentActivity.test.tsx (5 tests) 6ms\n\n Test Files  2 passed (2)\n      Tests  11 passed (11)\n   Start at  00:24:57\n   Duration  200ms (transform 37ms, setup 0ms, collect 59ms, tests 9ms, environment 0ms, prepare 77ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Revoked path visible to staff and admin with \"Start a new conversation\"",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleRoles.test.tsx -t \"revoked\" 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 707,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/pages/ConsoleRoles.test.tsx (4 tests | 2 skipped) 19ms\n\n Test Files  1 passed (1)\n      Tests  2 passed | 2 skipped (4)\n   Start at  00:24:58\n   Duration  277ms (transform 74ms, setup 0ms, collect 100ms, tests 19ms, environment 0ms, prepare 37ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Types, build and the full suite are green",
+      "command": "cd Frontend && npx tsc --noEmit && npm run build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 7466,
+      "note": "",
+      "stdoutTail": " ✓ src/lib/events.test.ts (10 tests) 5ms\n ✓ src/lib/roles.test.ts (7 tests) 4ms\n ✓ src/lib/mockApi.test.ts (7 tests) 5136ms\n   ✓ mock GET /sessions/{sid} > reads active, then revoked after the Chief of Staff offboards Maya  614ms\n   ✓ mock GET /sessions/{sid} > is 404 for another staffer and for an unknown session  365ms\n   ✓ mock chat console > holds replies, offers autonomy after 3 unchanged approvals, then sends that kind alone  1347ms\n   ✓ mock chat console > never lets a locked category send alone, and keeps another staffer out  367ms\n   ✓ mock post drafts > drafts only the post text, whether the request uses a colon or 'saying'  488ms\n   ✓ mock per-session grants > a grant sends that category alone in this session only, and offboarding closes it  1343ms\n   ✓ mock forbidden request > refuses a bulk export, naming the policy, with one DENY event and no draft  608ms\n\n Test Files  15 passed (15)\n      Tests  72 passed (72)\n   Start at  00:25:00\n   Duration  5.54s (transform 417ms, setup 0ms, collect 1.15s, tests 5.35s, environment 2ms, prepare 1.25s)",
+      "stderrTail": ""
+    }
+  ]
+}
