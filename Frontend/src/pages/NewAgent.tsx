@@ -161,21 +161,7 @@ export default function NewAgent() {
 
           {loadError && <p className="alert alert-error">Couldn't load agent types: {loadError}</p>}
 
-          <div className="start-comm" aria-label="Start a communication">
-            <p className="field-label">Start a communication</p>
-            <p className="field-hint">
-              Share the essentials and let an agent do the outreach. A social media agent is created for you if
-              you don't have one.
-            </p>
-            <div className="form-actions">
-              <Link to="/social-platform" className="btn btn-primary">
-                Social platform
-              </Link>
-              <Link to="/emails" className="btn btn-outline">
-                Email
-              </Link>
-            </div>
-          </div>
+          
 
           <div className="type-grid" role="radiogroup" aria-label="Agent type">
             {KINDS.map((k) => {

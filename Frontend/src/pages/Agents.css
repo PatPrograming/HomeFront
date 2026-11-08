@@ -467,16 +467,6 @@
   word-break: break-word;
 }
 
-.start-comm {
-  display: grid;
-  gap: 6px;
-  max-width: 820px;
-  margin: 0 0 24px;
-  padding: 16px 20px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
 
 .agent-form .brief {
   display: grid;
