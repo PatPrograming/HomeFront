@@ -8,7 +8,7 @@ from app.core.config import apply_aws_env, apply_datagov_env, get_settings
 
 ensure_package_paths()  # the routers below import the gateway packages
 
-from app.routers import assistant, events, health, home, profiles, sessions, staff  # noqa: E402
+from app.routers import assistant, events, health, home, people, profiles, sessions, staff  # noqa: E402
 from identity_gateway.app import lifespan as gateway_lifespan  # noqa: E402
 
 from app.services.agent_supervisor import supervision  # noqa: E402
@@ -49,6 +49,7 @@ def create_app() -> FastAPI:
     # HomeFront broker and admin API (WP2)
     app.include_router(sessions.router, prefix=API_PREFIX)
     app.include_router(staff.router, prefix=API_PREFIX)
+    app.include_router(people.router, prefix=API_PREFIX)  # admin: People & roles
     app.include_router(events.router, prefix=API_PREFIX)
     app.include_router(assistant.router, prefix=API_PREFIX)  # chat console, review queue, autonomy
 
