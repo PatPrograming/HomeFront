@@ -4,7 +4,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 if [[ ! -d .venv ]]; then
-  /usr/local/bin/python3.12 -m venv .venv  # the default python3 here is a broken Intel build
+  # shellcheck source=lib/find-python.sh
+  source "$ROOT/scripts/lib/find-python.sh"
+  PYTHON="$(find_python)"
+  echo "Creating .venv with $PYTHON"
+  "$PYTHON" -m venv .venv
 fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
