@@ -55,6 +55,7 @@ export interface ChatMessage {
   ts: string;
   role: "user" | "assistant";
   text: string;
+  detail?: string; // admins only: what went wrong technically, when the assistant had to stop
 }
 
 /** GET /sessions/{sid}/messages?after=<cursor> */
@@ -170,6 +171,14 @@ export const api = {
     request<ChatPage>(`/sessions/${encodeURIComponent(sid)}/messages${after ? `?after=${encodeURIComponent(after)}` : ""}`),
   sendMessage: (sid: string, text: string) =>
     request<ChatMessage>(`/sessions/${encodeURIComponent(sid)}/messages`, { method: "POST", body: { text } }),
+  // Admins: is auto-start on, and does the agent have its own Bedrock-only role or the server's credentials
+  assistantStatus: () => request<{ autostart: boolean; agentCredentials: "limited-role" | "shared-server" }>("/assistant/status"),
+  // "Try again" after the assistant stopped too often or wasn't set up: owner only, rate-limited, audited
+  retryAgent: (sid: string) =>
+    request<{ sid: string; agent: string; retriesLeft: number }>(`/sessions/${encodeURIComponent(sid)}/agent/retry`, {
+      method: "POST",
+      body: {},
+    }),
   drafts: () => request<{ drafts: Draft[] }>("/drafts"),
   // Let the agent send this category alone for one session (staffer's own login; chat text never grants)
   grant: (sid: string, category: string) =>

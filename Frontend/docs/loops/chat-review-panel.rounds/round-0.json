@@ -1,0 +1,64 @@
+{
+  "round": 0,
+  "at": "2026-11-08T09:07:47.295Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162",
+  "passed": [],
+  "failed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4"
+  ],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Inline review card per draft; clicking it opens that draft; panel shows it with a read-only recipient",
+      "command": "cd Frontend && npx vitest run src/components/ReviewPanel.test.tsx src/components/ReviewCards.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 1029,
+      "note": "",
+      "stdoutTail": "      6| const { default: ReviewPanel } = await import(\"./ReviewPanel\");\n       |                                  ^\n      7| \n      8| const email: Draft = {\n\nCaused by: Error: Failed to load url ./ReviewPanel (resolved id: ./ReviewPanel) in /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend/src/components/ReviewPanel.test.tsx. Does the file exist?\n ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-CDnG8rE7.js:51858:17\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯\n\n\n Test Files  2 failed (2)\n      Tests  no tests\n   Start at  01:07:44\n   Duration  295ms (transform 53ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 101ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Console: badge count, panel open for the chosen draft, no review list in the rail",
+      "command": "cd Frontend && npx vitest run src/pages/ConsoleReview.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 879,
+      "note": "",
+      "stdoutTail": " ❯ src/pages/ConsoleReview.test.tsx:73:18\n     71|     state.error = new TypeError(\"Failed to fetch\");\n     72|     const html = renderToStaticMarkup(<Console />);\n     73|     expect(html).toContain(\"Can&#x27;t reach HomeFront&#x27;s server. …\n       |                  ^\n     74|     expect(html).not.toContain(\"Failed to fetch\");\n     75|   });\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯\n\n\n Test Files  1 failed (1)\n      Tests  4 failed (4)\n   Start at  01:07:45\n   Duration  387ms (transform 89ms, setup 0ms, collect 135ms, tests 38ms, environment 0ms, prepare 47ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Friendly connection message instead of \"Failed to fetch\"",
+      "command": "cd Frontend && npx vitest run src/lib/errors.test.ts 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 680,
+      "note": "",
+      "stdoutTail": "      2| import { connectionMessage } from \"./errors\";\n       |                               ^\n      3| import { ApiError } from \"./api\";\n      4| \n\nCaused by: Error: Failed to load url ./errors (resolved id: ./errors) in /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend/src/lib/errors.test.ts. Does the file exist?\n ❯ loadAndTransform node_modules/vite/dist/node/chunks/dep-CDnG8rE7.js:51858:17\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\n Test Files  1 failed (1)\n      Tests  no tests\n   Start at  01:07:46\n   Duration  199ms (transform 18ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 41ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Types, build and the full suite are green",
+      "command": "cd Frontend && npx tsc --noEmit && npm run build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 424,
+      "note": "",
+      "stdoutTail": "src/components/ReviewCards.test.tsx(5,44): error TS2307: Cannot find module './ReviewCards' or its corresponding type declarations.\nsrc/components/ReviewCards.test.tsx(22,87): error TS7006: Parameter 'd' implicitly has an 'any' type.\nsrc/components/ReviewPanel.test.tsx(6,47): error TS2307: Cannot find module './ReviewPanel' or its corresponding type declarations.\nsrc/lib/errors.test.ts(2,35): error TS2307: Cannot find module './errors' or its corresponding type declarations.",
+      "stderrTail": ""
+    }
+  ]
+}

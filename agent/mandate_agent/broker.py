@@ -33,12 +33,29 @@ JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 ID_JAG_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id-jag"
 
 
-class BrokerError(RuntimeError):
-    """The agent could not get a mandate / AAuth token (bad credentials, unknown or revoked session)."""
+ENV_FILE_HINT = "agent/.env on the server"
 
-    def __init__(self, message: str, status: int | None = None):
+
+class BrokerError(RuntimeError):
+    """The agent could not get a mandate token.
+
+    `kind` says why, so the chat can name the real cause instead of "the session ended":
+    not_set_up (a Cognito setting is missing), credentials_refused (Cognito said no),
+    unreachable (Cognito or the broker could not be reached), session_refused (the broker said no:
+    the session is unknown, revoked or expired).
+    """
+
+    def __init__(self, message: str, status: int | None = None, kind: str = "session_refused"):
         super().__init__(message)
-        self.status = status
+        self.status = status  # the broker's HTTP status, when the broker itself refused
+        self.kind = kind
+
+
+def _setting(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise BrokerError(f"{name} is missing or empty: set it in {ENV_FILE_HINT}, then restart.", kind="not_set_up")
+    return value
 
 
 @dataclass
@@ -65,17 +82,28 @@ class AgentCredentials:
 
 def fetch_agent_client_token(http: httpx.Client | None = None) -> str:
     """Cognito client_credentials grant with COGNITO_DOMAIN / COGNITO_AGENT_CLIENT_ID / _SECRET."""
-    domain = os.environ["COGNITO_DOMAIN"]
+    domain = _setting("COGNITO_DOMAIN")
+    auth = (_setting("COGNITO_AGENT_CLIENT_ID"), _setting("COGNITO_AGENT_CLIENT_SECRET"))
     base = domain if "://" in domain else f"https://{domain}"
     http = http or httpx.Client(timeout=10)
-    response = http.post(
-        f"{base.rstrip('/')}/oauth2/token",
-        data={"grant_type": "client_credentials", "scope": AGENT_SCOPE},
-        auth=(os.environ["COGNITO_AGENT_CLIENT_ID"], os.environ["COGNITO_AGENT_CLIENT_SECRET"]),
-    )
+    try:
+        response = http.post(
+            f"{base.rstrip('/')}/oauth2/token",
+            data={"grant_type": "client_credentials", "scope": AGENT_SCOPE},
+            auth=auth,
+        )
+    except httpx.HTTPError as error:
+        raise BrokerError(f"Cognito could not be reached ({type(error).__name__}).", kind="unreachable") from error
     if response.status_code != 200:
-        raise BrokerError(f"Cognito refused the agent's client credentials (HTTP {response.status_code}).")
-    return response.json()["access_token"]
+        raise BrokerError(
+            f"Cognito refused the agent's client credentials (HTTP {response.status_code}): check "
+            f"COGNITO_AGENT_CLIENT_ID and COGNITO_AGENT_CLIENT_SECRET in {ENV_FILE_HINT}.",
+            kind="credentials_refused",
+        )
+    try:
+        return response.json()["access_token"]
+    except (ValueError, KeyError) as error:
+        raise BrokerError("Cognito sent an unexpected answer (no access_token).", kind="unreachable") from error
 
 
 def fetch_mandate_token(api_url: str, sid: str, http: httpx.Client | None = None) -> str:
@@ -158,17 +186,23 @@ def fetch_agent_credentials(
             agent_key=key,
         )
 
-    response = http.post(
-        f"{api_url.rstrip('/')}/api/v1/sessions/{sid}/mandate",
-        json={},
-        headers=headers,
-    )
+    try:
+        response = http.post(
+            f"{api_url.rstrip('/')}/api/v1/sessions/{sid}/mandate",
+            json={},
+            headers=headers,
+        )
+    except httpx.HTTPError as error:
+        raise BrokerError(f"The broker at {api_url} could not be reached ({type(error).__name__}).", kind="unreachable") from error
+    if response.status_code >= 500:
+        raise BrokerError(f"The broker failed (HTTP {response.status_code}).", response.status_code, kind="unreachable")
     if response.status_code != 200:
         raise BrokerError(
             f"The broker refused a mandate for session {sid} (HTTP {response.status_code}).",
             response.status_code,
         )
-    return AgentCredentials(
-        access_token=response.json()["mandateToken"],
-        auth_protocol="legacy_mandate",
-    )
+    try:
+        token = response.json()["mandateToken"]
+    except (ValueError, KeyError) as error:
+        raise BrokerError(f"The broker at {api_url} sent an unexpected answer (no mandateToken).", kind="unreachable") from error
+    return AgentCredentials(access_token=token, auth_protocol="legacy_mandate")

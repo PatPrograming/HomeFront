@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
+import AgentAccess from "../components/AgentAccess";
 import AutonomyPanel from "../components/AutonomyPanel";
 import ChatPanel from "../components/ChatPanel";
 import EventFeed, { FeedSummary } from "../components/EventFeed";
 import IdentityCard from "../components/IdentityCard";
 import IdentityLine from "../components/IdentityLine";
-import ReviewQueue from "../components/ReviewQueue";
-import { api, type SessionCard } from "../lib/api";
+import ReviewPanel from "../components/ReviewPanel";
+import { api, type Draft, type SessionCard } from "../lib/api";
+import { connectionMessage } from "../lib/errors";
+import { useOpenDraft } from "../lib/useOpenDraft";
 import { useSession } from "../lib/AuthProvider";
 import { sessionEvents } from "../lib/events";
 import { isAdmin } from "../lib/roles";
@@ -77,6 +80,27 @@ export default function Console() {
   const locked = new Set(review.categories.filter((c) => c.locked).map((c) => c.category));
   const admin = isAdmin(session);
   const [railOpen, setRailOpen] = useState(false);
+  const reviewing = useOpenDraft();
+  const openDraft = review.drafts.find((d) => d.id === reviewing.openId) ?? null; // a draft decided elsewhere closes
+  // Drafts decided in this tab keep their card in the chat, marked Sent or Rejected.
+  const [decided, setDecided] = useState<Record<string, Draft>>({});
+  const chatDrafts = [...review.drafts, ...Object.values(decided).filter((d) => !review.drafts.some((p) => p.id === d.id))].sort(
+    (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id), // a decided card keeps its place
+  );
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  function openReview(id: string) {
+    openerRef.current = document.activeElement as HTMLElement | null;
+    setRailOpen(false);
+    reviewing.open(id);
+  }
+  function closeReview() {
+    reviewing.close();
+    // Back to the card or badge that opened it; once decided, that button is gone, so to the message box.
+    // Wait for the re-render that removes it.
+    const opener = openerRef.current;
+    window.setTimeout(() => (opener?.isConnected ? opener : document.getElementById("chat-input"))?.focus(), 0);
+  }
   const [grants, setGrants] = useState(loadGrants);
 
   function granted(sid: string, category: string) {
@@ -85,18 +109,24 @@ export default function Console() {
     setGrants(next);
   }
 
-  // The review drawer (under 1024 px) closes on Escape, like other dialogs.
+  // The review panel and the settings drawer close on Escape, like other dialogs (the composer uses Escape first,
+  // to stop waiting).
+  const reviewOpen = openDraft !== null;
   useEffect(() => {
-    if (!railOpen) return;
-    const onKey = (e: globalThis.KeyboardEvent) => e.key === "Escape" && setRailOpen(false);
+    if (!railOpen && !reviewOpen) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      setRailOpen(false);
+      if (reviewOpen) closeReview();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [railOpen]);
+  });
 
   return (
     <Layout>
       <div className="mandate-console assistant-page">
-        <div className="assistant-shell">
+        <div className={`assistant-shell${openDraft ? " has-review" : ""}`}>
           <div className="assistant-main">
             <header className="assistant-head">
               <div>
@@ -107,16 +137,23 @@ export default function Console() {
                   <p className="identity-line">It acts for you, with only the tools your office allows.</p>
                 )}
               </div>
-              <button
-                type="button"
-                className="rail-toggle"
-                aria-expanded={railOpen}
-                aria-controls="assistant-rail"
-                onClick={() => setRailOpen(true)}
-              >
-                Review
-                {review.drafts.length > 0 && <span className="count-badge">{review.drafts.length}</span>}
-              </button>
+              <div className="head-actions">
+                {review.drafts.length > 0 && (
+                  <button type="button" className="waiting-badge" onClick={() => openReview(review.drafts[0].id)}>
+                    <span className="waiting-dot" aria-hidden="true" />{review.drafts.length} waiting
+                    <span className="sr-only">for your review: open the next one</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="rail-toggle"
+                  aria-expanded={railOpen}
+                  aria-controls="assistant-rail"
+                  onClick={() => setRailOpen(true)}
+                >
+                  Sending rules
+                </button>
+              </div>
             </header>
 
             {card && revoked && (
@@ -133,11 +170,32 @@ export default function Console() {
               sid={card?.sid ?? null}
               disabled={revoked}
               activity={{ card, events, categories: review.categories, grants: card ? grants[card.sid] ?? [] : [], admin }}
+              review={{ drafts: chatDrafts, onOpen: openReview }}
+              onNewConversation={newConversation}
+              retryAgent={card ? () => api.retryAgent(card.sid) : undefined}
             />
           </div>
 
-          {/* Right rail on a wide screen; a drawer opened by "Review" on smaller ones. */}
-          <aside id="assistant-rail" className={`rail${railOpen ? " is-open" : ""}`} aria-label="Review and permissions">
+          {/* The draft opened from the chat: a side panel on a wide screen, a full-screen sheet on a phone. */}
+          {openDraft && (
+            <div className="review-slot">
+              <ReviewPanel
+                draft={openDraft}
+                locked={locked.has(openDraft.category)}
+                onDone={review.reload}
+                onClose={closeReview}
+                onGrant={granted}
+                onDecided={(status) => setDecided({ ...decided, [openDraft.id]: { ...openDraft, status } })}
+              />
+            </div>
+          )}
+
+          {/* What it may send alone: a right rail on a wide screen (hidden while a draft is open), a drawer on smaller ones. */}
+          <aside
+            id="assistant-rail"
+            className={`rail${railOpen ? " is-open" : ""}${openDraft ? " is-covered" : ""}`}
+            aria-label="Sending rules"
+          >
             <div className="rail-close-row">
               <button type="button" className="icon-btn" onClick={() => setRailOpen(false)} aria-label="Close review panel">
                 <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -145,7 +203,6 @@ export default function Console() {
                 </svg>
               </button>
             </div>
-            <ReviewQueue drafts={review.drafts} locked={locked} onDone={review.reload} onGrant={granted} />
             <AutonomyPanel categories={review.categories} onChange={review.reload} />
           </aside>
           {railOpen && <div className="rail-backdrop" onClick={() => setRailOpen(false)} aria-hidden="true" />}
@@ -158,12 +215,13 @@ export default function Console() {
               <h2 id="tech-title">Technical details</h2>
               <p className="muted">Visible to admins only. Staff see the plain-words summary in the chat.</p>
             </div>
+            <AgentAccess />
             {card && <IdentityCard card={card} revoked={revoked} />}
             <section className="panel" aria-labelledby="feed-title">
               <div className="panel-head">
                 <h2 id="feed-title">Live decisions</h2>
                 <p className={`live ${feed.error ? "deny-text" : ""}`} role="status">
-                  {feed.error ? `Reconnecting: ${feed.error.message}` : feed.lastPollAt ? "Live, every second" : "Connecting…"}
+                  {feed.error ? connectionMessage(feed.error, true) : feed.lastPollAt ? "Live, every second" : "Connecting…"}
                 </p>
               </div>
               <FeedSummary events={events} />

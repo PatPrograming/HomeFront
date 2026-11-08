@@ -95,7 +95,8 @@ gateway. Maya's first message then starts exactly that command as a child proces
 (`Backend/app/services/agent_supervisor.py`), with the same identity steps: its own Cognito secret
 from `agent/.env`, the broker, a mandate token on every call. The backend never reads that secret or
 sees a mandate token, and the child gets only an allowlist from the gateway (AWS credentials and
-region, `PATH`, `HOME`, the CA bundle, the gateway URLs), never `MANDATE_SIGNING_SECRET`. One process per session; it is stopped when the session is revoked,
+region, `PATH`, `HOME`, the CA bundle, the gateway URLs), never `MANDATE_SIGNING_SECRET`. One process per session, and at most 3 running per staffer (a 4th conversation's message is refused with
+"too many conversations running"); it is stopped when the session is revoked,
 Maya is offboarded, the session's hour ends, or the gateway shuts down; a session gets at most 3
 starts. If it can't start, Maya's message is refused with the reason (HTTP 503), so the chat never
 waits on an agent that isn't there. Starts and stops are logged in the gateway's terminal.
@@ -130,6 +131,41 @@ sent", whatever the model says.
   console offers to let the agent send that category alone. Maya accepts or says "not now".
 - The rules live in `packages/identity-gateway/src/identity_gateway/autonomy.py`; the routes in
   `Backend/app/routers/assistant.py`.
+
+### The agent's AWS credentials
+
+When the console starts the agent, it never hands over the server's AWS credentials if
+`HOMEFRONT_AGENT_ROLE_ARN` is set. The gateway calls `sts:AssumeRole` on that role (session `agent-<sid>`, one
+hour, with a session policy allowing only `bedrock:InvokeModel*` on Claude Sonnet 5 and `bedrock:ApplyGuardrail`
+on the guardrail) and the agent process gets only those temporary credentials. Profile files and instance metadata
+are switched off for it, and the container credential variables (`AWS_CONTAINER_*`) are never passed. If
+AssumeRole fails, the agent doesn't start and the chat says so (fail closed). Without the setting (a laptop), the
+agent shares the server's credentials as before; the gateway logs a warning at startup and admins see a notice in
+Technical details. `bash Backend/infra/agent-role.sh` prints the role (dry run); `--apply` creates it.
+
+### When the assistant can't answer
+
+Every failure reaches the chat in plain words, never silently; admins also see a short technical detail
+(an error class such as `ClientError: ThrottlingException`, never the error's text or a secret).
+
+| What failed | What the staffer reads | Where the fix is |
+|---|---|---|
+| `COGNITO_AGENT_CLIENT_SECRET` (or the domain / client id) missing in `agent/.env` | "The assistant isn't set up on this computer (agent secret missing). Ask your admin." | the gateway terminal names the variable; fill it in, then **Try again** |
+| Cognito refused the agent's id or secret | "The assistant couldn't sign in: its credentials were refused." | copy the current agent client secret into `agent/.env` |
+| Server AWS credentials expired / missing | "the server's AWS sign-in has expired" | refresh the server's AWS credentials |
+| Bedrock access denied, or throttled | "isn't allowed to use the AI model" / "busy right now" | model access in Bedrock; or wait |
+| Gateway or broker unreachable | "can't reach the HomeFront gateway" / "couldn't reach its sign-in service" | start the gateway |
+| The agent crashed | "The assistant stopped unexpectedly. Send your message again to restart it." | the agent's output in the gateway terminal |
+
+The agent posts the message itself when it still holds a mandate token. When it can't (no identity), it
+exits with a code (`agent/mandate_agent/chat.py`, `EXIT_*`) and the console's supervisor posts the message
+(`Backend/app/services/agent_failures.py`). After 3 starts in one conversation, or a missing secret, the
+chat offers **Try again** (`POST /api/v1/sessions/{sid}/agent/retry`: owner only, once a minute, 3 times
+per conversation, logged as `audit: agent retry …`) and **Start a new conversation**.
+
+A gateway check that could not run is still a DENY, but its reason says why: "AWS credentials expired on
+the server", "server lacks AWS permission", "permission service unavailable" or "server error (failed
+closed)", instead of "denied by policy", which now always means Cedar said no.
 
 ### Asking for permission (per-session grants)
 

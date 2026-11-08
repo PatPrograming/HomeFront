@@ -60,7 +60,7 @@ export default function AutonomyPanel({ categories, onChange }: { categories: Au
                 </p>
               </div>
               {c.locked ? (
-                <span className="chip chip-locked">Review</span>
+                <span className="chip chip-locked">Always asks</span>
               ) : (
                 <button
                   type="button"
@@ -71,7 +71,7 @@ export default function AutonomyPanel({ categories, onChange }: { categories: Au
                   disabled={busy === c.category}
                   onClick={() => act(c.category, () => api.setAutonomy(c.category, c.level === "auto" ? "review" : "auto"))}
                 >
-                  {c.level === "auto" ? "Sends alone" : "Review"}
+                  {c.level === "auto" ? "Sends alone" : "Asks first"}
                 </button>
               )}
             </li>

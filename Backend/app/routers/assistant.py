@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,14 +21,16 @@ from mandate_contracts.ddb import ChatMessageItem, DraftItem
 from mandate_contracts.roles import ROLE_TOOLS, role_reason
 
 try:
-    from app.core.cognito import StaffIdentity, require_staff
+    from app.core.cognito import StaffIdentity, require_admin, require_staff
 except ModuleNotFoundError as exc:  # STUB until lane A (WP1) merges Backend/app/core/cognito.py
     if exc.name != "app.core.cognito":
         raise
-    from identity_gateway.auth_stub import StaffIdentity, require_staff
+    from identity_gateway.auth_stub import StaffIdentity, require_admin, require_staff
 
 from app.routers.sessions import SESSION_TTL_SECONDS, _created_epoch  # noqa: E402  (same session clock as the broker)
-from app.services.agent_supervisor import AgentStartError, get_supervisor  # noqa: E402
+from app.services import conversations  # noqa: E402
+from app.services import agent_failures  # noqa: E402
+from app.services.agent_supervisor import AgentStartError, RetryRefused, credentials_mode, get_supervisor  # noqa: E402
 
 router = APIRouter(tags=["assistant"])
 bearer = HTTPBearer(auto_error=False)
@@ -69,7 +71,7 @@ def _own_active_session(sid: str, staff: StaffIdentity) -> None:
     """Only the session's own staffer chats in it; anyone else gets 404, as if it did not exist."""
     store = get_gateway().store
     session = store.get_session(sid)
-    if session is None or session.acting_for != staff.username:
+    if session is None or session.acting_for != staff.username or conversations.is_deleted(sid, staff.username):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")
     staffer = store.get_staffer(staff.username)
     if session.status != "active" or staffer is None or not staffer.active:
@@ -122,9 +124,15 @@ def require_agent_session(creds: HTTPAuthorizationCredentials | None = Depends(b
 @router.get("/sessions/{sid}/messages")
 def read_messages(sid: str, after: str | None = None, staff: StaffIdentity = Depends(require_staff)) -> dict:
     session = get_gateway().store.get_session(sid)
-    if session is None or session.acting_for != staff.username:
+    if session is None or session.acting_for != staff.username or conversations.is_deleted(sid, staff.username):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")
-    return _chat_page(sid, after)
+    page = _chat_page(sid, after)
+    if "admin" in staff.groups:  # admins also see what went wrong technically; staffers see plain words
+        details = agent_failures.details_for(sid)
+        for message in page["messages"]:
+            if message["id"] in details:
+                message["detail"] = details[message["id"]]
+    return page
 
 
 def _ensure_agent(sid: str, staff: StaffIdentity) -> None:
@@ -141,14 +149,43 @@ def _ensure_agent(sid: str, staff: StaffIdentity) -> None:
     try:
         supervisor.ensure_running(sid, staff.username, ends_at)
     except AgentStartError as error:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"The assistant could not start: {error}") from None
+        raise _start_failed(error) from None
+
+
+def _start_failed(error: AgentStartError) -> HTTPException:
+    """503 with the reason; for the cases the console can act on, a code and the actions it offers."""
+    message = str(error) if error.code == "agent_not_set_up" else f"The assistant could not start: {error}"
+    detail = {"message": message, "code": error.code, "actions": error.actions} if error.code else message
+    return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail)
+
+
+@router.post("/sessions/{sid}/agent/retry")
+def retry_agent(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dict:
+    """"Try again" after the start cap or a missing agent secret: owner only, rate-limited, audited."""
+    _own_active_session(sid, staff)
+    supervisor = get_supervisor()
+    if supervisor is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "auto-start is off: start the agent from a terminal")
+    session = get_gateway().store.get_session(sid)
+    try:
+        agent, left = supervisor.retry(sid, staff.username, _created_epoch(session.created_at) + SESSION_TTL_SECONDS)
+    except RetryRefused as refused:
+        detail = {"message": str(refused), "code": "agent_retry_refused", "actions": refused.actions}
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail) from None
+    except AgentStartError as error:
+        raise _start_failed(error) from None
+    return {"sid": sid, "agent": agent, "retriesLeft": left}
 
 
 @router.post("/sessions/{sid}/messages")
-def send_message(sid: str, body: MessageIn, staff: StaffIdentity = Depends(require_staff)) -> dict:
+def send_message(
+    sid: str, body: MessageIn, background: BackgroundTasks, staff: StaffIdentity = Depends(require_staff)
+) -> dict:
     _own_active_session(sid, staff)
     _ensure_agent(sid, staff)
-    return _post(sid, "user", body.text)
+    message = _post(sid, "user", body.text)
+    background.add_task(conversations.refresh_title, sid, staff.username)  # after the reply, so the chat never waits
+    return message
 
 
 # --- chat: agent side -----------------------------------------------------------
@@ -159,17 +196,25 @@ def agent_read_messages(after: str | None = None, claims: MandateClaims = Depend
     return _chat_page(claims.sid, after)
 
 
+class AgentMessageIn(MessageIn):
+    detail: str | None = Field(default=None, max_length=300)  # e.g. "ClientError: ThrottlingException"; admins only
+
+
 @router.post("/agent/messages")
-def agent_send_message(body: MessageIn, claims: MandateClaims = Depends(require_agent_session)) -> dict:
-    return _post(claims.sid, "assistant", body.text)
+def agent_send_message(body: AgentMessageIn, claims: MandateClaims = Depends(require_agent_session)) -> dict:
+    message = _post(claims.sid, "assistant", body.text)
+    if body.detail:
+        agent_failures.save_detail(claims.sid, message["id"], body.detail)
+    return message
 
 
 # --- review queue -------------------------------------------------------------
 
 
 @router.get("/drafts")
-def list_drafts(staff: StaffIdentity = Depends(require_staff)) -> dict:
-    drafts = get_gateway().store.pending_drafts_for(staff.username)
+def list_drafts(sid: str | None = None, staff: StaffIdentity = Depends(require_staff)) -> dict:
+    """Every draft waiting for the caller, or only one conversation's with `?sid=`."""
+    drafts = [pair for pair in get_gateway().store.pending_drafts_for(staff.username) if sid is None or pair[1].sid == sid]
     return {
         "drafts": [
             {"id": draft_id, **draft.model_dump(mode="json"), "categoryLabel": LABELS.get(draft.category, draft.category)}
@@ -283,3 +328,9 @@ def grant_for_session(sid: str, body: GrantIn, staff: StaffIdentity = Depends(re
     expires_at = int(_created_epoch(session.created_at)) + SESSION_TTL_SECONDS  # the grant ends with the session
     get_gateway().store.put_grant(sid, body.category, staff.username, datetime.now(timezone.utc).isoformat(), expires_at)
     return {"sid": sid, "category": body.category, "label": LABELS[body.category], "scope": "this session only"}
+
+
+@router.get("/assistant/status")
+def assistant_status(admin: StaffIdentity = Depends(require_admin)) -> dict:
+    """For admins' Technical details: does the console start the agent, and with which AWS credentials."""
+    return {"autostart": get_supervisor() is not None, "agentCredentials": credentials_mode()}

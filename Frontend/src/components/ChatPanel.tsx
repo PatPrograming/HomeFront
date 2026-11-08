@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { DecisionEvent } from "../../../packages/mandate-contracts/ts/index";
-import type { AutonomyCategory, SessionCard } from "../lib/api";
+import type { AutonomyCategory, Draft, SessionCard } from "../lib/api";
 import { turnEvents } from "../lib/agentActivity";
+import { connectionMessage } from "../lib/errors";
+import { attemptSend, retryThenResend, type SendFailure } from "../lib/sendFlow";
 import type { Chat } from "../lib/useChat";
 import AgentActivity from "./AgentActivity";
+import ReviewCards, { draftsByReply } from "./ReviewCards";
+import StartFailure from "./StartFailure";
 
 const SUGGESTIONS = [
   "Check my email, answer what you can and show me what I need to review.",
@@ -25,6 +29,31 @@ export interface ChatActivity {
   admin: boolean;
 }
 
+/** Drafts to show as cards under the reply that made them (decided ones too), and how to open one for review. */
+export interface ChatReview {
+  drafts: Draft[];
+  onOpen: (id: string) => void;
+}
+
+// Copies one reply to the clipboard, and says so for a moment.
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+  return (
+    <button type="button" className="msg-action" onClick={copy} aria-label={copied ? "Copied" : "Copy message"}>
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 // The conversation with the agent. The agent's replies come from its own process, so after the staffer sends
 // a message the panel shows "Working…" until the next assistant message arrives. Each turn carries a
 // disclosure with what the agent did and may do.
@@ -33,19 +62,30 @@ export default function ChatPanel({
   sid,
   disabled,
   activity,
+  review,
+  onNewConversation,
+  retryAgent,
+  initialFailure = null,
 }: {
   chat: Chat;
   sid: string | null;
   disabled: boolean;
   activity?: ChatActivity;
+  review?: ChatReview;
+  onNewConversation?: () => void;
+  retryAgent?: () => Promise<unknown>; // "Try again": the server resets this conversation's restart count
+  initialFailure?: SendFailure | null; // a send that already failed (the render tests start from one)
 }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<SendFailure | null>(initialFailure);
+  const [retrying, setRetrying] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const last = chat.messages[chat.messages.length - 1];
-  const waiting = last?.role === "user";
+  // "Stop" only stops the waiting on screen; the agent's own process may still answer, and then the reply shows.
+  const [stoppedFor, setStoppedFor] = useState<string | null>(null);
+  const waiting = last?.role === "user" && stoppedFor !== last.id;
   const [now, setNow] = useState(() => Date.now());
   const stalled = waiting && isStalled(last.ts, now);
   const admin = activity?.admin ?? false;
@@ -74,15 +114,22 @@ export default function ChatPanel({
     const trimmed = text.trim();
     if (!trimmed || sending) return;
     setSending(true);
-    setError(null);
-    try {
-      await chat.send(trimmed);
-      setDraft("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSending(false);
-    }
+    setFailure(null);
+    const failed = await attemptSend(chat.send, trimmed);
+    setFailure(failed);
+    if (!failed) setDraft("");
+    setSending(false);
+  }
+
+  // "Try again": the server resets this conversation's restart count (limited and audited), then the message
+  // that was refused is sent again.
+  async function retry() {
+    if (!retryAgent || retrying || !failure) return;
+    setRetrying(true);
+    const failed = await retryThenResend(retryAgent, chat.send, failure.text);
+    setFailure(failed);
+    if (!failed) setDraft("");
+    setRetrying(false);
   }
 
   function onSubmit(e: FormEvent) {
@@ -90,13 +137,24 @@ export default function ChatPanel({
     send(draft);
   }
 
-  // Enter sends, Shift+Enter starts a new line, as in other chat apps.
+  function stop() {
+    if (last) setStoppedFor(last.id);
+  }
+
+  // Enter sends, Shift+Enter starts a new line, Escape stops waiting, as in other chat apps.
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Escape" && waiting) {
+      e.preventDefault();
+      stop();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       send(draft);
     }
   }
+
+  const placed = review ? draftsByReply(chat.messages, review.drafts) : new Map<string, Draft[]>();
 
   const disclosure = (fromTs: string, toTs: string | null, working: boolean) =>
     card && (
@@ -112,7 +170,11 @@ export default function ChatPanel({
 
   return (
     <section className="chat" aria-label="Chat with your assistant">
-      {chat.error && <p className="chat-reconnect">Reconnecting: {chat.error.message}</p>}
+      {chat.error && (
+        <p className="chat-reconnect" role="status">
+          {connectionMessage(chat.error, true)}
+        </p>
+      )}
 
       <div className="chat-log" role="log" aria-live="polite" aria-label="Conversation">
         {chat.messages.length === 0 ? (
@@ -143,9 +205,14 @@ export default function ChatPanel({
                   <span className="sr-only">Assistant: </span>
                   {i > 0 && disclosure(chat.messages[i - 1].ts, m.ts, false)}
                   <p className="bubble-text">{m.text}</p>
-                  <time className="msg-time" dateTime={m.ts}>
-                    {time(m.ts)}
-                  </time>
+                  {admin && m.detail && <p className="msg-detail">Technical detail: {m.detail}</p>}
+                  {placed.get(m.id) && <ReviewCards drafts={placed.get(m.id)!} onOpen={review!.onOpen} />}
+                  <div className="msg-foot">
+                    <time className="msg-time" dateTime={m.ts}>
+                      {time(m.ts)}
+                    </time>
+                    <CopyButton text={m.text} />
+                  </div>
                 </div>
               </div>
             ),
@@ -162,6 +229,11 @@ export default function ChatPanel({
               )}
             </div>
           </div>
+        )}
+        {last?.role === "user" && stoppedFor === last.id && !disabled && (
+          <p className="chat-stopped" role="status">
+            Stopped waiting. If the assistant finishes anyway, its reply still shows here.
+          </p>
         )}
         {stalled && !disabled && (
           <p className="alert" role="status">
@@ -205,18 +277,32 @@ export default function ChatPanel({
             disabled={disabled}
             maxLength={4000}
           />
-          <button type="submit" className="send-btn" disabled={disabled || sending || !draft.trim()} aria-label={sending ? "Sending…" : "Send message"}>
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+          {waiting && !stalled && !disabled && !draft.trim() ? (
+            <button type="button" className="send-btn is-stop" onClick={stop} aria-label="Stop waiting for the reply">
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                <rect x="5" y="5" width="14" height="14" rx="2.5" fill="currentColor" />
+              </svg>
+            </button>
+          ) : (
+            <button type="submit" className="send-btn" disabled={disabled || sending || !draft.trim()} aria-label={sending ? "Sending…" : "Send message"}>
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
         </form>
-        {error && (
-          <p className="alert" role="alert">
-            Could not send: {error}
-          </p>
+        {failure && (
+          <div className="alert" role="alert">
+            <p>Could not send: {failure.error}</p>
+            <StartFailure
+              actions={retryAgent ? failure.actions : failure.actions.filter((a) => a !== "retry")}
+              onRetry={retry}
+              onNewConversation={onNewConversation}
+              busy={retrying}
+            />
+          </div>
         )}
-        <p className="composer-hint">Enter to send · Shift+Enter for a new line</p>
+        <p className="composer-hint">Enter to send · Shift+Enter for a new line{waiting ? " · Esc to stop waiting" : ""}</p>
       </div>
     </section>
   );

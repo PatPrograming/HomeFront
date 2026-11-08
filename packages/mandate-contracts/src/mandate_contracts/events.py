@@ -20,6 +20,11 @@ Reason = Literal[
     "invalid token",
     "held for staff review",  # Cedar allowed it, but the staffer has not let the agent send this kind alone
     "approved by staff",  # a held draft the staffer approved, so the gateway sent it
+    # Fail-closed DENYs where the check itself could not run (no Cedar decision was made):
+    "AWS credentials expired on the server",
+    "server lacks AWS permission",
+    "permission service unavailable",
+    "server error (failed closed)",
 ]
 
 

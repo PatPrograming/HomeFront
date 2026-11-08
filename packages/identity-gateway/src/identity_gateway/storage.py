@@ -111,6 +111,11 @@ class MandateStore:
             ConditionExpression=Attr("pk").exists(),  # never create a half-empty staffer
         )
 
+    def sessions_for(self, staffer_id: str) -> list[tuple[str, SessionItem]]:
+        """(sid, session) pairs acting for this staffer, any status."""
+        items = self._scan("SESSION#", Attr("actingFor").eq(staffer_id))
+        return [(item["pk"].removeprefix("SESSION#"), SessionItem.model_validate(item)) for item in items]
+
     def revoke_sessions_for(self, staffer_id: str) -> int:
         """Mark every active session acting for this staffer as revoked; return how many."""
         active = self._scan("SESSION#", Attr("actingFor").eq(staffer_id) & Attr("status").eq("active"))
@@ -229,6 +234,19 @@ class MandateStore:
             kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
         cursor = items[-1]["sk"] if items else after
         return [ChatMessageItem.model_validate(item) for item in items], cursor
+
+    def first_chat_message(self, sid: str) -> ChatMessageItem | None:
+        """The conversation's opening message (the sort key starts with its timestamp)."""
+        page = self.table.query(KeyConditionExpression=Key("pk").eq(f"CHAT#{sid}"), ConsistentRead=True, Limit=1)
+        items = page.get("Items", [])
+        return ChatMessageItem.model_validate(items[0]) if items else None
+
+    def last_chat_message(self, sid: str) -> ChatMessageItem | None:
+        page = self.table.query(
+            KeyConditionExpression=Key("pk").eq(f"CHAT#{sid}"), ConsistentRead=True, Limit=1, ScanIndexForward=False
+        )
+        items = page.get("Items", [])
+        return ChatMessageItem.model_validate(items[0]) if items else None
 
     # --- decision events ---------------------------------------------------
 

@@ -51,6 +51,9 @@ MANDATE_DEV_SECRET=... python -m mandate_contracts.dev
   gateway did **not** run it. It saved a draft for the staffer and returned `held_for_review`. Read
   this reason as "allowed by policy, not sent".
 - `"approved by staff"` is recorded with `decision: "ALLOW"` when the staffer approves a held draft
+- `"AWS credentials expired on the server"`, `"server lacks AWS permission"`, `"permission service unavailable"`
+  and `"server error (failed closed)"` are `DENY`s where a check could not run (an exception, not a Cedar
+  decision): still fail closed, no `policy_ids`, same ATLAS labels. `"denied by policy"` always means Cedar said no.
   and the gateway re-checks it with Cedar and sends it. If that re-check fails, the event is `DENY`.
 - An email's `kind` defaults to `"other"`, a locked category: it always needs review and can never
   be set to send alone or granted for a session.

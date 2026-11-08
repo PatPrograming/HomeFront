@@ -42,7 +42,11 @@ export type Reason =
   | "session revoked / delegator inactive"
   | "invalid token"
   | "held for staff review"
-  | "approved by staff";
+  | "approved by staff"
+  | "AWS credentials expired on the server"
+  | "server lacks AWS permission"
+  | "permission service unavailable"
+  | "server error (failed closed)";
 
 export interface GuardrailFlag {
   flagged: boolean;
