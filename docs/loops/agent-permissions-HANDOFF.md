@@ -41,13 +41,14 @@ Resume prompt:
   `node ~/.claude/skills/trial/integrity-scan.mjs 78824f6 <repo>`. Its flags were the stale ledger "todo"
   rows (now fixed), `noqa: E402` imports and Frontend `toBeTruthy` asserts.
 - Falsifier and advocate were launched with Huy's two messages word for word plus the lead rulings.
-  - Falsifier: PENDING (see "Trial results" below if filled in).
+  - Falsifier: stopped at its 40-turn limit with no report (44 tool calls). Not resumed, per the usage stop.
   - Advocate: PENDING.
 - Judge: NOT RUN (lead ruling: no new agents past 85%).
 
 ## Trial results
 
-(Filled in when the falsifier and advocate report.)
+- Falsifier: no report (turn limit). Re-run it fresh next session; tell it to report by turn 30.
+- Advocate: see below if filled in.
 
 ## Next steps
 
