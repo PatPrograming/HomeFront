@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str = ""  # legacy HS256 projects only
     allowed_origins: str = "http://localhost:3000,http://localhost:5173"
 
+    # Amazon Cognito (printed by Backend/infra/cognito.sh). Empty ids mean every
+    # token is rejected: the backend fails closed until the pool is configured.
+    cognito_region: str = "us-east-1"
+    cognito_user_pool_id: str = ""
+    cognito_staff_client_id: str = ""
+    cognito_agent_client_id: str = ""
+    cognito_domain: str = ""
+
     # When true, agent management routes (/agents*, /auth/token, /audit) need a
     # Supabase user JWT. Off by default for local demos.
     agent_admin_requires_login: bool = False
