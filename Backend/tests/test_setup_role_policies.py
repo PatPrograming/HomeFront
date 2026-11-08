@@ -13,8 +13,17 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "Backend" / "infra" / "setup.sh"
 STARTER = ["case-read-same-office", "email-send-known-recipient", "forbid-bulk-export", "forbid-campaign-post",
            "read-tools", "social-post-official"]
-ROLE = ["role-case-read", "role-datagov-search", "role-email-send", "role-inbox-read", "role-social-post",
-        "role-web-scrape"]
+# Starter policies added with the agent-permissions change. setup.sh never updates a policy, so each is a
+# new file: the forbid is safe to add anywhere (it only takes power away); the permits give an assistant
+# new reach, so they come with the office-role policies.
+NEW_FORBID = "forbid-campaign-reply"
+NEW_PERMITS = ["research-tools", "email-send-list-office", "social-reply-official", "report-save"]
+ROLE = ["role-bls-series", "role-case-read", "role-census-query", "role-datagov-search", "role-eia-query",
+        "role-email-send-list", "role-email-send", "role-epa-search", "role-fcc-search", "role-fec-search",
+        "role-inbox-read", "role-nasa-search", "role-noaa-climate", "role-nps-parks", "role-openfda-search",
+        "role-report-save", "role-sam-entity-lookup", "role-social-post", "role-social-reply",
+        "role-usaspending-search", "role-web-scrape"]
+ALL = sorted(STARTER + [NEW_FORBID, *NEW_PERMITS] + ROLE)
 
 # Stand-in for the aws CLI: an existing table and store, policies by description, STAFFER items from a file.
 FAKE_AWS = f"""#!{sys.executable}
@@ -84,20 +93,31 @@ EXISTING = {name: f"avp-{name}" for name in STARTER}
 GOOD = [_staffer("maya", "caseworker"), _staffer("chiefofstaff", "chief_of_staff")]
 
 
+def test_the_contracts_ship_the_expected_policy_files():
+    names = sorted(p.stem for p in (ROOT / "packages" / "mandate-contracts" / "policies").glob("*.cedar"))
+    assert len(names) == 32
+    assert names == ALL
+
+
 def test_without_the_flag_no_role_policy_is_added(fake):
     fake.setup(dict(EXISTING), GOOD)
     result = fake.run("--apply")
     assert result.returncode == 0, result.stderr
-    assert sorted(fake.state()["policies"]) == STARTER
+    # Only the new forbid is created; the 4 new permits wait for the flag, like the role forbids.
+    assert sorted(fake.state()["policies"]) == sorted([*STARTER, NEW_FORBID])
+    assert f"created: {NEW_FORBID}" in result.stdout
+    for name in NEW_PERMITS:
+        assert f"skipped: {name}" in result.stdout, name
+        assert f"created: {name}" not in result.stdout
     assert ["dynamodb", "scan"] not in fake.state()["calls"]
-    assert result.stdout.count("skipped: role-") == 6
+    assert result.stdout.count("skipped: role-") == 21
 
 
-def test_with_the_flag_and_every_role_on_file_the_six_role_policies_are_added_once(fake):
+def test_with_the_flag_and_every_role_on_file_all_32_policies_exist_once(fake):
     fake.setup(dict(EXISTING), GOOD)
     assert fake.run("--apply", "--with-role-policies").returncode == 0
-    assert sorted(fake.state()["policies"]) == sorted(STARTER + ROLE)
-    assert fake.env_names() == sorted(STARTER + ROLE)
+    assert sorted(fake.state()["policies"]) == ALL and len(ALL) == 32
+    assert fake.env_names() == ALL
     again = fake.run("--apply", "--with-role-policies")  # idempotent
     assert again.returncode == 0 and "created:" not in again.stdout
 
@@ -116,7 +136,15 @@ def test_a_staffer_without_a_valid_role_stops_before_any_role_policy(fake, bad):
 def test_role_policies_already_in_the_store_stay_named_without_the_flag(fake):
     fake.setup({**EXISTING, **{name: f"avp-{name}" for name in ROLE}}, GOOD)
     assert fake.run("--apply").returncode == 0
-    assert fake.env_names() == sorted(STARTER + ROLE)
+    assert fake.env_names() == sorted([*STARTER, NEW_FORBID, *ROLE])
+
+
+def test_the_default_run_is_a_dry_run(fake):
+    fake.setup({}, [])
+    result = fake.run()
+    assert result.returncode == 0
+    assert fake.state()["calls"] == []
+    assert fake.state()["policies"] == {}
 
 
 def test_dry_run_calls_nothing(fake):

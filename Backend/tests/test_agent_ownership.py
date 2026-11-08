@@ -111,11 +111,19 @@ def test_anonymous_cannot_create_an_agent():
     assert r.status_code == 401
 
 
-def test_staffer_can_read_but_not_create_or_mint():
-    maya = _auth("maya", groups=("staffer",))
+def test_staffer_may_create_within_their_role_but_is_still_refused_minting():
+    maya = _auth("maya", groups=("staffer",))  # a caseworker
     assert client.get("/api/v1/agents", headers=maya).status_code == 200
     r = client.post("/api/v1/agents", json={"name": "x", "agency": "y"}, headers=maya)
-    assert r.status_code == 403
+    assert r.status_code == 201, r.text
+    assert r.json()["owner_id"] == "maya"
+    r = client.post(
+        "/api/v1/agents", json={"name": "x", "agency": "y", "tool_grants": ["web.scrape"]}, headers=maya
+    )
+    assert r.status_code == 201, r.text
+    # Minting a workload token stays admin-only, even for the staffer's own agent.
+    r = client.post("/api/v1/auth/token", json={"agent_id": r.json()["agent_id"]}, headers=maya)
+    assert r.status_code == 403 and "access_token" not in r.text
     r = client.post("/api/v1/auth/token", json={"agent_id": "agent-comms-01"}, headers=maya)
     assert r.status_code == 403
 
@@ -139,7 +147,15 @@ def test_bad_user_token_is_401_not_anonymous(headers):
 
 
 def test_owner_cannot_be_set_by_request_body():
-    agent = _create_as(_auth(ALICE), owner_id=BOB)
+    # The create body forbids unknown fields, so an owner_id is a 422 and nothing is created.
+    r = client.post(
+        "/api/v1/agents",
+        json={"agent_id": "agent-own-forged", "name": "x", "agency": "y", "owner_id": BOB},
+        headers=_auth(ALICE),
+    )
+    assert r.status_code == 422
+    assert client.get("/api/v1/agents/agent-own-forged", headers=_auth(ALICE)).status_code == 404
+    agent = _create_as(_auth(ALICE))
     assert agent["owner_id"] == ALICE
     agent = client.patch(
         f"/api/v1/agents/{agent['agent_id']}", json={"owner_id": BOB}, headers=_auth(ALICE)

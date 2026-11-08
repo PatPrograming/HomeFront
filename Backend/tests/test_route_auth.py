@@ -82,6 +82,15 @@ def test_public_routes_answer_without_a_login(client, method, path):
     assert _call(client, method, path).status_code != 401
 
 
+# The only writes a staffer may reach: create and grants. They are capped by the staffer's office role
+# inside the handler instead of by Cognito group (docs/loops/agent-permissions.md, Design 6).
+STAFF_WRITES = {
+    ("post", f"{PREFIX}/agents"),
+    ("put", f"{PREFIX}/agents/{{agent_id}}/grants"),
+    ("post", f"{PREFIX}/agents/{{agent_id}}/grants/{{tool_name}}"),
+}
+
+
 def _teammate_writes() -> list[tuple[str, str]]:
     return [
         (method.lower(), f"{PREFIX}{route.path}")
@@ -91,11 +100,25 @@ def _teammate_writes() -> list[tuple[str, str]]:
     ]
 
 
+def test_the_staff_write_exceptions_name_real_routes():
+    # Guards the exclusion list: a renamed route must not silently drop out of the admin-only walk.
+    assert STAFF_WRITES <= set(_teammate_writes())
+
+
 @pytest.mark.usefixtures("cognito_login")
-@pytest.mark.parametrize(("method", "path"), _teammate_writes())
-def test_a_staffer_cannot_use_any_teammate_write_route(client, method, path):
+@pytest.mark.parametrize(("method", "path"), [op for op in _teammate_writes() if op not in STAFF_WRITES])
+def test_a_staffer_cannot_use_any_other_teammate_write_route(client, method, path):
     r = _call(client, method, path, MAYA)
     assert r.status_code == 403, f"{method.upper()} {path} -> {r.status_code}"
+
+
+@pytest.mark.usefixtures("cognito_login")
+@pytest.mark.parametrize(("method", "path"), sorted(STAFF_WRITES))
+def test_the_staff_write_routes_are_not_refused_by_cognito_group(client, method, path):
+    # Role caps apply instead of the admin group: with a dummy body or agent these fail later
+    # (404 or 422), never as 401/403 "admin only".
+    r = _call(client, method, path, MAYA)
+    assert r.status_code not in (401, 403), f"{method.upper()} {path} -> {r.status_code} {r.text[:200]}"
 
 
 @pytest.mark.usefixtures("cognito_login")
