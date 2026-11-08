@@ -143,9 +143,10 @@ def issue_mandate(sid: str, agent: AgentClientIdentity = Depends(require_agent_c
     staffer = gateway.store.get_staffer(session.acting_for)
     if session.status != "active" or staffer is None or not staffer.active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Session revoked or staffer inactive")
-    now = int(time.time())
-    if now > _created_epoch(session.created_at) + SESSION_TTL_SECONDS:
+    clock = time.time()
+    if clock >= _created_epoch(session.created_at) + SESSION_TTL_SECONDS:  # the same instant the console shows
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Session expired; start a new one")
+    now = int(clock)
     claims = MandateClaims(
         sub=session.agent,
         act=session.acting_for,

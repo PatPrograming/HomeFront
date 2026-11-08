@@ -445,6 +445,17 @@ def test_session_expires_at_is_created_at_plus_one_hour(client, store):
     assert (expires - created).total_seconds() == 3600
 
 
+@pytest.mark.parametrize(("offset", "code"), [(-0.001, 200), (0.0, 403), (0.001, 403)])
+def test_the_broker_refuses_a_mandate_from_the_advertised_expiry_instant(client, monkeypatch, offset, code):
+    from datetime import datetime
+
+    sess = new_session(client)
+    expires = datetime.fromisoformat(sess["expiresAt"]).timestamp()
+    monkeypatch.setattr(sessions.time, "time", lambda: expires + offset)
+    as_agent()
+    assert client.post(f"/api/v1/sessions/{sess['sid']}/mandate", json={}).status_code == code
+
+
 def test_mandate_token_still_lasts_15_minutes(client):
     sess = new_session(client)
     claims = verify_mandate_token(get_mandate(client, sess["sid"]), SECRET)
