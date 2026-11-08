@@ -18,6 +18,7 @@ denials honestly, and the agent stopping when Maya is offboarded.
 | `mandate_agent/broker.py` | Gets the agent's own Cognito token (client_credentials), then asks lane B's broker for a mandate token for a session. |
 | `mandate_agent/guard.py` | The rules for the gateway's answers, enforced in code (see below). Also adds the bearer header to every MCP request. |
 | `mandate_agent/runner.py` | Builds the Strands agent (Bedrock model, MCP tools, system prompt) and runs it. |
+| `attacker/compromised_agent.py` | The staged compromised agent for the demo: real identity and gateway, scripted attack, no LLM. See `attacker/README.md`. |
 | `stub_server.py` | A fake gateway for development: the same 7 tools, gateway-like allow/deny, planted injections, a revocation switch. |
 | `data/emails.json` | 25 labelled test emails (`email-1` to `email-25`). Lane B seeds them into DynamoDB. |
 | `data/cases.json` | 25 cases: `case-1` to `case-20` belong to office `rep-x`, `case-21` to `case-25` to `rep-y`. |
@@ -78,6 +79,13 @@ curl -X POST http://127.0.0.1:8000/admin/revoke               # offboard mid-run
 # agent against lane B's gateway with the real broker
 cp agent/.env.example agent/.env    # then paste COGNITO_AGENT_CLIENT_SECRET into agent/.env
 agent/.venv/bin/python agent/agent.py --sid <session id>
+```
+
+Staged compromised agent (same identity and gateway, scripted attack, no LLM; about 80 s, so
+there is time to offboard Maya mid-run):
+
+```bash
+agent/.venv/bin/python agent/attacker/compromised_agent.py --sid <session id>   # add --delay 2 for a faster run
 ```
 
 Settings: copy `agent/.env.example` to `agent/.env` (git-ignored) and paste the agent client secret;

@@ -12,7 +12,7 @@ from strands.tools.mcp import MCPClient
 from strands.types.exceptions import MCPClientInitializationError
 
 from .config import Settings
-from .guard import CONNECTION_LOST, BearerAuth, MandateGuard
+from .guard import CONNECTION_LOST, UNAUTHORIZED, BearerAuth, MandateGuard
 
 SYSTEM_PROMPT = """You are the HomeFront constituent-services assistant, an AI staffer in a congressional \
 office, working the office's public inbox on behalf of the human staffer Maya.
@@ -64,7 +64,7 @@ def run_inbox(
     except MCPClientInitializationError:
         if not guard.unauthorized:
             raise
-        guard.stop_reason = "the gateway rejected the mandate token (HTTP 401)"
+        guard.stop_reason = UNAUTHORIZED
         out("Stopping: the gateway rejected the mandate token (HTTP 401). Nothing was done.")
     except RuntimeError as error:
         # After a 401 the MCP connection is already closed, so closing it again raises this.

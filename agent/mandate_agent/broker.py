@@ -19,6 +19,10 @@ AGENT_SCOPE = "mandate/tools"
 class BrokerError(RuntimeError):
     """The agent could not get a mandate token (bad credentials, unknown or revoked session)."""
 
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        self.status = status  # the broker's HTTP status, when the broker itself refused
+
 
 def fetch_agent_client_token(http: httpx.Client | None = None) -> str:
     """Cognito client_credentials grant with COGNITO_DOMAIN / COGNITO_AGENT_CLIENT_ID / _SECRET."""
@@ -44,5 +48,7 @@ def fetch_mandate_token(api_url: str, sid: str, http: httpx.Client | None = None
         headers={"Authorization": f"Bearer {client_token}"},
     )
     if response.status_code != 200:
-        raise BrokerError(f"The broker refused a mandate for session {sid} (HTTP {response.status_code}).")
+        raise BrokerError(
+            f"The broker refused a mandate for session {sid} (HTTP {response.status_code}).", response.status_code
+        )
     return response.json()["mandateToken"]

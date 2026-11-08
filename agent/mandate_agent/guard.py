@@ -25,6 +25,31 @@ STOP_REASONS = ("session revoked / delegator inactive", "invalid token")
 CONNECTION_LOST = "Connection to the MCP server was closed"
 CONNECTION_LOST_RESULT = f"Tool execution failed: {CONNECTION_LOST}"  # Strands' error text after a 401
 
+UNAUTHORIZED = "the gateway rejected the mandate token (HTTP 401)"
+ALLOW, DENY, REJECTED, ERROR = "allow", "deny", "rejected", "error"
+
+
+def result_text(result: dict[str, Any]) -> str:
+    return " ".join(c.get("text", "") for c in result.get("content", []))
+
+
+def read_verdict(result: dict[str, Any], unauthorized: bool) -> tuple[str, str | None]:
+    """Sort one MCP tool result into ALLOW, DENY, REJECTED (401) or ERROR, plus why the run must stop.
+
+    Only an error result can be a denial or a lost connection: a successful inbox_read or
+    web_scrape returns attacker-controlled text that may contain the same words.
+    """
+    text = result_text(result)
+    status = result.get("status")
+    if status == "success":
+        return ALLOW, None
+    if status == "error" and (unauthorized or text == CONNECTION_LOST_RESULT):
+        return REJECTED, UNAUTHORIZED
+    if status == "error" and text.startswith("DENIED"):
+        return DENY, (text if any(reason in text for reason in STOP_REASONS) else None)
+    return ERROR, None
+
+
 # What makes two calls "the same action" for the no-retry rule. Re-sending a denied email
 # to the same address with new wording is still a retry. Tools not listed use the full input.
 ACTION_KEY_FIELDS = {"email_send": ("to",), "social_post": ("account",), "case_read": ("case_id",)}
@@ -84,21 +109,18 @@ class MandateGuard(HookProvider):
         if event.cancel_message:  # cancelled by before_tool_call; never reached the gateway
             return
         name, tool_input = event.tool_use["name"], event.tool_use["input"]
-        text = " ".join(c.get("text", "") for c in event.result.get("content", []))
+        text = result_text(event.result)
         outcome = ToolOutcome(name, tool_input, text)
         self.log(f"[gateway] {outcome.describe()} -> {text.splitlines()[0][:100] if text else event.result.get('status')}")
 
-        # Only an error result can be a denial or a lost connection: a successful inbox_read or
-        # web_scrape returns attacker-controlled text that may contain the same words.
-        is_error = event.result.get("status") == "error"
-        if is_error and (self.unauthorized or text == CONNECTION_LOST_RESULT):
-            self.stop_reason = "the gateway rejected the mandate token (HTTP 401)"
+        verdict, stop = read_verdict(event.result, self.unauthorized)
+        if stop:
+            self.stop_reason = stop
+        if verdict == REJECTED:
             self.denied.append(outcome)
-        elif is_error and text.startswith("DENIED"):
+        elif verdict == DENY:
             self.denied.append(outcome)
             self._denied_actions.add(self.action_key(name, tool_input))
-            if any(reason in text for reason in STOP_REASONS):
-                self.stop_reason = text
             event.result = {
                 **event.result,
                 "content": [
@@ -108,7 +130,7 @@ class MandateGuard(HookProvider):
                     }
                 ],
             }
-        elif event.result.get("status") == "success":
+        elif verdict == ALLOW:
             self.done.append(outcome)
 
     def after_tools(self, event: AfterToolsEvent) -> None:
@@ -135,7 +157,7 @@ class MandateGuard(HookProvider):
 
 
 class BearerAuth(httpx.Auth):
-    """Adds `Authorization: Bearer <mandate token>` to every MCP request and watches for 401."""
+    """Adds `Authorization: Bearer <mandate token>` to every MCP request and watches for 401/403."""
 
     def __init__(self, token: str, guard: MandateGuard):
         self.token, self.guard = token, guard
@@ -143,5 +165,5 @@ class BearerAuth(httpx.Auth):
     def auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response, None]:
         request.headers["Authorization"] = f"Bearer {self.token}"
         response = yield request
-        if response.status_code == 401:
+        if response.status_code in (401, 403):
             self.guard.unauthorized = True
