@@ -55,6 +55,9 @@ flowchart LR
 - Holds **only** the user pool id and app client id. Both are public; the client has no secret.
 
 ### 4.2 Amazon Cognito
+
+> **Current pool (2026-11-08):** the app signs everyone in through pool `us-east-1_MLfQpodxG` (managed login, authorization code + PKCE on the `staff-web` client), built by `Backend/infra/cognito.sh`. The SRP pool `homefront-users` (`us-east-1_x2DFWiwCM`) from `infra/cloudformation/homefront.yaml` is retired; its 5 users were migrated to the `staffer` group on 2026-11-08. The rest of §4.2 and §5 describe that retired design.
+
 - Source of truth for identities. The user's id everywhere is the token's `sub`.
 - Sign-in with email + password (SRP, so the password never leaves the browser). Email confirmation required, by code.
 - Password policy: 8+ characters with a lowercase letter and a number.
@@ -215,8 +218,10 @@ HomeFront/
 
 | Variable                    | Used by           | Secret? |
 |-----------------------------|-------------------|---------|
-| `COGNITO_USER_POOL_ID`, `VITE_COGNITO_USER_POOL_ID` | backend, frontend | no |
-| `COGNITO_APP_CLIENT_ID`, `VITE_COGNITO_CLIENT_ID`   | backend, frontend | no (public client) |
+| `COGNITO_USER_POOL_ID` (`us-east-1_MLfQpodxG`) | backend | no |
+| `COGNITO_STAFF_CLIENT_ID`, `VITE_COGNITO_CLIENT_ID` (`5be15oitnpm14bg188jpqqs9qv`, `staff-web`) | backend, frontend | no (public client) |
+| `COGNITO_AGENT_CLIENT_ID` (`7aslk40jv9ikchoouqd00avdnp`, `mandate-agent`) | backend, agent | no (its secret is) |
+| `COGNITO_DOMAIN`, `VITE_COGNITO_DOMAIN` (`https://mandate-a10-hack-2026.auth.us-east-1.amazoncognito.com`) | backend, agent, frontend | no |
 | `AWS_REGION`                | backend           | no      |
 | AWS credentials (`AWS_PROFILE`, keys, or a role) | backend | **yes** |
 | `DYNAMODB_TABLE_PREFIX`     | backend           | no      |
