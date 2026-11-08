@@ -5,8 +5,8 @@ import { api } from "../lib/api.js";
 import "./Home.css";
 
 const DEFAULTS = {
-  mission: ["Mission", "statement."],
-  buttons: ["button1", "button2"],
+  mission: ["Agentic Outreach for", "Federal Agencies."],
+  buttons: ["Social Platform", "button2"],
 };
 
 const STEPS = [

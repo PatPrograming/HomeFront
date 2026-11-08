@@ -5,6 +5,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Account from "./pages/Account";
 import Monitoring from "./pages/Monitoring";
+import Emails from "./pages/Emails";
 import SocialPlatform from "./pages/SocialPlatform";
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/emails" element={<Emails />} />
           <Route path="/social-platform" element={<SocialPlatform />} />
           <Route
             path="/account"
