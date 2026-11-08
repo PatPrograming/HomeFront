@@ -55,6 +55,12 @@ describe("demoArgsForTool", () => {
   it("returns scrape and search placeholders", () => {
     expect(demoArgsForTool("web.scrape")).toEqual({ url: "https://www.usa.gov" });
     expect(demoArgsForTool("datagov.search").query).toBe("public health");
+    expect(demoArgsForTool("usaspending.search")).toEqual({
+      keywords: "broadband",
+      fiscal_year: 0,
+      awarding_agency: "",
+      limit: 5,
+    });
   });
 
   it("uses the agent's first recipient for email.send", () => {

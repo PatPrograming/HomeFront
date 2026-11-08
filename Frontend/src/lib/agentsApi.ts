@@ -29,8 +29,8 @@ export interface AtlasNote {
 
 export interface AtlasMatrix {
   atlas_version: string;
-  techniques?: { id: string; name?: string }[];
-  mitigations?: { id: string; name?: string }[];
+  techniques?: { id: string; name?: string | null; description?: string | null }[];
+  mitigations?: { id: string; name?: string | null; description?: string | null }[];
 }
 
 export interface WorkloadToken {

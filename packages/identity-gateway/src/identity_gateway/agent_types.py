@@ -78,7 +78,7 @@ AGENT_TYPES: dict[str, AgentType] = {
         label="Research",
         description=(
             "Researches via agency APIs (Census, FDA, EIA, NASA, NOAA, NPS, BLS, FEC, EPA, "
-            "FCC), data.gov catalog, and web scrape. Can't send or post."
+            "FCC), USAspending award search, data.gov catalog, and web scrape. Can't send or post."
         ),
         default_instructions=(
             "You research topics for the agency. Your job is to produce verified findings "
@@ -95,9 +95,11 @@ AGENT_TYPES: dict[str, AgentType] = {
             "3. For Census place estimates, census.query is best; otherwise scrape "
             "www2.census.gov .../sub-estYYYY_N.csv with q='Santa Clara city'. Avoid "
             "QuickFacts HTML (often HTTP 403).\n"
-            "4. Extract the specific figure or facts the task needs. Prefer the most recent "
+            "4. Prefer *.gov pages when you must web_scrape. Non-.gov URLs are allowed but "
+            "operators see a warning — use them only if no official source has the answer.\n"
+            "5. Extract the specific figure or facts the task needs. Prefer the most recent "
             "official estimate and name the vintage/year.\n"
-            "5. Cross-check when sources conflict; never invent numbers.\n\n"
+            "6. Cross-check when sources conflict; never invent numbers.\n\n"
             "Finish with a structured handoff summary:\n"
             "- Key findings (figures with units and year)\n"
             "- Sources (dataset names and/or URLs)\n"

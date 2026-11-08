@@ -59,6 +59,10 @@ def test_agent_types_catalog_is_public():
     assert set(by_kind) == {"email", "social", "research", "market_research", "custom"}
     assert by_kind["custom"]["allowed_tools"] is None
     assert by_kind["research"]["allowed_tools"] == sorted(AGENT_TYPES["research"].allowed_tools)
+    # USAspending is a public awards API — research may hold it even though it isn't
+    # a keyed agency_apis.py handler.
+    assert "usaspending.search" in by_kind["research"]["allowed_tools"]
+    assert "usaspending.search" in by_kind["research"]["default_tools"]
 
 
 # --- creation -------------------------------------------------------------------

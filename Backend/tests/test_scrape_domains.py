@@ -224,5 +224,9 @@ def test_dynamo_repository_persists_scrape_domains():
 
 def test_system_prompt_mentions_allowed_domains():
     agent = AgentRecord("agent-dom-z", "A", "B", {"web.scrape"}, scrape_domains=["*.gov"])
-    assert "*.gov" in system_prompt(agent)
-    assert "*.gov" not in system_prompt(AgentRecord("agent-dom-w", "A", "B", {"web.scrape"}))
+    prompt = system_prompt(agent)
+    assert "can only fetch these domains: *.gov" in prompt
+    soft = system_prompt(AgentRecord("agent-dom-w", "A", "B", {"web.scrape"}))
+    assert "can only fetch these domains" not in soft
+    assert "Prefer *.gov" in soft
+    assert "UI will warn" in soft

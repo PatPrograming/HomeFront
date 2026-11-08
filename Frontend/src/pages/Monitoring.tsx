@@ -25,15 +25,10 @@ import "./Monitoring.css";
 
 const DEMO_AGENT = "agent-comms-01";
 
-interface AtlasEntry {
-  id: string;
-  name?: string;
-}
-
 interface Matrix {
   atlas_version: string;
-  techniques?: AtlasEntry[];
-  mitigations?: AtlasEntry[];
+  techniques?: { id: string; name?: string | null; description?: string | null }[];
+  mitigations?: { id: string; name?: string | null; description?: string | null }[];
 }
 
 interface Flash {
@@ -56,6 +51,13 @@ const STEPS: { id: StepId; label: string; blurb: string }[] = [
 ];
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Soft *.gov preference warning stamped on web.scrape results. */
+function scrapeSourceWarning(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null;
+  const warning = (result as { source_warning?: unknown }).source_warning;
+  return typeof warning === "string" && warning.trim() ? warning.trim() : null;
+}
 
 function atlasFromError(e: unknown): { technique_ids?: string[]; mitigation_ids?: string[]; narrative?: string } {
   if (!(e instanceof ApiError)) return {};
@@ -199,6 +201,8 @@ export default function Monitoring() {
     return collectAtlasIds([...fromFlash, ...sessionAudit.slice(0, 12)]);
   }, [flash, sessionAudit]);
 
+  const lastScrapeWarn = useMemo(() => scrapeSourceWarning(lastResult), [lastResult]);
+
   async function authenticate() {
     if (!agent) return;
     setBusy(true);
@@ -230,15 +234,33 @@ export default function Monitoring() {
       setFlash({
         kind: "info",
         title: "Pick a focus tool",
-        body: token ? "This agent has no tool grants yet — restore one first." : "Authenticate first.",
+        body: token
+          ? "Pick a focus tool allowed for this agent type (including usaspending.search on research)."
+          : "Authenticate first.",
+      });
+      return;
+    }
+    const typeOk = usableTools.some((t) => t.name === focusTool);
+    if (!typeOk) {
+      setFlash({
+        kind: "info",
+        title: "Tool not allowed for this type",
+        body: `${focusTool} isn't in this agent's type ceiling.`,
       });
       return;
     }
     setBusy(true);
     try {
+      // Selecting a type-allowed tool that isn't granted yet (e.g. usaspending on an
+      // older demo research agent) restores the grant so Allow can succeed.
+      if (!agent.tool_grants.includes(focusTool)) {
+        await api.grantTool(agent.agent_id, focusTool);
+        setRevokedFocus(false);
+      }
       const res = await api.callTool(token, focusTool, demoArgsForTool(focusTool, agent));
       setLastResult(res.result);
       setAllowedOnce(true);
+      const nongov = scrapeSourceWarning(res.result);
       if (res.decision === "pending_approval") {
         setFlash({
           kind: "info",
@@ -247,6 +269,14 @@ export default function Monitoring() {
           link: { to: "/approvals", label: "Open Approvals" },
           mitigation_ids: res.atlas?.mitigation_ids || ["AML.M0029", "AML.M0028"],
           technique_ids: res.atlas?.technique_ids,
+        });
+      } else if (nongov) {
+        setFlash({
+          kind: "info",
+          title: `${focusTool} allowed · non-.gov source`,
+          body: nongov,
+          technique_ids: res.atlas?.technique_ids,
+          mitigation_ids: res.atlas?.mitigation_ids || ["AML.M0028", "AML.M0024"],
         });
       } else {
         setFlash({
@@ -367,6 +397,8 @@ export default function Monitoring() {
   }
 
   const focusGranted = !!(agent && focusTool && agent.tool_grants.includes(focusTool));
+  const focusTypeAllowed = !!(focusTool && usableTools.some((t) => t.name === focusTool));
+  const canAllowFocus = !!(token && focusTool && focusTypeAllowed);
 
   return (
     <Layout>
@@ -522,24 +554,30 @@ export default function Monitoring() {
                         setBlockedOnce(false);
                       }}
                     >
-                      {!focusTool && <option value="">No grants</option>}
-                      {Array.from(
-                        new Set([...(agent?.tool_grants || []), ...(focusTool ? [focusTool] : [])]),
-                      ).map((name) => (
-                        <option key={name} value={name}>
-                          {name} — {toolAction(name)}
-                          {agent && !agent.tool_grants.includes(name) ? " (revoked)" : ""}
+                      {usableTools.length === 0 && <option value="">No tools for this type</option>}
+                      {/* Type-allowed tools (not just current grants) so research can pick
+                          usaspending.search even when a stale demo agent hasn't granted it yet. */}
+                      {usableTools.map((t) => (
+                        <option key={t.name} value={t.name}>
+                          {t.name} — {toolAction(t.name)}
+                          {agent && !agent.tool_grants.includes(t.name) ? " (not granted)" : ""}
                         </option>
                       ))}
+                      {focusTool && !usableTools.some((t) => t.name === focusTool) && (
+                        <option value={focusTool}>
+                          {focusTool} — {toolAction(focusTool)} (outside type)
+                        </option>
+                      )}
                     </select>
                   </div>
                   <button
                     className="primary"
                     type="button"
-                    disabled={busy || !token || !focusTool || !focusGranted}
+                    disabled={busy || !canAllowFocus}
                     onClick={runFocusTool}
                   >
                     Allow {focusTool || "tool"}
+                    {focusTool && !focusGranted ? " (grant first)" : ""}
                   </button>
                   <AtlasChips
                     mitigationIds={["AML.M0028", "AML.M0024"]}
@@ -623,6 +661,11 @@ export default function Monitoring() {
               {lastResult != null && (
                 <>
                   <h3>Last tool result</h3>
+                  {lastScrapeWarn && (
+                    <p className="scrape-gov-warn" role="status">
+                      {lastScrapeWarn}
+                    </p>
+                  )}
                   <pre className="result">{JSON.stringify(lastResult, null, 2)}</pre>
                 </>
               )}

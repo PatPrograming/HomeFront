@@ -93,11 +93,18 @@ def _mailing_list_note(agent: AgentRecord) -> str:
 def _policy_notes(agent: AgentRecord) -> str:
     tools = [t for t in (get_tool(n) for n in sorted(agent.tool_grants)) if t is not None]
     notes = ""
-    if "web.scrape" in agent.tool_grants and agent.scrape_domains:
-        notes += (
-            f"\n- web_scrape can only fetch these domains: {', '.join(agent.scrape_domains)} "
-            "(`*.` covers the domain and its subdomains). Other URLs are refused."
-        )
+    if "web.scrape" in agent.tool_grants:
+        if agent.scrape_domains:
+            notes += (
+                f"\n- web_scrape can only fetch these domains: {', '.join(agent.scrape_domains)} "
+                "(`*.` covers the domain and its subdomains). Other URLs are refused."
+            )
+        else:
+            notes += (
+                "\n- Prefer *.gov (or *.mil) pages and agency APIs for web_scrape. Non-.gov "
+                "URLs are allowed but the UI will warn operators; use them only when no "
+                "official source covers the question."
+            )
     if any(t.outbound for t in tools) and any(t.untrusted_input and not t.outbound for t in tools):
         notes += (
             "\n- Once you read untrusted content in a run (web pages, external records), "
@@ -376,6 +383,15 @@ class AgentRunner:
                         step["approval_id"] = out["approval_id"]
                     content, is_error = json.dumps(out.get("result"), default=str), False
                     step["result_preview"] = content[:STEP_PREVIEW]
+                    result_body = out.get("result")
+                    if isinstance(result_body, dict):
+                        warning = result_body.get("source_warning")
+                        if isinstance(warning, str) and warning.strip():
+                            step["source_warning"] = warning.strip()[:STEP_PREVIEW]
+                        if result_body.get("gov_preferred") is False:
+                            step["gov_preferred"] = False
+                        elif result_body.get("gov_preferred") is True:
+                            step["gov_preferred"] = True
                 except HTTPException as exc:
                     detail = exc.detail if isinstance(exc.detail, dict) else {"message": exc.detail}
                     step.update(

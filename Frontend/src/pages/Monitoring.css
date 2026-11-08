@@ -510,6 +510,16 @@
   margin: 0.75rem 0 1rem;
 }
 
+.monitoring-console .scrape-gov-warn {
+  margin: 0 0 0.65rem;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.9rem;
+  color: #7a5600;
+  background: #fff6e5;
+  border: 1px solid #f0d9a8;
+  border-radius: var(--radius-sm);
+}
+
 .monitoring-console .result {
   margin: 0;
   max-height: 220px;

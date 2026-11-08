@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { AtlasChips } from "../components/AtlasChips";
 import Layout from "../components/Layout";
 import StorageStatus from "../components/StorageStatus/StorageStatus";
-import { agentsApi as api } from "../lib/agentsApi";
+import { agentsApi as api, type AtlasMatrix } from "../lib/agentsApi";
 import { useAuth } from "../lib/AuthProvider";
 import {
   EVENT_LABELS,
@@ -24,6 +25,7 @@ export default function Activity() {
   const [params, setParams] = useSearchParams();
   const [events, setEvents] = useState<AuditEvent[] | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [matrix, setMatrix] = useState<AtlasMatrix | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(true);
 
@@ -57,6 +59,7 @@ export default function Activity() {
 
   useEffect(() => {
     api.agents().then(setAgents).catch(() => {});
+    api.matrix().then(setMatrix).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -191,16 +194,13 @@ export default function Activity() {
                         {ev.trace_id.startsWith("run_") ? "Run" : "Session"} {ev.trace_id}
                       </button>
                     )}
-                    {(ev.atlas?.technique_ids || []).map((id) => (
-                      <code key={id} className="tech">
-                        {id}
-                      </code>
-                    ))}
-                    {(ev.atlas?.mitigation_ids || []).map((id) => (
-                      <code key={id} className="mit">
-                        {id}
-                      </code>
-                    ))}
+                    <AtlasChips
+                      techniqueIds={ev.atlas?.technique_ids}
+                      mitigationIds={ev.atlas?.mitigation_ids}
+                      techniques={matrix?.techniques}
+                      mitigations={matrix?.mitigations}
+                      compact
+                    />
                     <details>
                       <summary>Raw</summary>
                       <pre>{JSON.stringify(ev, null, 2)}</pre>

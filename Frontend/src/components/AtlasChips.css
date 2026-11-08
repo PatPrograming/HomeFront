@@ -1,0 +1,92 @@
+.atlas-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.atlas-chips.compact {
+  margin-top: 0.25rem;
+}
+
+.atlas-chip {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.atlas-chip:focus {
+  outline: none;
+}
+
+.atlas-chip:focus-visible code {
+  box-shadow: var(--focus, 0 0 0 2px #93c5fd);
+}
+
+.atlas-chip code {
+  font-family: var(--mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 0.78rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  cursor: help;
+}
+
+.atlas-chip code.tech {
+  background: var(--red-50, #fdecea);
+  color: #8a1f1c;
+}
+
+.atlas-chip code.mit {
+  background: var(--blue-50, #e8f1fb);
+  color: var(--blue-700, #1d4f91);
+}
+
+.atlas-tip {
+  display: none;
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 40;
+  width: min(22rem, 70vw);
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong, #c5d0de);
+  background: var(--surface, #fff);
+  color: var(--ink, #152033);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  pointer-events: none;
+}
+
+.atlas-chip:hover .atlas-tip,
+.atlas-chip:focus-within .atlas-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.atlas-tip-kind {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #667085);
+}
+
+.atlas-tip-title {
+  font-size: 0.88rem;
+  line-height: 1.3;
+}
+
+.atlas-tip-body {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink-soft, #344054);
+  white-space: pre-wrap;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+/* Flip below the chip when near the top of a scrollport. */
+@supports (anchor-name: none) {
+  /* no-op: keep absolute placement simple across browsers */
+}

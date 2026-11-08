@@ -71,6 +71,35 @@ def test_simulated_scrape_allows_public_hostname_without_dns(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", no_dns)
     out = handlers.handle_web_scrape({"url": "https://www.example.gov/notice"})
     assert out["status"] == "ok" and out["simulated"] is True
+    assert out.get("gov_preferred") is True
+    assert "source_warning" not in out
+
+
+@pytest.mark.parametrize(
+    "host, expected",
+    [
+        ("census.gov", True),
+        ("www.nasa.gov", True),
+        ("GOV", True),
+        ("army.mil", True),
+        ("example.com", False),
+        ("gov.example.com", False),
+        ("notgov", False),
+        ("", False),
+        (None, False),
+    ],
+)
+def test_is_gov_host(host, expected):
+    assert handlers.is_gov_host(host) is expected
+
+
+def test_simulated_scrape_warns_on_non_gov(monkeypatch):
+    monkeypatch.delenv("HOMEFRONT_LIVE_SCRAPE", raising=False)
+    out = handlers.handle_web_scrape({"url": "https://en.wikipedia.org/wiki/Census"})
+    assert out["status"] == "ok" and out["simulated"] is True
+    assert out["gov_preferred"] is False
+    assert "Non-.gov source" in out["source_warning"]
+    assert "wikipedia.org" in out["source_warning"]
 
 
 def test_canonicalize_encodes_spaces_in_query():
@@ -159,6 +188,28 @@ def test_live_scrape_fetches_public_host(live, monkeypatch):
     out = handlers.handle_web_scrape({"url": "https://www.example.gov/"})
     assert out["status"] == "ok" and "Hello" in out["content_preview"]
     assert web.fetched == ["https://www.example.gov/"]
+    assert out.get("gov_preferred") is True
+    assert "source_warning" not in out
+
+
+def test_live_scrape_warns_when_final_url_is_non_gov(live, monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        _fake_dns({"www.example.gov": PUBLIC_IP, "en.wikipedia.org": PUBLIC_IP}),
+    )
+    web = _install_web(
+        monkeypatch,
+        {
+            "https://www.example.gov/": (302, "https://en.wikipedia.org/wiki/X", b""),
+            "https://en.wikipedia.org/wiki/X": (200, None, b"mirror"),
+        },
+    )
+    out = handlers.handle_web_scrape({"url": "https://www.example.gov/"})
+    assert out["status"] == "ok"
+    assert out["gov_preferred"] is False
+    assert "wikipedia.org" in out["source_warning"]
+    assert web.fetched == ["https://www.example.gov/", "https://en.wikipedia.org/wiki/X"]
 
 
 def test_live_scrape_blocks_redirect_to_metadata(live, monkeypatch):

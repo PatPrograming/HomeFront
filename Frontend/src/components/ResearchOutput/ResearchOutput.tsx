@@ -180,6 +180,9 @@ interface SourceRow {
   href: string | null;
   decision: string;
   message?: string;
+  /** Soft preference warning when a scrape used a non-.gov host. */
+  sourceWarning?: string;
+  nonGov?: boolean;
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v : v === undefined || v === null ? "" : String(v));
@@ -191,7 +194,19 @@ function sourceOf(step: RunStep): SourceRow | null {
   switch (step.tool) {
     case "web.scrape": {
       const url = str(input.url);
-      return { ...base, label: "Web page", detail: url, href: /^https?:\/\//i.test(url) ? url : null };
+      const warning =
+        (typeof step.source_warning === "string" && step.source_warning.trim()) ||
+        (url && !isOfficial(url)
+          ? `Non-.gov source: ${hostOf(url)}. Prefer official *.gov pages or agency APIs when possible.`
+          : "");
+      return {
+        ...base,
+        label: "Web page",
+        detail: url,
+        href: /^https?:\/\//i.test(url) ? url : null,
+        sourceWarning: warning || undefined,
+        nonGov: Boolean(warning) || step.gov_preferred === false,
+      };
     }
     case "usaspending.search": {
       const fy = Number(input.fiscal_year) || 0;
@@ -234,15 +249,26 @@ export function SourcesConsulted({ run }: { run: Run }) {
   }, [run.steps]);
 
   const blocked = (run.steps ?? []).filter((s) => s.type === "tool_call" && s.decision === "deny");
+  const nonGovCount = rows.filter((r) => r.nonGov && r.decision !== "deny").length;
 
   return (
     <div className="sources">
+      {nonGovCount > 0 && (
+        <p className="source-gov-warn" role="status">
+          {nonGovCount === 1
+            ? "1 scrape used a non-.gov source. Prefer official *.gov pages or agency APIs when possible."
+            : `${nonGovCount} scrapes used non-.gov sources. Prefer official *.gov pages or agency APIs when possible.`}
+        </p>
+      )}
       {rows.length === 0 ? (
         <p className="muted">This run didn't look anything up.</p>
       ) : (
         <ul className="source-list">
           {rows.map((r, i) => (
-            <li key={i} className={r.decision === "deny" ? "is-blocked" : undefined}>
+            <li
+              key={i}
+              className={r.decision === "deny" ? "is-blocked" : r.nonGov ? "is-nongov" : undefined}
+            >
               <div className="source-main">
                 <span className="source-label">{r.label}</span>
                 {r.href && r.decision !== "deny" ? (
@@ -253,8 +279,16 @@ export function SourcesConsulted({ run }: { run: Run }) {
                   <span className="source-detail">{r.detail}</span>
                 )}
                 {r.decision === "deny" && r.message && <span className="source-why">{r.message}</span>}
+                {r.decision !== "deny" && r.sourceWarning && (
+                  <span className="source-warn-text">{r.sourceWarning}</span>
+                )}
               </div>
               <div className="source-tags">
+                {r.nonGov && r.decision !== "deny" && (
+                  <span className="src-badge src-nongov" title="Soft preference: prefer *.gov when possible">
+                    Non-.gov
+                  </span>
+                )}
                 {UNTRUSTED_TOOLS.has(r.tool) && (
                   <span className="src-badge src-external" title="Content from outside the agency is treated as data, never as instructions">
                     Untrusted input

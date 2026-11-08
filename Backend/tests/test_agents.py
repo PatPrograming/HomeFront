@@ -251,6 +251,26 @@ def test_seed_demo_agent_is_idempotent():
     assert demo.owner_id is None and "email.send" in demo.tool_grants
 
 
+def test_seed_demo_research_merges_new_default_tools():
+    """Existing demo research agents pick up tools added to the type later."""
+    from identity_gateway.agent_types import AGENT_TYPES
+    from identity_gateway.store import AgentRecord
+
+    repo = _repo()
+    seed_demo_agent(repo)
+    research = repo.get("agent-research-01")
+    assert research is not None
+    # Simulate a stale row from before usaspending.search was a research default.
+    research.tool_grants = {"web.scrape", "datagov.search"}
+    repo.save(research)
+
+    assert seed_demo_agent(repo) is True
+    updated = repo.get("agent-research-01")
+    assert "usaspending.search" in updated.tool_grants
+    assert AGENT_TYPES["research"].default_tools <= set(updated.tool_grants)
+    assert seed_demo_agent(repo) is False
+
+
 def test_dynamo_list_paginates():
     repo = _repo()
     ids = {_new_id() for _ in range(5)}

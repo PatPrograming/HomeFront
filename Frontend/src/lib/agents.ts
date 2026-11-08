@@ -389,6 +389,9 @@ export interface RunStep {
   error?: string;
   message?: string;
   result_preview?: string;
+  /** Soft *.gov preference: set when a scrape used a non-.gov / non-.mil host. */
+  source_warning?: string;
+  gov_preferred?: boolean;
   approval_id?: string;
   from?: string;
   to?: string;

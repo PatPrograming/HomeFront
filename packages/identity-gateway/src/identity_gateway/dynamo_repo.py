@@ -139,14 +139,29 @@ class DynamoAgentRepository:
 
 
 def seed_demo_agent(repo: DynamoAgentRepository) -> bool:
-    """Create shared demo agents if missing (comms + research)."""
+    """Create shared demo agents if missing (comms + research).
+
+    Also merges any new research ``default_tools`` onto the existing demo research
+    agent so tools added later (e.g. ``usaspending.search``) show up as grants
+    without recreating the row.
+    """
+    from .agent_types import get_agent_type
     from .store import demo_research_agent
 
-    created = False
+    changed = False
     for factory in (demo_agent, demo_research_agent):
         try:
             repo.insert(factory())
-            created = True
+            changed = True
         except DuplicateAgentError:
             pass
-    return created
+
+    research = repo.get("agent-research-01")
+    if research is not None and research.kind == "research":
+        defaults = set(get_agent_type("research").default_tools)
+        missing = defaults - set(research.tool_grants)
+        if missing:
+            research.tool_grants = set(research.tool_grants) | missing
+            repo.save(research)
+            changed = True
+    return changed

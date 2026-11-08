@@ -63,16 +63,37 @@ def mcp_call(body: ToolCallRequest, authorization: str | None = Header(default=N
     }
 
 
+def _atlas_card(entry: dict[str, Any] | None, oid: str) -> dict[str, Any]:
+    """id / name / description only — enough for UI hover tooltips without the full pack."""
+    if not entry:
+        return {"id": oid, "name": None, "description": None}
+    return {
+        "id": entry.get("id") or oid,
+        "name": entry.get("name"),
+        "description": entry.get("description"),
+    }
+
+
+def _matrix_atlas_ids() -> tuple[list[str], list[str]]:
+    """Technique and mitigation IDs the UI may show (Prompt 1 + every MCP tool)."""
+    from mcp_tools.registry import TOOL_REGISTRY
+
+    techniques = {"AML.T0053", "AML.T0051.001", "AML.T0086", "AML.T0098"}
+    mitigations = {"AML.M0024", "AML.M0028", "AML.M0029", "AML.M0030", "AML.M0026", "AML.M0033"}
+    for tool in TOOL_REGISTRY.values():
+        techniques.update(tool.atlas_techniques or [])
+        mitigations.update(tool.atlas_mitigations or [])
+    return sorted(techniques), sorted(mitigations)
+
+
 @router.get("/demo/matrix")
 def demo_matrix() -> dict[str, Any]:
-    """Compact Agentic AI strip for Prompt 1 (auth → allow → revoke → block)."""
-    # Core Prompt 1 IDs first; residual / HITL / taint kept for richer agent demos.
-    ids = ["AML.T0053", "AML.T0051.001", "AML.T0086", "AML.T0098"]
-    mitigations = ["AML.M0024", "AML.M0028", "AML.M0029", "AML.M0030", "AML.M0026", "AML.M0033"]
+    """ATLAS cards for Prompt 1 and tool-linked AML IDs (name + full description for hover)."""
+    technique_ids, mitigation_ids = _matrix_atlas_ids()
     return {
         "atlas_version": enricher.version,
-        "techniques": [enricher.get_technique(i) or {"id": i, "name": None} for i in ids],
-        "mitigations": [enricher.get_mitigation(i) or {"id": i, "name": None} for i in mitigations],
+        "techniques": [_atlas_card(enricher.get_technique(i), i) for i in technique_ids],
+        "mitigations": [_atlas_card(enricher.get_mitigation(i), i) for i in mitigation_ids],
     }
 
 

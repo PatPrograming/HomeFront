@@ -40,10 +40,24 @@ const when = (ts: number | null | undefined) => (ts ? new Date(ts * 1000).toLoca
 function trailSummary(steps: RunStep[]): string {
   const calls = steps.filter((s) => s.type === "tool_call");
   const count = (d: string) => calls.filter((s) => s.decision === d).length;
+  const nonGov = calls.filter((s) => s.source_warning || s.gov_preferred === false).length;
   const parts = [`${calls.length} tool call${calls.length === 1 ? "" : "s"}`];
   if (count("deny")) parts.push(`${count("deny")} blocked`);
   if (count("pending_approval")) parts.push(`${count("pending_approval")} waiting for approval`);
+  if (nonGov) parts.push(`${nonGov} non-.gov scrape${nonGov === 1 ? "" : "s"}`);
   return `Research trail · ${parts.join(" · ")}`;
+}
+
+function scrapeWarnings(steps: RunStep[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of steps) {
+    const w = typeof s.source_warning === "string" ? s.source_warning.trim() : "";
+    if (!w || seen.has(w)) continue;
+    seen.add(w);
+    out.push(w);
+  }
+  return out;
 }
 
 function startError(e: unknown): string {
@@ -122,6 +136,11 @@ function Step({ step, index }: { step: RunStep; index: number }) {
         {decision === "pending_approval" && (
           <p className="step-detail">
             Nothing was sent yet. <Link to="/approvals">Review it on the Approvals page</Link>
+          </p>
+        )}
+        {decision === "allow" && step.source_warning && (
+          <p className="step-detail step-warn" role="status">
+            {step.source_warning}
           </p>
         )}
         {decision === "allow" && step.result_preview && (
@@ -212,6 +231,7 @@ export default function RunTask({ agent, collapsible = false }: { agent: Agent; 
   const busy = starting || !!activeId;
   const steps = current?.steps ?? [];
   const usage = current?.usage ?? { input_tokens: 0, output_tokens: 0 };
+  const govWarnings = scrapeWarnings(steps);
 
   return (
     <div className="run-task">
@@ -283,6 +303,16 @@ export default function RunTask({ agent, collapsible = false }: { agent: Agent; 
             <span className="muted">Task: </span>
             {current.task}
           </p>
+          {govWarnings.length > 0 && (
+            <div className="run-gov-warn" role="status">
+              <strong>Non-.gov scrape</strong>
+              <ul>
+                {govWarnings.map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {steps.length > 0 ? (
             isActive(current) ? (
               <ol className="run-steps">
@@ -292,11 +322,16 @@ export default function RunTask({ agent, collapsible = false }: { agent: Agent; 
               </ol>
             ) : (
               // Once a run ends, the results lead and the tool-call trail folds away
-              // (kept open when something was blocked or is waiting, since that's the story).
+              // (kept open when something was blocked, waiting, or used a non-.gov scrape).
               <details
                 key={current.run_id}
                 className="run-trail"
-                open={steps.some((s) => s.decision === "deny" || s.decision === "pending_approval")}
+                open={steps.some(
+                  (s) =>
+                    s.decision === "deny" ||
+                    s.decision === "pending_approval" ||
+                    Boolean(s.source_warning),
+                )}
               >
                 <summary>
                   {trailSummary(steps)}
