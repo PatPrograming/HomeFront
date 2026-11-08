@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider } from "./lib/AuthProvider.jsx";
 import RequireAuth from "./components/RequireAuth.jsx";
 import Home from "./pages/Home.jsx";
@@ -9,12 +9,19 @@ import Console from "./pages/Console.jsx";
 import Admin from "./pages/Admin.jsx";
 import Monitoring from "./pages/Monitoring.jsx";
 
+// Cognito sends the browser back to the site root with ?code=…&state=… (or ?error=…), because the
+// staff-web client's callback URL is the root. Finish the sign-in there; otherwise show the home page.
+function HomeOrCallback() {
+  const params = new URLSearchParams(useLocation().search);
+  return params.has("code") || params.has("error") ? <AuthCallback /> : <Home />;
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<HomeOrCallback />} />
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route

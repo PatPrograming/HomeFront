@@ -29,11 +29,13 @@ Other commands: `npm test` (unit tests, Vitest), `npm run build` (production bui
 
 ## Settings (repo-root `.env`, read by `vite.config.js`)
 
+Copy the lines from `Frontend/.env.example` into the repo-root `.env`; they hold the real, public Cognito values.
+
 | Variable | What it is |
 |---|---|
 | `VITE_COGNITO_DOMAIN` | The user pool's managed-login domain, e.g. `mandate-xyz.auth.us-east-1.amazoncognito.com` |
 | `VITE_COGNITO_CLIENT_ID` | The `staff-web` app client id (public client, no secret) |
-| `VITE_COGNITO_REDIRECT_URI` | Where Cognito sends you back, e.g. `http://localhost:3000/auth/callback`. Must be in the client's callback URLs. Defaults to `<this origin>/auth/callback`. The sign-out URL `<this origin>/` must be in the client's sign-out URLs. |
+| `VITE_COGNITO_REDIRECT_URI` | Where Cognito sends you back: `http://localhost:3000/` (the `staff-web` client allows `http://localhost:3000/` and `http://localhost:5173/`). Defaults to `<this origin>/`. Sign-out returns to `<this origin>/`, which must be in the client's sign-out URLs. |
 | `VITE_API_BASE` | Optional. API origin + `/api/v1` when not using the dev proxy |
 | `VITE_MOCK_API` | `1` turns on mock mode, dev server only |
 
@@ -45,7 +47,7 @@ All of it is in `src/lib/pkce.js` (pure helpers) and `src/lib/auth.js` (about 10
 
 1. **Sign in** sends the browser to Cognito's own login page (`/oauth2/authorize`). Before leaving, the app makes a
    random secret, the *verifier*, keeps it in `sessionStorage`, and sends only its SHA-256 hash, the *challenge*.
-2. Cognito sends the browser back to `/auth/callback?code=…&state=…`. The app checks `state` matches, then posts the
+2. Cognito sends the browser back to the site root, `/?code=…&state=…`. The app checks `state` matches, then posts the
    code **and the verifier** to `/oauth2/token`. Cognito hashes the verifier and compares it with the challenge, so a
    stolen code is useless without the secret that never left this tab.
 3. The tokens are kept in memory and `sessionStorage` (this tab only, gone when it closes), never `localStorage`.
@@ -60,7 +62,7 @@ All of it is in `src/lib/pkce.js` (pure helpers) and `src/lib/auth.js` (about 10
 | Path | Who | What |
 |---|---|---|
 | `/login` | anyone | Sends you to Cognito (or, in mock mode, lets you pick Maya or the Chief of Staff) |
-| `/auth/callback` | anyone | Finishes sign-in |
+| `/` with `?code=` | anyone | Finishes sign-in (Cognito returns to the site root; `/auth/callback` works too) |
 | `/console` | `staffer` or `admin` | **Start assistant** (`POST /api/v1/sessions`), the identity card, the live feed |
 | `/admin` | `admin` only | **Offboard** each staffer (`POST /api/v1/staff/{id}/offboard`, with a confirm step) and the full audit log |
 | `/account` | anyone signed in, even with no group | `GET /api/v1/me` (username, sub, email, groups, read-only) and sign-out |

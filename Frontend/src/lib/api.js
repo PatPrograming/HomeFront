@@ -65,6 +65,9 @@ export const api = {
   offboard: (stafferId) =>
     request(`/staff/${encodeURIComponent(stafferId)}/offboard`, { method: "POST", body: {} }),
 
+  // Public home-page copy (no token)
+  home: () => request("/home", { auth: false }),
+
   // Legacy in-memory gateway, used only by the old /monitoring page
   tools: () => request("/tools", { auth: false }),
   matrix: () => request("/demo/matrix", { auth: false }),

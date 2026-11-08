@@ -11,7 +11,8 @@ const PENDING_KEY = "mandate.pkce"; // verifier + state, kept only across the re
 export const cognito = {
   domain: (import.meta.env.VITE_COGNITO_DOMAIN || "").replace(/^https?:\/\//, "").replace(/\/$/, ""),
   clientId: import.meta.env.VITE_COGNITO_CLIENT_ID || "",
-  redirectUri: import.meta.env.VITE_COGNITO_REDIRECT_URI || `${window.location.origin}/auth/callback`,
+  // Must be one of the staff-web client's callback URLs (lane A set the site root: http://localhost:3000/).
+  redirectUri: import.meta.env.VITE_COGNITO_REDIRECT_URI || `${window.location.origin}/`,
 };
 
 export const cognitoConfigured = Boolean(cognito.domain && cognito.clientId);
