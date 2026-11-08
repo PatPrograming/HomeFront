@@ -186,7 +186,7 @@ class AgentSupervisor:
                                    ("new_conversation",))
             if done and now - done[-1] < RETRY_COOLDOWN_SECONDS:
                 raise RetryRefused(f"Please wait {int(RETRY_COOLDOWN_SECONDS - (now - done[-1])) + 1} s before trying again.",
-                                   ("retry",))
+                                   ("retry", "new_conversation"))
             done.append(now)
             self._starts.pop(sid, None)
             self._blocked.pop(sid, None)

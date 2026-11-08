@@ -34,6 +34,29 @@ describe("when the assistant can't start", () => {
   });
 });
 
+describe("the chat box after a refused message", () => {
+  const empty = { messages: [], error: null, send: async () => {} } as unknown as Chat;
+  const failure = { error: "The assistant could not start: it stopped 3 times", actions: ["retry", "new_conversation"] as const };
+
+  it("shows the reason with Try again and Start a new conversation", () => {
+    const html = renderToStaticMarkup(
+      <ChatPanel chat={empty} sid="s1" disabled={false} initialFailure={{ ...failure, actions: [...failure.actions] }}
+        retryAgent={async () => {}} onNewConversation={noop} />,
+    );
+    expect(html).toContain("Could not send: The assistant could not start");
+    expect(html).toContain("Try again");
+    expect(html).toContain("Start a new conversation");
+  });
+
+  it("offers no Try again when the console has no way to retry", () => {
+    const html = renderToStaticMarkup(
+      <ChatPanel chat={empty} sid="s1" disabled={false} initialFailure={{ ...failure, actions: [...failure.actions] }} onNewConversation={noop} />,
+    );
+    expect(html).not.toContain("Try again");
+    expect(html).toContain("Start a new conversation");
+  });
+});
+
 describe("why the assistant stopped", () => {
   const chatWith = (detail: string): Chat =>
     ({

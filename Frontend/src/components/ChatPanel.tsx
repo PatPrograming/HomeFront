@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import type { DecisionEvent } from "../../../packages/mandate-contracts/ts/index";
 import type { AutonomyCategory, Draft, SessionCard } from "../lib/api";
 import { turnEvents } from "../lib/agentActivity";
-import { agentActions, connectionMessage, type AgentAction } from "../lib/errors";
+import { connectionMessage } from "../lib/errors";
+import { attemptSend, retryThenResend, type SendFailure } from "../lib/sendFlow";
 import type { Chat } from "../lib/useChat";
 import AgentActivity from "./AgentActivity";
 import ReviewCards, { draftsByReply } from "./ReviewCards";
@@ -64,6 +65,7 @@ export default function ChatPanel({
   review,
   onNewConversation,
   retryAgent,
+  initialFailure = null,
 }: {
   chat: Chat;
   sid: string | null;
@@ -72,11 +74,11 @@ export default function ChatPanel({
   review?: ChatReview;
   onNewConversation?: () => void;
   retryAgent?: () => Promise<unknown>; // "Try again": the server resets this conversation's restart count
+  initialFailure?: SendFailure | null; // a send that already failed (the render tests start from one)
 }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [actions, setActions] = useState<AgentAction[]>([]);
+  const [failure, setFailure] = useState<SendFailure | null>(initialFailure);
   const [retrying, setRetrying] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -112,33 +114,22 @@ export default function ChatPanel({
     const trimmed = text.trim();
     if (!trimmed || sending) return;
     setSending(true);
-    setError(null);
-    setActions([]);
-    try {
-      await chat.send(trimmed);
-      setDraft("");
-    } catch (e) {
-      setError(connectionMessage(e, false));
-      setActions(agentActions(e));
-    } finally {
-      setSending(false);
-    }
+    setFailure(null);
+    const failed = await attemptSend(chat.send, trimmed);
+    setFailure(failed);
+    if (!failed) setDraft("");
+    setSending(false);
   }
 
   // "Try again": the server resets this conversation's restart count (limited and audited), then the message
   // that was refused is sent again.
   async function retry() {
-    if (!retryAgent || retrying) return;
+    if (!retryAgent || retrying || !draft.trim()) return;
     setRetrying(true);
-    try {
-      await retryAgent();
-      setRetrying(false);
-      await send(draft);
-    } catch (e) {
-      setError(connectionMessage(e, false));
-      setActions(agentActions(e));
-      setRetrying(false);
-    }
+    const failed = await retryThenResend(retryAgent, chat.send, draft.trim());
+    setFailure(failed);
+    if (!failed) setDraft("");
+    setRetrying(false);
   }
 
   function onSubmit(e: FormEvent) {
@@ -300,11 +291,11 @@ export default function ChatPanel({
             </button>
           )}
         </form>
-        {error && (
+        {failure && (
           <div className="alert" role="alert">
-            <p>Could not send: {error}</p>
+            <p>Could not send: {failure.error}</p>
             <StartFailure
-              actions={retryAgent ? actions : actions.filter((a) => a !== "retry")}
+              actions={retryAgent ? failure.actions : failure.actions.filter((a) => a !== "retry")}
               onRetry={retry}
               onNewConversation={onNewConversation}
               busy={retrying}

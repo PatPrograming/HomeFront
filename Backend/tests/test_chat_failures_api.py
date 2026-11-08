@@ -181,7 +181,7 @@ def test_try_again_is_rate_limited(client, launcher):
     launcher.started[-1][1].crash(6)
     r = client.post(f"/api/v1/sessions/{sid}/agent/retry")
     assert r.status_code == 429 and "wait" in r.json()["detail"]["message"].lower()
-    assert r.json()["detail"]["actions"] == ["retry"]
+    assert r.json()["detail"]["actions"] == ["retry", "new_conversation"]
 
 
 def test_try_again_has_a_limit_per_conversation(client, launcher, monkeypatch):
