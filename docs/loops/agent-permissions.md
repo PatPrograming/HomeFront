@@ -401,6 +401,15 @@ Parallel groups (disjoint files):
 
 ## Rounds
 
+### Round 1 (2026-11-08, resumed session)
+
+- Scoreboard: Round 1: 14/14 outcome checks pass (fixed C1, C2, C3, C4, C5, C9; regressed none).
+- Merge probe with Lane I f4af614: clean git merge; 19 combined-tree failures fixed in b1d630c (older tests run
+  without the connection gate by default; real-module test `test_gw_connections_merged.py`); merged tree green.
+- Trial (full): falsifier and advocate launched; judge not run (usage stop at 85%). See
+  `agent-permissions-HANDOFF.md`.
+- Gap list: (1) task 17 screenshots at 375px/1280px not taken; (2) trial verdict pending.
+
 ## Decisions
 
 - 2026-11-08: base: origin/main (23fa467) fails 66 Backend tests with NameError `_scrape_domain_problem`
