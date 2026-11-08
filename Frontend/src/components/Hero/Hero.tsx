@@ -23,6 +23,8 @@ export default function Hero({ mission, buttons }: HeroProps) {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
+  const primaryLabel = buttons?.[0] || "Start a communication";
+  const secondaryLabel = buttons?.[1] || "View agents";
   return (
     <section className="hero">
       <div className="container hero-grid">
@@ -47,7 +49,7 @@ export default function Hero({ mission, buttons }: HeroProps) {
                 onClick={() => setOpen((o) => !o)}
                 onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
               >
-                Reach out!
+                {primaryLabel}
                 <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
                   <path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                 </svg>
@@ -69,7 +71,7 @@ export default function Hero({ mission, buttons }: HeroProps) {
             </div>
             {user ? (
               <Link className="btn btn-outline" to="/agents">
-                View agents
+                {secondaryLabel}
               </Link>
             ) : (
               <Link className="btn btn-outline" to="/login">

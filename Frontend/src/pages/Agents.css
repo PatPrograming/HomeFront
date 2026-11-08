@@ -314,3 +314,153 @@
   font-size: 13px;
   margin: 0;
 }
+
+/* ---------- Email setup ---------- */
+.email-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.email-summary dt {
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.email-summary dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.email-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.upload-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.upload-btn {
+  cursor: pointer;
+}
+
+.upload-preview {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--canvas);
+}
+
+.upload-preview p {
+  margin: 0 0 8px;
+}
+
+.ses-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.ses-ok {
+  background: #e8f4ec;
+  color: var(--success);
+}
+
+.ses-bad {
+  background: var(--red-50);
+  color: var(--red-700);
+}
+
+.ses-unknown {
+  background: var(--canvas);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+/* ---------- Email delivery (SES checks) ---------- */
+.email-delivery {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0 4px;
+  border-top: 1px dashed var(--line);
+}
+
+.delivery-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.delivery-row .btn-ghost {
+  margin-left: auto;
+}
+
+.delivery-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.delivery-block p {
+  margin: 0;
+}
+
+.sandbox-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: #fff6e5;
+  border: 1px solid #f0d28a;
+  color: #5c4100;
+}
+
+.sandbox-banner p {
+  margin: 0;
+}
+
+.recipient-status {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+  max-width: 100%;
+}
+
+.recipient-status code {
+  word-break: break-all;
+}
+
+.test-select {
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+.test-ok {
+  margin: 0;
+  color: var(--success);
+  word-break: break-word;
+}
