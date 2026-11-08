@@ -63,9 +63,9 @@ The broker and admin routes are in `Backend/app/routers/{sessions,staff,events}.
 ## Run it
 
 ```bash
-bash Backend/infra/setup.sh            # once: DynamoDB table, AVP store, policies, writes Backend/infra/.env.aws
+bash Backend/infra/setup.sh --apply    # once: DynamoDB table, AVP store, policies, writes Backend/infra/.env.aws
 set -a; source Backend/infra/.env.aws; set +a
-.venv/bin/python Backend/infra/seed.py # staffers, cases, emails
+.venv/bin/python Backend/infra/seed.py --apply # staffers, cases, emails
 MANDATE_SIGNING_SECRET=<32+ random chars> ./scripts/run-gateway.sh   # 127.0.0.1:8080
 ```
 

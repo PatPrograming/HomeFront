@@ -7,8 +7,8 @@
 #   3. The six Cedar policies from packages/mandate-contracts/policies/*.cedar
 #   4. Backend/infra/.env.aws (untracked): store id + map of AVP policy id -> readable name
 #
-# Usage: bash Backend/infra/setup.sh [--dry-run]
-#   --dry-run prints the AWS commands and calls nothing.
+# Usage: bash Backend/infra/setup.sh            # dry run: prints the AWS commands, calls nothing
+#        bash Backend/infra/setup.sh --apply    # really creates the resources (ask Huy first)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -17,8 +17,9 @@ TABLE="${MANDATE_TABLE:-mandate}"
 STORE_DESCRIPTION="mandate"
 POLICY_DIR="$ROOT/packages/mandate-contracts/policies"
 ENV_FILE="$ROOT/Backend/infra/.env.aws"
-DRY_RUN=0
-[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
+# Dry run unless --apply is passed, so a stray run can never create anything.
+DRY_RUN=1
+[[ "${1:-}" == "--apply" ]] && DRY_RUN=0
 
 # Run an AWS CLI command, or only print it in dry-run mode.
 run() {

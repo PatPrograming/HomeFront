@@ -4,9 +4,9 @@
 #   own-office case -> ALLOW      other-office case -> DENY     delegator inactive -> DENY
 #   bulk export     -> DENY       email to unknown  -> DENY     campaign post      -> DENY
 #
-# Usage: bash Backend/policy/tests.sh [--dry-run]
-#   Reads AVP_POLICY_STORE_ID from Backend/infra/.env.aws (written by setup.sh).
-#   --dry-run prints the AWS commands and calls nothing.
+# Usage: bash Backend/policy/tests.sh            # dry run: prints the AWS commands, calls nothing
+#        bash Backend/policy/tests.sh --apply    # really asks AVP (read-only calls)
+#   Reads AVP_POLICY_STORE_ID from Backend/infra/.env.aws (written by setup.sh --apply).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -15,8 +15,8 @@ ENV_FILE="$ROOT/Backend/infra/.env.aws"
 PY="${PYTHON:-$ROOT/.venv/bin/python}"
 [[ -x "$PY" ]] || PY=python3
 export PYTHONPATH="$ROOT/packages/mandate-contracts/src${PYTHONPATH:+:$PYTHONPATH}"
-DRY_RUN=0
-[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
+DRY_RUN=1
+[[ "${1:-}" == "--apply" ]] && DRY_RUN=0
 
 STORE_ID="<policy-store-id>"
 if [[ -f "$ENV_FILE" ]]; then

@@ -5,8 +5,9 @@
 - Cases and emails: agent/data/cases.json and agent/data/emails.json (lane C) when
   present, otherwise the small fixture below.
 
-Usage: python Backend/infra/seed.py [--dry-run] [--dev-session]
-  --dry-run      prints the items and calls nothing.
+Usage: python Backend/infra/seed.py [--apply] [--dev-session]
+  (default)      dry run: prints the items and calls nothing.
+  --apply        really writes to DynamoDB (ask Huy first).
   --dev-session  also writes an active session for the dev token's sid
                  (`python -m mandate_contracts.dev`), for testing before the broker and Cognito.
 """
@@ -95,4 +96,4 @@ def main(dry_run: bool, dev_session: bool) -> None:
 
 
 if __name__ == "__main__":
-    main(dry_run="--dry-run" in sys.argv, dev_session="--dev-session" in sys.argv)
+    main(dry_run="--apply" not in sys.argv, dev_session="--dev-session" in sys.argv)

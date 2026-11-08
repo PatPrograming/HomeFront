@@ -17,9 +17,9 @@ and emails from `agent/data/*.json`, or a small built-in fixture. Running it aga
 active after an Offboard.
 
 ```bash
-bash Backend/infra/setup.sh --dry-run          # print the commands only
-bash Backend/infra/setup.sh
+bash Backend/infra/setup.sh                    # dry run: print the commands only
+bash Backend/infra/setup.sh --apply
 set -a; source Backend/infra/.env.aws; set +a
-.venv/bin/python Backend/infra/seed.py --dry-run
-.venv/bin/python Backend/infra/seed.py
+.venv/bin/python Backend/infra/seed.py                  # dry run
+.venv/bin/python Backend/infra/seed.py --apply
 ```

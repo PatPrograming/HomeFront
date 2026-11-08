@@ -15,6 +15,6 @@
 uses. The policies themselves are in `packages/mandate-contracts/policies/`.
 
 ```bash
-bash Backend/policy/tests.sh --dry-run   # print the AWS commands only
-bash Backend/policy/tests.sh             # needs Backend/infra/.env.aws from setup.sh and AWS credentials
+bash Backend/policy/tests.sh             # dry run: print the AWS commands only
+bash Backend/policy/tests.sh --apply     # needs Backend/infra/.env.aws from setup.sh and AWS credentials
 ```
