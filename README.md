@@ -2,7 +2,7 @@
 
 AWS × A10 Hackathon — **Prompt 1: Agentic Identity**
 
-Government-agency agents that email, post/reply on social, scrape the web, and query **api.data.gov** — behind **Amazon Cognito** user auth (data in **DynamoDB**) plus **agent workload identity**, fine-grained MCP tool grants, mid-task revoke, and **MITRE ATLAS** labels on every allow/deny.
+Government-agency agents that email, post/reply on social, scrape the web, query **api.data.gov**, and run procurement market research on **USAspending.gov** and **SAM.gov** — behind **Amazon Cognito** user auth (data in **DynamoDB**) plus **agent workload identity**, fine-grained MCP tool grants, mid-task revoke, and **MITRE ATLAS** labels on every allow/deny.
 
 ## What the demo shows
 
@@ -27,8 +27,9 @@ chmod +x scripts/*.sh
 
 1. Open http://localhost:3000 → **Sign in** (or sign up) when Cognito is configured
 2. Nav → **Monitoring** (http://localhost:3000/monitoring)
-3. **Authenticate agent** → **2. datagov.search** (live Catalog data) → **3. email.send**
-4. **4. Revoke email.send** → **5. Retry** → blocked as **`AML.T0053`** / **`AML.M0028`**
+3. **Authenticate agent** → **1. datagov.search** (live Catalog data) → **2. email.send** (held for approval)
+4. **3. web.scrape** → **2. email.send** again → blocked as **`tainted_session`** (**`AML.M0030`**): the session read untrusted content
+5. **4. Revoke email.send** → **5. Retry** → blocked as **`AML.T0053`** / **`AML.M0028`**
 
 - API docs: http://127.0.0.1:8080/docs  
 - Everything is under `/api/v1`; Frontend proxies `/api` to :8080  
@@ -68,10 +69,32 @@ curl localhost:8080/api/v1/agents/agent-comms-01/runs/<run_id>
 
 The runner offers the model only the agent's granted tools, and sends every tool call through the same gateway checks as `/mcp/call`. A revoke mid-run blocks the next call. Runs stop after the agent's `max_steps`.
 
+### Agent types and guardrails
+
+Pick a type when creating an agent (`GET /api/v1/agent-types`). Each has a tool ceiling the gateway enforces at grant time and on every call:
+
+| Type | Tools it may hold |
+|------|-------------------|
+| Official email | `email.send`, `email.send_list`, `datagov.search` |
+| Social media | `social.post`, `social.reply` |
+| Research | `web.scrape`, `datagov.search` |
+| Procurement market research | `web.scrape`, `datagov.search`, `usaspending.search`, `sam.entity_lookup`, `report.save` |
+| Custom | anything |
+
+**Procurement market research** (FAR Part 10) finds past contract awards (`usaspending.search`), looks vendors up in SAM.gov (`sam.entity_lookup`, UEI / registration / small-business types) and saves a cited markdown report with `report.save`. Read reports at `GET /api/v1/agents/{id}/reports`. It can never email or post.
+
+Gateway rules on top of grants:
+- **SSRF guard:** `web.scrape` only reaches public http(s) hosts, never `169.254.169.254`, localhost or private ranges, and re-checks every redirect.
+- **Taint tracking:** once a run (or workload-token session) executes a tool that returns untrusted content (`web.scrape`, `usaspending.search`, `sam.entity_lookup`), outbound tools (`email.*`, `social.*`) are denied for the rest of it with `tainted_session` (`AML.M0030`), even for custom agents. Approvals queued earlier stay approvable.
+- **Domain allowlist:** an agent's `scrape_domains` (e.g. `["*.gov"]`, the market research default) limits which hosts `web.scrape` may fetch; others get `domain_not_allowed`.
+
+External tools are simulated unless enabled: `HOMEFRONT_LIVE_SCRAPE=1`, `HOMEFRONT_LIVE_USASPENDING=1`, and `HOMEFRONT_LIVE_SAM=1` (needs `DATA_GOV_API_KEY`). See `.env.example`.
+
 ### api.data.gov key
 
 1. Set in `.env`: `DATA_GOV_API_KEY=your_key_here`
 2. Restart `./scripts/run-gateway.sh` — live Catalog search enables automatically. The key stays in the gateway (`AML.M0026`); agents never see it.
+3. The same key serves `sam.entity_lookup` (api.sam.gov) when `HOMEFRONT_LIVE_SAM=1`.
 
 ## Layout
 
@@ -81,7 +104,7 @@ Frontend/                  # Main product UI — Monitoring = agent IAM demo
 packages/atlas-pack/       # vendored ATLAS Agentic pack + build script
 packages/atlas-enricher/   # local ATLAS lookup + annotate
 packages/identity-gateway/ # agent workload identity, grants, MCP authZ, Bedrock runner
-packages/mcp-tools/        # email / social / scrape / data.gov tools
+packages/mcp-tools/        # email / social / scrape / data.gov / USAspending / SAM.gov / report tools
 infra/                     # CloudFormation: Cognito, DynamoDB, IAM (deploy.sh)
 references/                # design/reference assets
 docs/ARCHITECTURE.md       # system design
