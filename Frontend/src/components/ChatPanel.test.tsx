@@ -19,12 +19,17 @@ describe("ChatPanel: no endless 'Working…'", () => {
     expect(fresh).toContain("Working…");
     expect(fresh).not.toContain("isn&#x27;t connected");
 
-    const old = renderToStaticMarkup(
-      <ChatPanel chat={chatWith(new Date(Date.now() - STALL_MS - 5000).toISOString())} sid="sid-1" disabled={false} />,
-    );
+    const stale = chatWith(new Date(Date.now() - STALL_MS - 5000).toISOString());
+    const admin = { card: null, events: [], categories: [], admin: true };
+    const old = renderToStaticMarkup(<ChatPanel chat={stale} sid="sid-1" disabled={false} activity={admin} />);
     expect(old).not.toContain("Working…");
     expect(old).toContain("connected to this session");
     expect(old).toContain("--sid sid-1 --chat");
+
+    // Staff get the same notice in plain words: no command, no session id.
+    const staff = renderToStaticMarkup(<ChatPanel chat={stale} sid="sid-1" disabled={false} />);
+    expect(staff).toContain("connected to this session");
+    expect(staff).not.toContain("sid-1");
   });
 
   it("never promises a 15-minute session", () => {

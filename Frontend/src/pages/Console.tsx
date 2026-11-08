@@ -4,10 +4,12 @@ import AutonomyPanel from "../components/AutonomyPanel";
 import ChatPanel from "../components/ChatPanel";
 import EventFeed, { FeedSummary } from "../components/EventFeed";
 import IdentityCard from "../components/IdentityCard";
+import IdentityLine from "../components/IdentityLine";
 import ReviewQueue from "../components/ReviewQueue";
 import { api, type SessionCard } from "../lib/api";
 import { useSession } from "../lib/AuthProvider";
 import { sessionEvents } from "../lib/events";
+import { isAdmin } from "../lib/roles";
 import { needsNewSession, sendInSession } from "../lib/chatSession";
 import { useChat, type Chat } from "../lib/useChat";
 import { useEventFeed } from "../lib/useEventFeed";
@@ -28,7 +30,7 @@ function loadCard(username: string): SessionCard | null {
   }
 }
 
-// Staff view: chat with the assistant (the first message starts the session: demo step 1), review what the gateway held for you, decide what
+// Staff view (admins also get Technical details below): chat with the assistant (the first message starts the session: demo step 1), review what the gateway held for you, decide what
 // it may send alone, and watch every ALLOW / DENY this session gets (steps 2 and 4).
 export default function Console() {
   const session = useSession();
@@ -63,56 +65,102 @@ export default function Console() {
   }
   const chatWithSession: Chat = { ...chat, send };
   const locked = new Set(review.categories.filter((c) => c.locked).map((c) => c.category));
+  const admin = isAdmin(session);
+  const [railOpen, setRailOpen] = useState(false);
+
+  // The review drawer (under 1024 px) closes on Escape, like other dialogs.
+  useEffect(() => {
+    if (!railOpen) return;
+    const onKey = (e: globalThis.KeyboardEvent) => e.key === "Escape" && setRailOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [railOpen]);
 
   return (
     <Layout>
-      <div className="mandate-console">
-        <header className="title-row">
-          <div>
-            <h1>Your AI assistant</h1>
-            <p className="lede">
-              Signed in as <strong>{session.username}</strong>. The assistant acts for you, with only the tools
-              your office allows, and only for the task you give it.
-            </p>
+      <div className="mandate-console assistant-page">
+        <div className="assistant-shell">
+          <div className="assistant-main">
+            <header className="assistant-head">
+              <div>
+                <h1>Your assistant</h1>
+                {card ? (
+                  <IdentityLine card={card} revoked={revoked} />
+                ) : (
+                  <p className="identity-line">It acts for you, with only the tools your office allows.</p>
+                )}
+              </div>
+              <button
+                type="button"
+                className="rail-toggle"
+                aria-expanded={railOpen}
+                aria-controls="assistant-rail"
+                onClick={() => setRailOpen(true)}
+              >
+                Review
+                {review.drafts.length > 0 && <span className="count-badge">{review.drafts.length}</span>}
+              </button>
+            </header>
+
+            {card && revoked && (
+              <p className="revoked-banner" role="status">
+                <span>This conversation's session was revoked. The assistant can do nothing more in it.</span>
+                <button type="button" className="btn-primary" onClick={newConversation}>
+                  Start a new conversation
+                </button>
+              </p>
+            )}
+
+            <ChatPanel
+              chat={chatWithSession}
+              sid={card?.sid ?? null}
+              disabled={revoked}
+              activity={{ card, events, categories: review.categories, admin }}
+            />
           </div>
-        </header>
 
-        {card && revoked && (
-          <p className="alert" role="status">
-            This conversation's session was revoked.{" "}
-            <button type="button" className="btn-primary" onClick={newConversation}>
-              Start a new conversation
-            </button>
-          </p>
-        )}
-
-        <div className="assistant-grid">
-          <ChatPanel chat={chatWithSession} sid={card?.sid ?? null} disabled={revoked} />
-          <div className="assistant-side">
+          {/* Right rail on a wide screen; a drawer opened by "Review" on smaller ones. */}
+          <aside id="assistant-rail" className={`rail${railOpen ? " is-open" : ""}`} aria-label="Review and permissions">
+            <div className="rail-close-row">
+              <button type="button" className="icon-btn" onClick={() => setRailOpen(false)} aria-label="Close review panel">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
             <ReviewQueue drafts={review.drafts} locked={locked} onDone={review.reload} />
             <AutonomyPanel categories={review.categories} onChange={review.reload} />
-          </div>
+          </aside>
+          {railOpen && <div className="rail-backdrop" onClick={() => setRailOpen(false)} aria-hidden="true" />}
         </div>
 
-        {card && <IdentityCard card={card} revoked={revoked} />}
-
-        <section className="panel" aria-labelledby="feed-title">
-          <div className="panel-head">
-            <h2 id="feed-title">Live decisions</h2>
-            <p className={`live ${feed.error ? "deny-text" : ""}`} role="status">
-              {feed.error ? `Reconnecting: ${feed.error.message}` : feed.lastPollAt ? "Live, every second" : "Connecting…"}
-            </p>
-          </div>
-          <FeedSummary events={events} />
-          <EventFeed
-            events={events}
-            emptyText={
-              card
-                ? "No tool calls yet. They appear here within a second."
-                : "No session yet. Send the assistant a message to start one; its tool calls appear here."
-            }
-          />
-        </section>
+        {/* Admins only: the raw identity card and every ALLOW / DENY with its Cedar policy and ATLAS ids. */}
+        {admin && (
+          <section className="tech" aria-labelledby="tech-title">
+            <div className="tech-head">
+              <h2 id="tech-title">Technical details</h2>
+              <p className="muted">Visible to admins only. Staff see the plain-words summary in the chat.</p>
+            </div>
+            {card && <IdentityCard card={card} revoked={revoked} />}
+            <section className="panel" aria-labelledby="feed-title">
+              <div className="panel-head">
+                <h2 id="feed-title">Live decisions</h2>
+                <p className={`live ${feed.error ? "deny-text" : ""}`} role="status">
+                  {feed.error ? `Reconnecting: ${feed.error.message}` : feed.lastPollAt ? "Live, every second" : "Connecting…"}
+                </p>
+              </div>
+              <FeedSummary events={events} />
+              <EventFeed
+                events={events}
+                emptyText={
+                  card
+                    ? "No tool calls yet. They appear here within a second."
+                    : "No session yet. Send the assistant a message to start one; its tool calls appear here."
+                }
+              />
+            </section>
+          </section>
+        )}
       </div>
     </Layout>
   );

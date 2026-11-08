@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import type { DecisionEvent } from "../../../packages/mandate-contracts/ts/index";
+import type { AutonomyCategory, SessionCard } from "../lib/api";
+import { turnEvents } from "../lib/agentActivity";
 import type { Chat } from "../lib/useChat";
+import AgentActivity from "./AgentActivity";
 
 const SUGGESTIONS = [
   "Check my email, answer what you can and show me what I need to review.",
@@ -12,17 +16,39 @@ const time = (ts: string) => new Date(ts).toLocaleTimeString([], { hour: "2-digi
 export const STALL_MS = 20_000;
 export const isStalled = (lastTs: string, now: number) => now - new Date(lastTs).getTime() > STALL_MS;
 
+/** What the inline "Working… / Done" disclosure needs. `admin` also unlocks technical details (commands, ids). */
+export interface ChatActivity {
+  card: SessionCard | null;
+  events: DecisionEvent[];
+  categories: AutonomyCategory[];
+  admin: boolean;
+}
+
 // The conversation with the agent. The agent's replies come from its own process, so after the staffer sends
-// a message the panel shows "Working…" until the next assistant message arrives.
-export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: string | null; disabled: boolean }) {
+// a message the panel shows "Working…" until the next assistant message arrives. Each turn carries a
+// disclosure with what the agent did and may do.
+export default function ChatPanel({
+  chat,
+  sid,
+  disabled,
+  activity,
+}: {
+  chat: Chat;
+  sid: string | null;
+  disabled: boolean;
+  activity?: ChatActivity;
+}) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const last = chat.messages[chat.messages.length - 1];
   const waiting = last?.role === "user";
   const [now, setNow] = useState(() => Date.now());
   const stalled = waiting && isStalled(last.ts, now);
+  const admin = activity?.admin ?? false;
+  const card = activity?.card ?? null;
 
   // Re-check every few seconds while waiting, so a missing agent shows up without a reload.
   useEffect(() => {
@@ -34,6 +60,14 @@ export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: st
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "nearest" });
   }, [chat.messages.length]);
+
+  // The box grows with the text, up to a cap, like other chat apps.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [draft]);
 
   async function send(text: string) {
     const trimmed = text.trim();
@@ -63,84 +97,124 @@ export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: st
     }
   }
 
+  const disclosure = (fromTs: string, toTs: string | null, working: boolean) =>
+    card && (
+      <AgentActivity
+        card={card}
+        events={turnEvents(activity!.events, fromTs, toTs)}
+        categories={activity!.categories}
+        working={working}
+        admin={admin}
+      />
+    );
+
   return (
-    <section className="panel chat" aria-labelledby="chat-title">
-      <div className="panel-head">
-        <h2 id="chat-title">Chat with your assistant</h2>
-        {chat.error && <p className="deny-text">Reconnecting: {chat.error.message}</p>}
-      </div>
+    <section className="chat" aria-label="Chat with your assistant">
+      {chat.error && <p className="chat-reconnect">Reconnecting: {chat.error.message}</p>}
 
       <div className="chat-log" role="log" aria-live="polite" aria-label="Conversation">
         {chat.messages.length === 0 ? (
           <div className="chat-empty">
-            <p>Ask in plain words. Emails and posts it writes wait for your review until you let it send that kind alone.</p>
+            <p className="chat-hello">What can I take off your plate?</p>
             <p className="muted">
-              {sid ? (
-                <>
-                  The assistant answers here once it is running: <code>python agent/agent.py --sid {sid} --chat</code>
-                </>
-              ) : (
-                "Your first message starts a session for the assistant, with only the tools your office allows, for the task you give it."
-              )}
+              Ask in plain words. Emails and posts I write wait for your review until you let me send that kind alone.
             </p>
+            {admin && sid && (
+              <p className="muted chat-tech">
+                The assistant answers here once it is running: <code>python agent/agent.py --sid {sid} --chat</code>
+              </p>
+            )}
           </div>
         ) : (
-          chat.messages.map((m) => (
-            <div key={m.id} className={`bubble ${m.role === "user" ? "from-user" : "from-agent"}`}>
-              <span className="bubble-meta">
-                {m.role === "user" ? "You" : "Assistant"} · <time dateTime={m.ts}>{time(m.ts)}</time>
-              </span>
-              <p className="bubble-text">{m.text}</p>
-            </div>
-          ))
+          chat.messages.map((m, i) =>
+            m.role === "user" ? (
+              <div key={m.id} className="msg from-user">
+                <p className="bubble-text">{m.text}</p>
+                <time className="msg-time" dateTime={m.ts}>
+                  {time(m.ts)}
+                </time>
+              </div>
+            ) : (
+              <div key={m.id} className="msg from-agent">
+                <span className="agent-mark" aria-hidden="true" />
+                <div className="msg-body">
+                  <span className="sr-only">Assistant: </span>
+                  {i > 0 && disclosure(chat.messages[i - 1].ts, m.ts, false)}
+                  <p className="bubble-text">{m.text}</p>
+                  <time className="msg-time" dateTime={m.ts}>
+                    {time(m.ts)}
+                  </time>
+                </div>
+              </div>
+            ),
+          )
         )}
         {waiting && !disabled && !stalled && (
-          <p className="chat-working" role="status">
-            Working…
-          </p>
+          <div className="msg from-agent">
+            <span className="agent-mark is-thinking" aria-hidden="true" />
+            <div className="msg-body">
+              {disclosure(last.ts, null, true) || (
+                <p className="chat-working" role="status">
+                  Working…
+                </p>
+              )}
+            </div>
+          </div>
         )}
         {stalled && !disabled && (
           <p className="alert" role="status">
-            No reply yet: the assistant isn't connected to this session. Start it with{" "}
-            <code>python agent/agent.py --sid {sid} --chat</code>
+            No reply yet: the assistant isn't connected to this session.{" "}
+            {admin ? (
+              <>
+                Start it with <code>python agent/agent.py --sid {sid} --chat</code>
+              </>
+            ) : (
+              "Ask your admin to start it, then send your message again."
+            )}
           </p>
         )}
         <div ref={endRef} />
       </div>
 
-      {chat.messages.length === 0 && !disabled && (
-        <div className="chat-suggestions">
-          {SUGGESTIONS.map((s) => (
-            <button key={s} type="button" className="suggestion" onClick={() => send(s)} disabled={sending}>
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="composer-dock">
+        {chat.messages.length === 0 && !disabled && (
+          <div className="chat-suggestions">
+            {SUGGESTIONS.map((s) => (
+              <button key={s} type="button" className="suggestion" onClick={() => send(s)} disabled={sending}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
 
-      <form className="composer" onSubmit={onSubmit}>
-        <label htmlFor="chat-input" className="sr-only">
-          Message the assistant
-        </label>
-        <textarea
-          id="chat-input"
-          rows={2}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={disabled ? "This session was revoked. The assistant can do nothing more for it." : "Ask the assistant to do something…"}
-          disabled={disabled}
-          maxLength={4000}
-        />
-        <button type="submit" className="btn-primary" disabled={disabled || sending || !draft.trim()}>
-          {sending ? "Sending…" : "Send"}
-        </button>
-      </form>
-      {error && (
-        <p className="alert" role="alert">
-          Could not send: {error}
-        </p>
-      )}
+        <form className="composer" onSubmit={onSubmit}>
+          <label htmlFor="chat-input" className="sr-only">
+            Message the assistant
+          </label>
+          <textarea
+            id="chat-input"
+            ref={inputRef}
+            rows={1}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={disabled ? "This session was revoked. The assistant can do nothing more for it." : "Ask the assistant to do something…"}
+            disabled={disabled}
+            maxLength={4000}
+          />
+          <button type="submit" className="send-btn" disabled={disabled || sending || !draft.trim()} aria-label={sending ? "Sending…" : "Send message"}>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </form>
+        {error && (
+          <p className="alert" role="alert">
+            Could not send: {error}
+          </p>
+        )}
+        <p className="composer-hint">Enter to send · Shift+Enter for a new line</p>
+      </div>
     </section>
   );
 }
