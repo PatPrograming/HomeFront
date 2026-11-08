@@ -15,7 +15,7 @@ by hand.
 |---|---|
 | Tool names, input models, untrusted/always-denied flags | `mandate_contracts.TOOLS`, `mandate_contracts.tools` |
 | MCP `inputSchema` for each tool | `tool_schemas()` or `schemas/tools.json` |
-| HomeFront token claims, issuer, scope, 15-min TTL | `MandateClaims`, `ISSUER`, `SCOPE`, `TTL_SECONDS` |
+| Mandate token claims, issuer, scope, 15-min TTL | `MandateClaims`, `ISSUER`, `SCOPE`, `TTL_SECONDS` |
 | Dev token before the broker exists | `python -m mandate_contracts.dev` (needs `MANDATE_DEV_SECRET`) |
 | ALLOW/DENY event for the audit feed | `DecisionEvent`, `Reason`, `GuardrailFlag` |
 | DynamoDB keys and item shapes | `mandate_contracts.ddb`: `session_key`, `SessionItem`, `StafferItem`, `CaseItem`, `EmailItem`, `event_key` |
