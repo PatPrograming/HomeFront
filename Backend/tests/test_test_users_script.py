@@ -12,7 +12,17 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "Backend" / "infra" / "test-users.sh"
 POOL = "us-east-1_MLfQpodxG"
-EXPECTED_GROUPS = {"bronco": "staffer", "scuawm": "staffer", "a10": "staffer", "aws": "staffer", "admin": "admin"}
+# username -> (Cognito group, office role); docs/ROLES.md
+EXPECTED = {
+    "bronco": ("staffer", "caseworker"),
+    "scuacm": ("staffer", "communications_director"),
+    "a10": ("staffer", "legislative_aide"),
+    "aws": ("staffer", "intern"),
+    "admin": ("admin", "chief_of_staff"),
+    "maya": ("staffer", "caseworker"),
+    "chiefofstaff": ("admin", "chief_of_staff"),
+}
+EXPECTED_GROUPS = {username: group for username, (group, _) in EXPECTED.items()}
 
 # A stand-in for the aws CLI. It keeps Cognito users and DynamoDB items in a JSON state file and
 # logs every call's argv, so the tests can see exactly what the script asked AWS to do.
@@ -121,13 +131,13 @@ def test_apply_creates_each_user_once_with_group_and_staffer_item(fake):
     assert all(c[c.index("--region") + 1] == "us-east-1" for c in calls)
 
     state = fake.state()
-    for username, group in EXPECTED_GROUPS.items():
+    for username, (group, office_role) in EXPECTED.items():
         user = state["users"][username]
         assert user["groups"] == [group]
         assert user["status"] == "CONFIRMED" and user["password_sets"] == 1
         item = state["items"][f"STAFFER#{username}|META"]
         assert item == {"pk": {"S": f"STAFFER#{username}"}, "sk": {"S": "META"}, "active": {"BOOL": True},
-                        "office": {"S": "rep-x"}, "role": {"S": group}}
+                        "office": {"S": "rep-x"}, "role": {"S": group}, "officeRole": {"S": office_role}}
 
 
 def test_passwords_go_only_to_the_private_file(fake):
@@ -189,3 +199,48 @@ def test_stops_on_the_first_aws_error(fake):
 def test_password_file_is_git_ignored():
     default = ROOT / "Backend" / "infra" / "test-users.local.txt"
     assert subprocess.run(["git", "-C", str(ROOT), "check-ignore", "-q", str(default)]).returncode == 0
+
+
+def test_dry_run_shows_each_accounts_office_role(fake):
+    result = fake.run()
+    for username, (_, office_role) in EXPECTED.items():
+        assert f"== {username} (group {EXPECTED_GROUPS[username]}, office rep-x, role {office_role})" in result.stdout
+
+
+DEMO = {"bronco": "Bronco@2026", "scuacm": "Scuacm@2026", "a10": "A10@2026x", "aws": "Aws@2026",
+        "admin": "Admin@2026", "maya": "Maya@2026", "chiefofstaff": "Chiefofstaff@2026"}
+
+
+def test_demo_passwords_are_name_based_meet_the_pool_policy_and_are_never_printed(fake):
+    result = fake.run("--apply", "--demo-passwords")
+    assert result.returncode == 0, result.stderr
+    passwords, state = fake.passwords(), fake.state()
+    assert passwords == DEMO
+    for username, password in passwords.items():
+        assert state["users"][username]["password"] == password
+        # Cognito's default policy: 8+ characters with upper, lower, digit and symbol.
+        assert len(password) >= 8
+        assert any(c.isupper() for c in password) and any(c.islower() for c in password)
+        assert any(c.isdigit() for c in password) and any(not c.isalnum() for c in password)
+        assert password not in result.stdout and password not in result.stderr
+        assert not any(password in arg for call in fake.calls() for arg in call)
+    assert stat.S_IMODE(fake.password_file.stat().st_mode) == 0o600
+    assert "Passwords (demo)" in result.stdout
+
+
+def test_demo_passwords_do_not_reset_existing_accounts_without_reset_passwords(fake):
+    assert fake.run("--apply").returncode == 0
+    random_passwords = fake.passwords()
+    assert fake.run("--apply", "--demo-passwords").returncode == 0
+    assert fake.passwords() == random_passwords
+    assert fake.run("--apply", "--demo-passwords", "--reset-passwords").returncode == 0
+    assert fake.passwords() == DEMO
+
+
+def test_the_item_helper_rejects_an_unknown_office_role():
+    """test-users.sh builds every item before its first AWS call, so this stops the whole run."""
+    helper = ROOT / "Backend" / "infra" / "staffer_accounts.py"
+    bad = subprocess.run([sys.executable, str(helper), "item", "x", "rep-x", "staffer", "senator"], capture_output=True)
+    assert bad.returncode != 0
+    good = subprocess.run([sys.executable, str(helper), "item", "x", "rep-x", "staffer", "intern"], capture_output=True)
+    assert good.returncode == 0 and json.loads(good.stdout)["officeRole"] == {"S": "intern"}

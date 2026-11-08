@@ -29,6 +29,7 @@ from mcp_tools.handlers import invoke_tool
 
 from mandate_contracts import TOOLS, DecisionEvent, GuardrailFlag, MandateClaims, Reason, cedar
 from mandate_contracts.ddb import DraftItem
+from mandate_contracts.roles import role_reason
 
 from .authz import Authorizer, AuthzRequest
 from .autonomy import LOCKED, NEW_CONVERSATION, SOCIAL_CATEGORY
@@ -63,6 +64,7 @@ class DraftAlreadyDecided(Exception):
 class Outcome:
     event: DecisionEvent
     result: dict[str, Any] | None = None  # the tool's output; None on DENY
+    office_role: str | None = None  # the staffer's role, set when a role policy may have decided
 
     @property
     def allowed(self) -> bool:
@@ -71,7 +73,13 @@ class Outcome:
     def deny_text(self) -> str:
         text = f"DENIED ({self.event.reason}, ATLAS {', '.join(self.event.atlas)})"
         # Name the Cedar policy, so the agent can tell the staffer exactly which rule said no.
-        return f"{text} policy: {', '.join(self.event.policy_ids)}" if self.event.policy_ids else text
+        if not self.event.policy_ids:
+            return text
+        text = f"{text} policy: {', '.join(self.event.policy_ids)}"
+        # A role deny also says why in plain words, for the staffer who is not an admin.
+        if any(p.startswith("role-") for p in self.event.policy_ids):
+            text += f" ({role_reason(self.office_role, self.event.tool)})"
+        return text
 
 
 class Gateway:
@@ -126,6 +134,7 @@ class Gateway:
                 agent_id=claims.sub,
                 office=session.office,
                 mode=session.mode,
+                role=staffer.office_role or "",  # from the STAFFER item, never from the token or input
                 tool=tool,
                 resource=cedar.case_entity(params.case_id, case.office) if case else cedar.tool_entity(tool),
                 context=cedar.build_context(  # always every key; a missing key would skip a forbid
@@ -138,7 +147,9 @@ class Gateway:
             # 4. Ask Verified Permissions.
             decision = self.authorizer.is_authorized(request)
             if not decision.allowed:
-                return self._record(claims, tool, resource, "DENY", "denied by policy", decision.policy_ids)
+                denied = self._record(claims, tool, resource, "DENY", "denied by policy", decision.policy_ids)
+                denied.office_role = staffer.office_role
+                return denied
 
             # 4b. Earned autonomy. Cedar says the agent *may* send this; the staffer decides whether it
             #     may send it without review. Until then the gateway keeps a draft and sends nothing.
@@ -191,6 +202,7 @@ class Gateway:
                 agent_id=draft.agent,
                 office=draft.office,
                 mode="official",
+                role=staffer.office_role or "",
                 tool=tool,
                 resource=cedar.tool_entity(tool),
                 context=cedar.build_context(
@@ -201,7 +213,9 @@ class Gateway:
             )
         )
         if not decision.allowed:
-            return self._record(claims, tool, resource, "DENY", "denied by policy", decision.policy_ids)
+            denied = self._record(claims, tool, resource, "DENY", "denied by policy", decision.policy_ids)
+            denied.office_role = staffer.office_role
+            return denied
 
         sent = draft.model_copy(
             update={

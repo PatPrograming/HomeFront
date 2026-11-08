@@ -15,11 +15,12 @@ STORE_ID = "ps-123"
 NAMES = {"avp-1": "case-read-same-office", "avp-2": "forbid-bulk-export"}
 
 
-def _req(tool, *, office="rep-x", mode="official", resource=None, agent="agent-1", **ctx):
+def _req(tool, *, office="rep-x", mode="official", role="chief_of_staff", resource=None, agent="agent-1", **ctx):
     return AuthzRequest(
         agent_id=agent,
         office=office,
         mode=mode,
+        role=role,
         tool=tool,
         resource=resource or cedar.tool_entity(tool),
         context=cedar.build_context(**ctx),
@@ -63,7 +64,7 @@ def test_avp_request_is_built_from_the_contract_helpers():
     assert call["action"] == cedar.action("case_read")
     assert call["resource"] == case["identifier"]
     assert call["context"] == req.context
-    assert call["entities"] == {"entityList": [cedar.agent_entity("agent-1", "rep-x", "official"), case]}
+    assert call["entities"] == {"entityList": [cedar.agent_entity("agent-1", "rep-x", "official", "chief_of_staff"), case]}
 
 
 def test_avp_allow_maps_policy_ids_to_readable_names():

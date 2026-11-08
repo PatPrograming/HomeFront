@@ -87,8 +87,8 @@ def store(table, world):
     from mandate_contracts.ddb import CaseItem, EmailItem, SessionItem, StafferItem
 
     s = MandateStore(table)
-    s.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer"))
-    s.put_staffer("chiefofstaff", StafferItem(active=True, office="rep-x", role="admin"))
+    s.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer", office_role="caseworker"))
+    s.put_staffer("chiefofstaff", StafferItem(active=True, office="rep-x", role="admin", office_role="chief_of_staff"))
     s.put_case(
         world.case_x,
         CaseItem(
@@ -187,6 +187,14 @@ class ScanSpy:
 @pytest.fixture
 def scan_spy():
     return ScanSpy()
+
+
+@pytest.fixture
+def maya_posts(store):
+    """Make maya a Communications Director: as a Caseworker her role may not post (role-social-post)."""
+    from mandate_contracts.ddb import StafferItem
+
+    store.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer", office_role="communications_director"))
 
 
 @pytest.fixture

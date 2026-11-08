@@ -13,9 +13,10 @@ changing a file here needs the manager's (Huy's) approval.
 | `src/mandate_contracts/events.py` | The ALLOW/DENY decision event the dashboard shows | §6.3 |
 | `src/mandate_contracts/ddb.py` | `pk`/`sk` keys and item shapes for the single `mandate` table | §6.4 |
 | `src/mandate_contracts/cedar.py` | Cedar context keys with safe defaults, entity and action builders, starter policies by readable id | §6.5 |
+| `src/mandate_contracts/roles.py` | Office roles (`officeRole` on the STAFFER item), each role's tools, the role `forbid` policies, plain-words deny reasons | `docs/ROLES.md` |
 | `src/mandate_contracts/dev.py` | Dev-only HS256 token until the broker exists | §6.2 |
 | `ts/index.ts` | The same types for the frontend | |
-| `policies/*.cedar` | Generated: one file per starter policy, for AVP setup | |
+| `policies/*.cedar` | Generated: one file per policy in `STARTER_POLICIES` (6 starter + 6 `role-*`), for AVP setup | |
 | `schemas/tools.json` | Generated JSON schemas for the tools (MCP `inputSchema`) | |
 | `samples/` | Example events and dev token claims for mocks | |
 

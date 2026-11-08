@@ -4,11 +4,17 @@
 #
 #   1. DynamoDB table `mandate` (pk/sk strings, on-demand)
 #   2. Verified Permissions policy store (validation off)
-#   3. The six Cedar policies from packages/mandate-contracts/policies/*.cedar
+#   3. Every Cedar policy in packages/mandate-contracts/policies/*.cedar (6 starter + 6 office-role forbids; re-runs add only new ones)
 #   4. Backend/infra/.env.aws (untracked): store id + map of AVP policy id -> readable name
 #
 # Usage: bash Backend/infra/setup.sh            # dry run: prints the AWS commands, calls nothing
 #        bash Backend/infra/setup.sh --apply    # really creates the resources (ask Huy first)
+#        bash Backend/infra/setup.sh --apply --with-role-policies
+#            also adds the office-role forbids (policies/role-*.cedar, docs/ROLES.md). It first reads
+#            every STAFFER item and stops, adding nothing, if any staffer has no valid officeRole:
+#            the role forbids deny every tool to such a staffer. Write the roles with
+#            test-users.sh --apply first. Without the flag, role policies already in the store are
+#            kept and still named in .env.aws; none are added.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -16,10 +22,17 @@ REGION="us-east-1"
 TABLE="${MANDATE_TABLE:-mandate}"
 STORE_DESCRIPTION="mandate"
 POLICY_DIR="$ROOT/packages/mandate-contracts/policies"
-ENV_FILE="$ROOT/Backend/infra/.env.aws"
+ENV_FILE="${MANDATE_ENV_FILE:-$ROOT/Backend/infra/.env.aws}"
 # Dry run unless --apply is passed, so a stray run can never create anything.
 DRY_RUN=1
-[[ "${1:-}" == "--apply" ]] && DRY_RUN=0
+WITH_ROLES=0
+for arg in "$@"; do
+  case "$arg" in
+    --apply) DRY_RUN=0 ;;
+    --with-role-policies) WITH_ROLES=1 ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
 
 # Run an AWS CLI command, or only print it in dry-run mode.
 run() {
@@ -73,6 +86,34 @@ else
   echo "created: $STORE_ID"
 fi
 
+if [[ $WITH_ROLES == 1 ]]; then
+  echo "== 2b. Every STAFFER item has an office role"
+  if [[ $DRY_RUN == 1 ]]; then
+    echo "+ aws dynamodb scan --table-name $TABLE (STAFFER#*/META items: pk, officeRole) --region $REGION" >&2
+  else
+    staffers="$(aws dynamodb scan --table-name "$TABLE" --region "$REGION" --output json \
+      --filter-expression "begins_with(pk, :p) AND sk = :m" \
+      --expression-attribute-values '{":p": {"S": "STAFFER#"}, ":m": {"S": "META"}}' \
+      --projection-expression "pk, officeRole")"
+    # Prints the staffers with no valid role; any output stops the run before a role policy exists.
+    missing="$(PYTHONPATH="$ROOT/packages/mandate-contracts/src" "${PYTHON:-$ROOT/.venv/bin/python}" -c '
+import json, sys
+from mandate_contracts.roles import ROLE_TOOLS
+for item in json.loads(sys.argv[1]).get("Items", []):
+    role = item.get("officeRole", {}).get("S")
+    if role not in ROLE_TOOLS:
+        print(item["pk"]["S"].removeprefix("STAFFER#"), role or "(none)")
+' "$staffers")"
+    if [[ -n "$missing" ]]; then
+      echo "Stopped: these staffers have no valid office role, and the role policies would deny them everything:" >&2
+      echo "$missing" >&2
+      echo "Run bash Backend/infra/test-users.sh --apply first (it writes every role), then re-run this." >&2
+      exit 1
+    fi
+    echo "ok"
+  fi
+fi
+
 echo "== 3. Cedar policies"
 NAMES_JSON="{}"
 for file in "$POLICY_DIR"/*.cedar; do
@@ -82,6 +123,9 @@ for file in "$POLICY_DIR"/*.cedar; do
     --query "policies[?definition.static.description=='$name'].policyId | [0]" --output text)"
   if [[ -n "$policy_id" && "$policy_id" != "None" ]]; then
     echo "exists: $name ($policy_id)"
+  elif [[ $name == role-* && $WITH_ROLES == 0 ]]; then
+    echo "skipped: $name (pass --with-role-policies to add the office-role policies)"
+    continue
   else
     definition="$(python3 -c 'import json,sys; print(json.dumps({"static": {"description": sys.argv[1], "statement": open(sys.argv[2]).read()}}))' "$name" "$file")"
     policy_id="$(run verifiedpermissions create-policy --policy-store-id "$STORE_ID" \

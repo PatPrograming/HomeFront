@@ -1,6 +1,10 @@
 // Mandate contracts for the frontend (brief §6). Mirrors packages/mandate-contracts/src/mandate_contracts.
 // Keep in sync by hand; tests/test_contracts.py checks the tool names and event fields match.
 
+/** Office roles (roles.py, docs/ROLES.md). The STAFFER item holds one; Cedar enforces it. */
+export const ROLES = ["chief_of_staff", "caseworker", "communications_director", "legislative_aide", "intern"] as const;
+export type Role = (typeof ROLES)[number];
+
 export const TOOL_NAMES = [
   "inbox_read",
   "case_read",

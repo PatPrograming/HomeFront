@@ -157,7 +157,13 @@ export async function mockRequest(method: string, path: string, body: unknown, t
       actingFor: user.username,
       office: OFFICE,
       mode: "official",
-      allowedTools: TOOL_NAMES.filter((t) => t !== "records_bulk_export"),
+      // Like the real broker: admins are Chief of Staff (every tool), staffers Caseworkers (no posting).
+      ...(user.groups.includes("admin")
+        ? { role: "chief_of_staff", roleLabel: "Chief of Staff" }
+        : { role: "caseworker", roleLabel: "Caseworker" }),
+      allowedTools: TOOL_NAMES.filter(
+        (t) => t !== "records_bulk_export" && (user.groups.includes("admin") || t !== "social_post"),
+      ),
       expiresAt: new Date(now + 60 * 60 * 1000).toISOString(), // a session lasts one hour, like the real one
     };
     state.sessions[sid] = { ...card, startedAt: now, step: 0, stopped: false };

@@ -71,6 +71,9 @@ def test_ts_types_match_python():
     assert re.findall(r"(\w+):", ts_event) == [f.alias or n for n, f in DecisionEvent.model_fields.items()]
     ts_claims = re.search(r"interface MandateClaims \{(.*?)\}", ts, re.S).group(1)
     assert re.findall(r"(\w+):", ts_claims) == list(MandateClaims.model_fields)
+    from mandate_contracts.roles import ROLE_TOOLS
+
+    assert re.findall(r'"(\w+)"', re.search(r"ROLES = \[(.*?)\]", ts, re.S).group(1)) == list(ROLE_TOOLS)
     ts_reason = re.search(r"type Reason =(.*?);", ts, re.S).group(1)
     assert re.findall(r'"([^"]+)"', ts_reason) == list(get_args(Reason))
 
@@ -96,9 +99,10 @@ def test_cedar_policies_cover_every_tool_and_sample_policy_ids():
 
 
 def test_cedar_entities():
-    assert agent_entity("agent-1", "rep-x", "official")["attributes"] == {
+    assert agent_entity("agent-1", "rep-x", "official", "caseworker")["attributes"] == {
         "office": {"string": "rep-x"},
         "mode": {"string": "official"},
+        "role": {"string": "caseworker"},
     }
     assert case_entity("case-7", "rep-x")["identifier"] == {
         "entityType": "Mandate::Case",
@@ -144,3 +148,26 @@ def test_ddb_keys():
         "pk": "EVENTS#2026-11-07",
         "sk": "2026-11-07T20:01:05.120Z#e1",
     }
+
+
+def test_role_policies_cover_every_governed_tool_and_every_role_is_a_known_tool_list():
+    from mandate_contracts.roles import ROLE_GOVERNED_TOOLS, ROLE_LABELS, ROLE_POLICIES, ROLE_TOOLS, Role
+
+    assert list(ROLE_TOOLS) == list(get_args(Role)) == list(ROLE_LABELS)
+    assert set(ROLE_GOVERNED_TOOLS) == {n for n, spec in TOOLS.items() if not spec.always_denied}
+    for tools in ROLE_TOOLS.values():
+        assert set(tools) <= set(ROLE_GOVERNED_TOOLS)
+    assert set(ROLE_TOOLS["chief_of_staff"]) == set(ROLE_GOVERNED_TOOLS)
+    assert set(ROLE_POLICIES) <= set(STARTER_POLICIES)
+    for name, text in ROLE_POLICIES.items():
+        assert text.startswith("forbid(") and "principal has role" in text, name
+
+
+def test_staffer_item_office_role_is_optional_and_checked():
+    from mandate_contracts.ddb import StafferItem
+
+    assert StafferItem(active=True, office="rep-x", role="staffer").office_role is None
+    item = StafferItem(active=True, office="rep-x", role="staffer", office_role="intern")
+    assert item.model_dump(by_alias=True)["officeRole"] == "intern"
+    with pytest.raises(ValueError):
+        StafferItem(active=True, office="rep-x", role="staffer", office_role="senator")

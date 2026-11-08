@@ -91,12 +91,15 @@ Self-signup is off: the pool has `AllowAdminCreateUserOnly=true`, so nobody can 
 
 The script creates the hackathon test accounts in the pool `us-east-1_MLfQpodxG` (override with `COGNITO_USER_POOL_ID`). Edit the `TEST_USERS` list at the top of the script to change them.
 
-| Username | Group | Office |
-|---|---|---|
-| `bronco`, `scuawm`, `a10`, `aws` | `staffer` | `rep-x` |
-| `admin` | `admin` | `rep-x` |
+| Username | Group | Office | Office role (what the assistant may do, see `docs/ROLES.md`) |
+|---|---|---|---|
+| `admin`, `chiefofstaff` | `admin` | `rep-x` | `chief_of_staff`: every tool |
+| `bronco`, `maya` | `staffer` | `rep-x` | `caseworker`: inbox, cases, research, email; no posting |
+| `scuacm` | `staffer` | `rep-x` | `communications_director`: inbox, research, email, official posts; no case files |
+| `a10` | `staffer` | `rep-x` | `legislative_aide`: inbox and research only |
+| `aws` | `staffer` | `rep-x` | `intern`: public research only |
 
-For each account it creates the Cognito user without sending email, sets a permanent password, adds the user to its group, and writes the `STAFFER#<username>` / `META` item (`active=true`) to the `mandate` table. The gateway refuses sessions for a user without that item.
+For each account it creates the Cognito user without sending email, sets a permanent password, adds the user to its group, and writes the `STAFFER#<username>` / `META` item (`active=true`, `office`, `officeRole`) to the `mandate` table. The gateway refuses sessions for a user without that item, and Cedar denies every tool to a staffer with no office role. The group decides who sees the admin pages; the office role decides which tools the assistant may use.
 
 ### Run it
 
@@ -112,13 +115,19 @@ Ask Huy before the real run. It needs the `aws` CLI with admin credentials:
 bash Backend/infra/test-users.sh --apply
 ```
 
-Running it again creates nothing new and keeps existing passwords. Pass `--reset-passwords` with `--apply` to give every listed account a new password. A re-run also sets `active=true` again, like `seed.py`.
+Running it again creates nothing new and keeps existing passwords. Pass `--reset-passwords` with `--apply` to give every listed account a new password. A re-run also sets `active=true` again and rewrites each office role, like `seed.py`.
 
 ### Passwords
 
 The script generates a 20-character password per account and never prints it. It writes `username<TAB>password` lines to `Backend/infra/test-users.local.txt`, which is git-ignored and mode 600. Only the usernames and the file path appear on screen.
 
 Share each password through a password manager (a shared vault item or a one-time share link). Never paste passwords into chat, email or a commit. After sharing, delete the file or keep it only on the admin's machine.
+
+### Demo passwords (proof of concept only)
+
+`--demo-passwords` swaps the random password for an easy one made from the username, so the team can log in as each role during the demo: the name with a capital first letter plus `@2026`, for example `bronco` gets `Bronco@2026`. A name with no lowercase letter gets an `x` at the end (`a10` gets `A10@2026x`) so every password meets the pool policy: 8+ characters with upper, lower, digit and symbol. They still go only to `test-users.local.txt` and are never printed.
+
+These passwords are guessable by anyone who reads this README. Use them only for the hackathon demo, and run `--apply --reset-passwords` (without `--demo-passwords`) afterwards. Existing accounts keep their passwords unless you also pass `--reset-passwords`.
 
 ## Gateway resources (`setup.sh`, `seed.py`)
 
@@ -127,18 +136,21 @@ and never deletes.
 
 1. DynamoDB table `mandate` (`pk`/`sk` strings, on-demand).
 2. A Verified Permissions policy store (description `mandate`, validation off).
-3. The six policies from `packages/mandate-contracts/policies/*.cedar`; each policy's
-   description is its readable name.
+3. The six starter policies from `packages/mandate-contracts/policies/*.cedar`; each policy's
+   description is its readable name. The six office-role policies (`role-*.cedar`, see
+   `docs/ROLES.md`) are added only with `--with-role-policies`, and only after a read of every
+   STAFFER item finds a valid `officeRole` on each one. Run `test-users.sh --apply` first.
 4. `Backend/infra/.env.aws` (untracked): `AVP_POLICY_STORE_ID` and `AVP_POLICY_NAMES`, the map
    from AVP's generated policy ids to the readable names that decision events show.
 
-`seed.py` loads the staffers (maya: staffer, rep-x; chiefofstaff: admin, rep-x) and the cases
+`seed.py` loads the staffers (maya: staffer, rep-x, Caseworker; chiefofstaff: admin, rep-x, Chief of Staff) and the cases
 and emails from `agent/data/*.json`, or a small built-in fixture. Running it again resets maya to
 active after an Offboard.
 
 ```bash
 bash Backend/infra/setup.sh                    # dry run: print the commands only
 bash Backend/infra/setup.sh --apply
+bash Backend/infra/setup.sh --apply --with-role-policies   # after test-users.sh --apply wrote every role
 set -a; source Backend/infra/.env.aws; set +a
 .venv/bin/python Backend/infra/seed.py                  # dry run
 .venv/bin/python Backend/infra/seed.py --apply

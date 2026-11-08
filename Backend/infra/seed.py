@@ -30,8 +30,8 @@ from mandate_contracts.dev import DEV_SID, dev_claims  # noqa: E402
 DATA_DIR = ROOT / "agent" / "data"
 
 STAFFERS = {
-    "maya": StafferItem(active=True, office="rep-x", role="staffer"),
-    "chiefofstaff": StafferItem(active=True, office="rep-x", role="admin"),
+    "maya": StafferItem(active=True, office="rep-x", role="staffer", office_role="caseworker"),
+    "chiefofstaff": StafferItem(active=True, office="rep-x", role="admin", office_role="chief_of_staff"),
 }
 
 FIXTURE_CASES = [
