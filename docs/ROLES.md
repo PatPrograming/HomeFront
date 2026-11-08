@@ -23,20 +23,70 @@ Code: `packages/mandate-contracts/src/mandate_contracts/roles.py`. Policies:
 
 ## Role and permission table
 
-| Tool | Chief of Staff | Caseworker | Communications Director | Legislative Aide | Intern |
-|---|---|---|---|---|---|
-| `inbox_read`: read the office inbox | ✅ | ✅ | ✅ | ✅ | ❌ `role-inbox-read` |
-| `case_read`: open constituent case files (own office only) | ✅ | ✅ | ❌ `role-case-read` | ❌ `role-case-read` | ❌ `role-case-read` |
-| `datagov_search`: search public data | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `web_scrape`: read public web pages | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `email_send`: email for the office (known recipients only) | ✅ | ✅ | ✅ | ❌ `role-email-send` | ❌ `role-email-send` |
-| `social_post`: post on the official account | ✅ | ❌ `role-social-post` | ✅ | ❌ `role-social-post` | ❌ `role-social-post` |
-| `records_bulk_export` | ❌ `forbid-bulk-export` | ❌ | ❌ | ❌ | ❌ |
-| `social_post` to the campaign account | ❌ `forbid-campaign-post` | ❌ | ❌ | ❌ | ❌ |
+The assistant and the Agents tab share this one table (`ROLE_TOOLS`). It covers all 21 governed tools. Each ❌ names the Cedar policy that blocks it.
+
+| Tool | What it does | Chief of Staff | Caseworker | Communications Director | Legislative Aide | Intern |
+|---|---|---|---|---|---|---|
+| `inbox_read` | read the office inbox | ✅ | ✅ | ✅ | ✅ | ❌ `role-inbox-read` |
+| `case_read` | open constituent case files | ✅ | ✅ | ❌ `role-case-read` | ❌ `role-case-read` | ❌ `role-case-read` |
+| `datagov_search` | search public government data | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `web_scrape` | read public web pages | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `email_send` | send email for the office | ✅ | ✅ | ✅ | ❌ `role-email-send` | ❌ `role-email-send` |
+| `social_post` | post on the office's official account | ✅ | ❌ `role-social-post` | ✅ | ❌ `role-social-post` | ❌ `role-social-post` |
+| `email_send_list` | email the whole office mailing list (Chief of Staff only; always held for review) | ✅ | ❌ `role-email-send-list` | ❌ `role-email-send-list` | ❌ `role-email-send-list` | ❌ `role-email-send-list` |
+| `social_reply` | reply to comments on the office's official account | ✅ | ❌ `role-social-reply` | ✅ | ❌ `role-social-reply` | ❌ `role-social-reply` |
+| `usaspending_search` | search federal contract awards | ✅ | ❌ `role-usaspending-search` | ❌ `role-usaspending-search` | ✅ | ❌ `role-usaspending-search` |
+| `sam_entity_lookup` | look up federal vendors in SAM.gov | ✅ | ❌ `role-sam-entity-lookup` | ❌ `role-sam-entity-lookup` | ✅ | ❌ `role-sam-entity-lookup` |
+| `report_save` | save reports for the office | ✅ | ✅ | ✅ | ✅ | ❌ `role-report-save` |
+| `census_query` | look up Census data | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `openfda_search` | search FDA drug, device and food data | ✅ | ✅ | ✅ | ✅ | ❌ `role-openfda-search` |
+| `eia_query` | look up energy data | ✅ | ✅ | ✅ | ✅ | ❌ `role-eia-query` |
+| `nasa_search` | search NASA images | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `noaa_climate` | look up NOAA climate data | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `nps_parks` | look up National Park Service parks | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `bls_series` | look up labor statistics | ✅ | ✅ | ✅ | ✅ | ❌ `role-bls-series` |
+| `fec_search` | search campaign finance records | ✅ | ✅ | ✅ | ✅ | ❌ `role-fec-search` |
+| `epa_search` | search EPA facility records | ✅ | ✅ | ✅ | ✅ | ❌ `role-epa-search` |
+| `fcc_search` | search FCC licenses | ✅ | ✅ | ✅ | ✅ | ❌ `role-fcc-search` |
+| `records_bulk_export` | export records in bulk | ❌ `forbid-bulk-export` | ❌ | ❌ | ❌ | ❌ |
+| `social_post` to the campaign account | post on a campaign account | ❌ `forbid-campaign-post` | ❌ | ❌ | ❌ | ❌ |
+| `social_reply` to the campaign account | reply on a campaign account | ❌ `forbid-campaign-reply` | ❌ | ❌ | ❌ | ❌ |
 
 Every ✅ still passes through the starter permits: the staffer must be active, case files must belong to the same
-office, email must go to a known recipient, and posts must go to the official account. Earned autonomy also still
-holds outbound email and posts as drafts until the staffer allows that kind of message.
+office, email must go to a known recipient, and posts and replies must use the official account. Earned autonomy
+also still holds outbound email and posts as drafts until the staffer allows that kind of message.
+
+`email_send_list` is locked to the Chief of Staff (`LOCKED_TOOLS`). An admin who edits a role's tool list cannot
+add it to any other role. Every mailing-list email is held for review, even with every grant and "auto" on.
+
+## Agents tab: who can give an agent which tool
+
+The "New agent" page shows a permission picker. These rules apply to the page and to the server. The server
+enforces them on its own, so a direct API call gets no extra access.
+
+- **Options.** The picker offers the agent kind's ceiling intersected with the creator's role. A tool outside
+  either one is greyed out with the reason.
+- **Recommended.** The picker pre-ticks the least privilege for the kind. `email.send` for email, `social.post`
+  and `social.reply` for social, the type's default tools for research and market research, and nothing for
+  custom. Recommended is also what an agent gets when the request leaves out `tool_grants`.
+- **Strict names.** The server accepts only exact tool names from the registry. Unknown names, other casing,
+  extra spaces and `email_send` instead of `email.send` get 400 `unknown_tools`. A name listed twice gets 400
+  `duplicate_tools`.
+- **Out of bounds.** A tool outside the kind ceiling or the creator's role gets 403 and an audit entry
+  (`grant_denied`). The message names the exact tools. The same checks run on create and on every grant change.
+- **Forged fields.** A body with `owner_id`, `office` or `user_id` gets 422.
+- **At run time.** An agent can use a tool only if it is in the agent's stored grants and the owner's office role
+  allows it right now. The server reads the role fresh from DynamoDB on every call and on approving a draft. A
+  demoted or offboarded owner loses the tool on the next call (403 `role_not_allowed`).
+- **Ownerless (shared) agents.** Only an admin can change their grants. A call is capped by the role of the
+  staffer who started the run, or the staffer making the call. If neither is known, the call is denied.
+- **Admin group.** The `admin` Cognito group never widens an office role. An admin with the Caseworker role
+  gets the Caseworker's options.
+
+## Assistant chat: connecting an account
+
+If Gmail or X is not connected yet, an outbound call comes back as `needs_connection`, and the assistant tells
+the staffer to connect that account first.
 
 ## Demo accounts
 
@@ -133,15 +183,39 @@ a category outside the role.
 
 ## Turn it on in AWS
 
-The role policies go into the shared policy store only on request, and only when every staffer already has a role.
-Applied too early, they would deny every call for staffers whose role is not written yet. Order:
+The role policies and the new tool permits go into the shared policy store only on request, and only when every
+staffer already has a role. Applied too early, they would deny every call for staffers whose role is not written
+yet. Only Huy runs `--apply`.
 
-1. Run the new gateway code.
-2. Run `bash Backend/infra/test-users.sh --apply`, which writes every role, including `maya` and `chiefofstaff`.
-3. Run `bash Backend/infra/setup.sh --apply --with-role-policies`. It reads every STAFFER item, stops if any has no
-   valid role, and otherwise adds the six `role-*` policies.
+Before you start: the new gateway code is running, and `bash Backend/infra/test-users.sh --apply` has written every
+role, including `maya` and `chiefofstaff`.
 
-Without `--with-role-policies`, `setup.sh` adds no role policy.
+1. Preview the changes. This prints the AWS commands and calls nothing.
+
+   ```bash
+   bash Backend/infra/setup.sh --with-role-policies
+   ```
+
+   Expect `created:` lines for the 5 new starter policies and the 15 new `role-*` policies, and `exists:` for the rest.
+
+2. Apply them.
+
+   ```bash
+   bash Backend/infra/setup.sh --apply --with-role-policies
+   ```
+
+   It reads every STAFFER item, stops if any has no valid role, and otherwise creates only the missing policies.
+
+3. Check the real store.
+
+   ```bash
+   bash Backend/policy/tests.sh --apply
+   ```
+
+   Every case should print `PASS`.
+
+Without `--with-role-policies`, `setup.sh` adds no role policy and none of the new tool permits.
+`forbid-campaign-reply` is always created, because a forbid cannot widen access.
 
 ## Check it
 
