@@ -2,99 +2,87 @@ import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import Layout from "../components/Layout.jsx";
 import { useAuth } from "../lib/AuthProvider.jsx";
+import { MOCK } from "../lib/mode.js";
+import { isAdmin } from "../lib/roles.js";
+import "./Console.css";
 
+// Sign-in happens on Cognito's own managed-login page; this page only sends the browser there.
+// In mock mode it offers the two demo users instead.
 export default function Login() {
-  const { user, loading, configured, signIn, signUp } = useAuth();
+  const { session, configured, signIn, mockSignIn } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  const redirectTo = location.state?.from || "/account";
-
-  const [mode, setMode] = useState("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
+  const from = useLocation().state?.from;
   const [error, setError] = useState(null);
-  const [notice, setNotice] = useState(null);
-  const [busy, setBusy] = useState(false);
 
-  if (!loading && user) return <Navigate to={redirectTo} replace />;
+  if (session) return <Navigate to={from || (isAdmin(session) ? "/admin" : "/console")} replace />;
 
-  async function onSubmit(e) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    setNotice(null);
+  async function cognitoSignIn() {
     try {
-      if (mode === "signin") {
-        const { error: err } = await signIn(email, password);
-        if (err) throw err;
-        navigate(redirectTo, { replace: true });
-      } else {
-        const { data, error: err } = await signUp(email, password, fullName);
-        if (err) throw err;
-        // With email confirmation on, there is no session until the link is clicked.
-        if (data.session) navigate(redirectTo, { replace: true });
-        else setNotice("Check your email to confirm your account, then sign in.");
-      }
-    } catch (err) {
-      setError(err.message || String(err));
-    } finally {
-      setBusy(false);
+      await signIn(from);
+    } catch (e) {
+      setError(e.message || String(e));
+    }
+  }
+
+  async function demoSignIn(username, groups, to) {
+    mockSignIn(username, groups);
+    navigate(from || to, { replace: true });
+  }
+
+  async function resetDemo() {
+    // The static MOCK check lets the bundler drop mockApi.js from production builds.
+    if (MOCK) {
+      const { resetMock } = await import("../lib/mockApi.js");
+      resetMock();
+      setError("Demo data reset.");
     }
   }
 
   return (
     <Layout>
-      <form onSubmit={onSubmit} style={{ maxWidth: 380, margin: "48px auto", display: "grid", gap: 12 }}>
-        <h1>{mode === "signin" ? "Sign in" : "Create account"}</h1>
-
-        {!configured && (
-          <p role="alert">
-            Supabase isn&apos;t configured. Copy <code>.env.example</code> to{" "}
-            <code>.env</code> at the repo root and fill in the values.
-          </p>
-        )}
-
-        {mode === "signup" && (
-          <input
-            placeholder="Full name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            autoComplete="name"
-          />
-        )}
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete={mode === "signin" ? "current-password" : "new-password"}
-          minLength={6}
-          required
-        />
-
-        {error && <p role="alert" style={{ color: "crimson" }}>{error}</p>}
-        {notice && <p role="status">{notice}</p>}
-
-        <button className="btn btn-primary" type="submit" disabled={busy || !configured}>
-          {busy ? "Working…" : mode === "signin" ? "Sign in" : "Sign up"}
-        </button>
-        <button
-          type="button"
-          className="btn btn-outline"
-          onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-        >
-          {mode === "signin" ? "Need an account? Sign up" : "Have an account? Sign in"}
-        </button>
-      </form>
+      <div className="mandate-console login">
+        <section className="panel">
+          <h1>Sign in to HomeFront</h1>
+          {MOCK ? (
+            <>
+              <p className="alert" role="note">
+                Mock mode: no Cognito, no backend. Pick a demo user.
+              </p>
+              <div className="login-actions">
+                <button type="button" className="btn-primary" onClick={() => demoSignIn("maya", ["staffer"], "/console")}>
+                  Sign in as Maya (staffer)
+                </button>
+                <button
+                  type="button"
+                  className="btn-plain"
+                  onClick={() => demoSignIn("chiefofstaff", ["admin"], "/admin")}
+                >
+                  Sign in as Chief of Staff (admin)
+                </button>
+                <button type="button" className="btn-plain" onClick={resetDemo}>
+                  Reset demo data
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p>You will sign in on the office&apos;s Amazon Cognito page, then come straight back here.</p>
+              {!configured && (
+                <p className="alert" role="alert">
+                  Cognito is not configured. Set <code>VITE_COGNITO_DOMAIN</code> and <code>VITE_COGNITO_CLIENT_ID</code>{" "}
+                  in the repo-root <code>.env</code> (see Frontend/README.md).
+                </p>
+              )}
+              <div className="login-actions">
+                <button type="button" className="btn-primary" onClick={cognitoSignIn} disabled={!configured}>
+                  Sign in with Cognito
+                </button>
+              </div>
+            </>
+          )}
+          {error && <p role="status">{error}</p>}
+        </section>
+      </div>
     </Layout>
   );
 }

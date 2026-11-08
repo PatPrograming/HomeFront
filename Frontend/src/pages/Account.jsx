@@ -2,28 +2,60 @@ import { useEffect, useState } from "react";
 import Layout from "../components/Layout.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/AuthProvider.jsx";
+import "./Console.css";
 
-// First end-to-end check: browser -> Supabase JWT -> FastAPI /api/v1/me -> Postgres (RLS).
+// Who the API says you are (GET /api/v1/me checks your Cognito token): the WP1 "email + group" check.
+// Read-only: profiles live in Cognito, not in this app.
 export default function Account() {
-  const { user, signOut } = useAuth();
-  const [profile, setProfile] = useState(null);
+  const { session, signOut } = useAuth();
+  const [me, setMe] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    api.me().then(setProfile).catch((e) => setError(e.message));
+    api.me().then(setMe).catch((e) => setError(e.message || String(e)));
   }, []);
+
+  const dash = <span className="muted">—</span>;
 
   return (
     <Layout>
-      <section style={{ maxWidth: 520, margin: "48px auto", display: "grid", gap: 12 }}>
-        <h1>Account</h1>
-        <p>Signed in as {user?.email}</p>
-        {error && <p role="alert" style={{ color: "crimson" }}>Backend: {error}</p>}
-        {profile && <pre>{JSON.stringify(profile, null, 2)}</pre>}
-        <button className="btn btn-outline" onClick={signOut}>
-          Sign out
-        </button>
-      </section>
+      <div className="mandate-console login">
+        <section className="panel">
+          <h1>Account</h1>
+          {error && (
+            <p className="alert" role="alert">
+              The API could not confirm your sign-in: {error}
+            </p>
+          )}
+          <dl className="facts">
+            <div>
+              <dt>Username</dt>
+              <dd>{me?.username ?? dash}</dd>
+            </div>
+            <div>
+              <dt>Email</dt>
+              <dd>{me?.email ?? dash}</dd>
+            </div>
+            <div>
+              <dt>Groups</dt>
+              <dd>{me ? me.groups.join(", ") || "none" : dash}</dd>
+            </div>
+            <div className="sid">
+              <dt>Cognito sub</dt>
+              <dd>{me ? <code>{me.sub}</code> : dash}</dd>
+            </div>
+            <div>
+              <dt>Signed in until</dt>
+              <dd>{new Date(session.expiresAt).toLocaleTimeString([], { hour12: false })}</dd>
+            </div>
+          </dl>
+          <div className="login-actions">
+            <button type="button" className="btn-plain" onClick={signOut}>
+              Sign out
+            </button>
+          </div>
+        </section>
+      </div>
     </Layout>
   );
 }

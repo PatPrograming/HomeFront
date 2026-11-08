@@ -1,8 +1,12 @@
-import { supabase } from "./supabase.js";
+import { getAccessToken } from "./auth.js";
+import { eventsPath } from "./events.js";
+import { MOCK } from "./mode.js";
 
-// All backend routes live under /api/v1. In dev, Vite proxies /api to FastAPI (:8080).
-// In production set VITE_API_BASE to the deployed API origin + /api/v1.
+// Every backend call goes through this file. All routes live under /api/v1. In dev, Vite proxies /api to
+// FastAPI (:8080). In production set VITE_API_BASE to the deployed API origin + /api/v1.
+// The browser never calls AWS: it sends the staffer's Cognito access token to our API, which does the rest.
 const BASE = import.meta.env.VITE_API_BASE || "/api/v1";
+const TIMEOUT_MS = 5000;
 
 export class ApiError extends Error {
   constructor(status, data) {
@@ -20,11 +24,15 @@ export class ApiError extends Error {
 }
 
 async function request(path, { auth = true, method = "GET", body, headers } = {}) {
-  const finalHeaders = { ...(body ? { "Content-Type": "application/json" } : {}), ...headers };
+  if (MOCK) {
+    // Dev-only fake backend; this branch and mockApi.js are removed from production builds.
+    const { mockRequest } = await import("./mockApi.js");
+    return mockRequest(method, path, body, getAccessToken());
+  }
 
+  const finalHeaders = { ...(body ? { "Content-Type": "application/json" } : {}), ...headers };
   if (auth) {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
+    const token = getAccessToken();
     if (token) finalHeaders.Authorization = `Bearer ${token}`;
   }
 
@@ -32,6 +40,8 @@ async function request(path, { auth = true, method = "GET", body, headers } = {}
     method,
     headers: finalHeaders,
     body: body ? JSON.stringify(body) : undefined,
+    // A hung request must fail, or the 1 s feed would wait on it forever while still saying "Live".
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
 
   const text = await res.text();
@@ -46,37 +56,15 @@ async function request(path, { auth = true, method = "GET", body, headers } = {}
 }
 
 export const api = {
-  // public
-  home: () => request("/home", { auth: false }),
-  health: () => request("/health", { auth: false }),
-  tools: () => request("/tools", { auth: false }),
-  matrix: () => request("/demo/matrix", { auth: false }),
-
-  // signed-in user
+  // Who the API thinks you are: { username, sub, email, groups } from your Cognito token (lane A)
   me: () => request("/me"),
-  updateMe: (changes) => request("/me", { method: "PATCH", body: changes }),
 
-  // agent management (needs login when AGENT_ADMIN_REQUIRES_LOGIN=true)
-  agents: () => request("/agents"),
-  audit: (limit = 80) => request(`/audit?limit=${limit}`),
-  revokeTool: (agentId, tool) =>
-    request(`/agents/${agentId}/grants/${encodeURIComponent(tool)}/revoke`, { method: "POST" }),
-  grantTool: (agentId, tool) =>
-    request(`/agents/${agentId}/grants/${encodeURIComponent(tool)}`, { method: "POST" }),
+  // HomeFront console (lane B contract, docs/LANES.md)
+  startSession: () => request("/sessions", { method: "POST", body: {} }),
+  events: (cursor) => request(eventsPath(cursor)),
+  offboard: (stafferId) =>
+    request(`/staff/${encodeURIComponent(stafferId)}/offboard`, { method: "POST", body: {} }),
 
-  // mint agent workload token (user JWT when admin login required)
-  mintAgentToken: (agentId, ttlSeconds = 3600) =>
-    request("/auth/token", {
-      method: "POST",
-      body: { agent_id: agentId, ttl_seconds: ttlSeconds },
-    }),
-
-  // MCP tool call uses the agent token only — never the Supabase user JWT
-  callTool: (agentToken, tool, arguments_ = {}) =>
-    request("/mcp/call", {
-      auth: false,
-      method: "POST",
-      headers: { Authorization: `Bearer ${agentToken}` },
-      body: { tool, arguments: arguments_ },
-    }),
+  // Public home-page copy (no token)
+  home: () => request("/home", { auth: false }),
 };

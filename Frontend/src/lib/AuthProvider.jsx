@@ -1,43 +1,44 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { supabase, supabaseConfigured } from "./supabase.js";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import * as auth from "./auth.js";
+import { MOCK } from "./mode.js";
+import { isAdmin } from "./roles.js";
 
 const AuthContext = createContext(null);
 
-// Keeps the Supabase session in React state. supabase-js refreshes tokens itself.
+// Keeps the Cognito session (see auth.js) in React state so pages re-render on sign-in / sign-out.
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState(() => auth.loadSession());
 
+  // Drop the session the moment the access token expires.
   useEffect(() => {
-    let active = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => {
-      active = false;
-      data.subscription.unsubscribe();
-    };
+    if (!session) return undefined;
+    const id = window.setTimeout(() => setSession(auth.loadSession()), session.expiresAt - Date.now());
+    return () => window.clearTimeout(id);
+  }, [session]);
+
+  const finishLogin = useCallback(async (search) => {
+    const returnTo = await auth.completeLogin(search);
+    const next = auth.loadSession();
+    setSession(next);
+    return returnTo || (isAdmin(next) ? "/admin" : "/console");
   }, []);
 
   const value = useMemo(
     () => ({
       session,
-      user: session?.user ?? null,
-      loading,
-      configured: supabaseConfigured,
-      signIn: (email, password) => supabase.auth.signInWithPassword({ email, password }),
-      signUp: (email, password, fullName) =>
-        supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName || undefined } },
-        }),
-      signOut: () => supabase.auth.signOut(),
+      configured: MOCK || auth.cognitoConfigured,
+      signIn: auth.beginLogin,
+      finishLogin,
+      mockSignIn: (username, groups) => {
+        auth.mockSignIn(username, groups);
+        setSession(auth.loadSession());
+      },
+      signOut: () => {
+        auth.signOut();
+        setSession(null);
+      },
     }),
-    [session, loading]
+    [session, finishLogin],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
