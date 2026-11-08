@@ -250,7 +250,7 @@ def test_admin_offboards_a_staffer_and_revokes_all_their_sessions(client, store)
 def test_offboard_requires_the_admin_dependency(client):
     as_staff()  # a staffer login must not be enough
     r = client.post("/api/v1/staff/maya/offboard", json={})
-    assert r.status_code == 401
+    assert r.status_code == 403
 
 
 def test_old_mandate_token_is_denied_after_offboarding(client, store):

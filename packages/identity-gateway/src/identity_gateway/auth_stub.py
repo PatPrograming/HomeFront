@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
 
 
 @dataclass(frozen=True)
@@ -36,8 +36,11 @@ def require_staff() -> StaffIdentity:
     _refuse()
 
 
-def require_admin() -> StaffIdentity:
-    _refuse()
+def require_admin(staff: StaffIdentity = Depends(require_staff)) -> StaffIdentity:
+    # Same contract as lane A: 401 without a valid login, 403 for a logged-in non-admin.
+    if "admin" not in staff.groups:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin group required")
+    return staff
 
 
 def require_agent_client() -> AgentClientIdentity:
