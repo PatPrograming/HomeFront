@@ -1,8 +1,8 @@
 # Loop: deploy-aws
 
-Status: STUCK (blocked on Lane E: agent role + AssumeRole in the supervisor)
+Status: DONE (trial ACCEPT, 2026-11-08, on the merge with Lane E)
 Profile: feature (infrastructure; lead-written plan, no app logic to test first)
-Round: 1 / 4
+Round: 4 / 4
 Base commit: 3d7d0e1
 Branch: Deploy-AWS-Huy
 
@@ -53,11 +53,11 @@ The repo holds CloudFormation templates and dry-run-by-default scripts that, whe
 
 | # | Task | Role | Files it may touch | Done when | Depends on | Status |
 |---|------|------|--------------------|-----------|------------|--------|
-| 1 | Container + entrypoint + local test | lead | `deploy/aws/Dockerfile*`, `deploy/aws/entrypoint.sh`, `deploy/aws/local-test.sh` | C3 | - | pending |
-| 2 | Child env allowlist | lead | `Backend/app/services/agent_supervisor.py`, `Backend/tests/test_agent_autostart.py` | C4, C5 | - | pending |
-| 3 | CloudFormation templates | lead | `deploy/aws/*.yaml` | C1 | - | pending |
-| 4 | Scripts + tests | lead | `deploy/aws/*.sh`, `deploy/aws/*.py`, `deploy/aws/tests/**` | C2 | 3 | pending |
-| 5 | Runbook | lead | `deploy/aws/README.md` | trial | 1-4 | pending |
+| 1 | Container + entrypoint + local test | lead | `deploy/aws/Dockerfile*`, `deploy/aws/entrypoint.sh`, `deploy/aws/local-test.sh` | C3 | - | done |
+| 2 | Child env allowlist | lead | `Backend/app/services/agent_supervisor.py`, `Backend/tests/test_agent_autostart.py` | C4, C5 | - | done |
+| 3 | CloudFormation templates | lead | `deploy/aws/*.yaml` | C1 | - | done |
+| 4 | Scripts + tests | lead | `deploy/aws/*.sh`, `deploy/aws/*.py`, `deploy/aws/tests/**` | C2 | 3 | done |
+| 5 | Runbook | lead | `deploy/aws/README.md` | trial | 1-4 | done |
 
 ## Rounds
 
@@ -67,6 +67,14 @@ The repo holds CloudFormation templates and dry-run-by-default scripts that, whe
 - Trial (lite): falsifier FALSIFIED on one item, the lead's identity split. Nothing creates `homefront-agent` or calls AssumeRole yet; both are Lane E's assigned work. Everything else was CONFIRMED or is UNVERIFIED pending a real deploy. Fixed from its risks: external /mcp Host check (forward the viewer Host), SES per-agent senders (dropped the FromAddress condition), teardown's silent secret-delete failure.
 - Judge skipped: the one FALSIFIED item is a cross-lane dependency this lane may not build; the falsifier's evidence was re-checked by hand (`ls Backend/infra` has no agent-role.sh).
 - Decision: STUCK, not DONE. Done when Lane E merges `HOMEFRONT_AGENT_ROLE_ARN` handling and `Backend/infra/agent-role.sh`; re-run the trial then.
+
+### Round 4 — 2026-11-08
+- Merged with Lane E f93f328 in a throwaway detached worktree `../lane-l-probe` (no conflicts; removed afterwards). Confirmed: the stack sets `HOMEFRONT_AGENT_ROLE_ARN` = `role/homefront-agent`; the gateway task role's only STS grant is `sts:AssumeRole` on that role (the supervisor passes no Tags or SourceIdentity, so no `TagSession`); names match `Backend/infra/agent-role.sh`.
+- Suites on the merge (credentials stripped): Backend 671 passed / 3 skipped (+ the 11 known `test_agent_requests.py` failures from main), packages 236, agent 92, deploy 37, vitest 106, tsc and cfn-lint clean.
+- Fixed in 90f4fd0: `add_tester.py --office-role` (default caseworker; without it Lane G's role forbids deny a new judge every tool, validated before any Cognito call); a test pinning stack names to `agent-role.sh` (skips until Lane E merges); `local-test.sh` runs with the role ARN set; `deploy.sh` hint; runbook `--apply` order G, H, I, E, deploy.sh. C4 rewritten: the old grep counted Lane E's own warning comment.
+- Outcome checks: 5/5 on the merge (C3 HEALTH OK with the ARN; removing it fails the check).
+- Trial (lite): falsifier INCONCLUSIVE (no Docker, probes cut short, nothing failed) plus a scan flag (the deliberate skip), so the judge ran: ACCEPT. Judge re-ran C1-C5 itself incl. Docker, and 8 mutations each failed a test. Claim "HEALTH OK on Deploy-AWS-Huy alone" UNBACKED (not reproduced by the judge; irrelevant to the merged deploy). Known test gap: an `iam:PassRole` in a new, separately named inline policy would not be caught.
+- Decision: DONE.
 
 ## Decisions
 

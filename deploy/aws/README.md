@@ -105,7 +105,7 @@ exists, and agents can't answer until `homefront-agent` exists. Every script is 
 
    It prints the event account's 12-digit id. Anything else: stop and fix your credentials.
 
-#### Lane G: office roles and their policies
+#### Lane G: office roles
 
 2. Preview each staffer's office role.
 
@@ -124,7 +124,7 @@ exists, and agents can't answer until `homefront-agent` exists. Every script is 
    It creates only missing accounts and sets every staffer's `officeRole`. The role policies in step 5 refuse to
    install while any staffer has no valid role.
 
-#### Lane H: agent-permission policies
+#### Lane G and Lane H: the Cedar policies
 
 4. Preview the Cedar policies.
 
