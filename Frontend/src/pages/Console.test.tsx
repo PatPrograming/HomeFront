@@ -15,6 +15,8 @@ vi.stubGlobal("sessionStorage", {
 const state = { revoked: false };
 const chatSent: string[] = [];
 let panelChat: Chat | null = null;
+let panelProps: { retryAgent?: () => Promise<unknown>; onNewConversation?: () => void } = {};
+const retryAgent = vi.fn();
 const startSession = vi.fn();
 const sendMessage = vi.fn();
 
@@ -27,12 +29,20 @@ vi.mock("../lib/useChat", () => ({
   useChat: () => ({ messages: [], error: null, send: async (t: string) => void chatSent.push(t) }),
 }));
 vi.mock("../components/ChatPanel", () => ({
-  default: ({ chat, disabled }: { chat: Chat; disabled: boolean }) => {
+  default: (props: { chat: Chat; disabled: boolean; retryAgent?: () => Promise<unknown>; onNewConversation?: () => void }) => {
+    const { chat, disabled } = props;
     panelChat = chat;
+    panelProps = props;
     return <div data-chat-disabled={String(disabled)}>chat</div>;
   },
 }));
-vi.mock("../lib/api", () => ({ api: { startSession: () => startSession(), sendMessage: (s: string, t: string) => sendMessage(s, t) } }));
+vi.mock("../lib/api", () => ({
+  api: {
+    startSession: () => startSession(),
+    sendMessage: (s: string, t: string) => sendMessage(s, t),
+    retryAgent: (sid: string) => retryAgent(sid),
+  },
+}));
 
 const { default: Console } = await import("./Console");
 
@@ -89,5 +99,14 @@ describe("Console: the chat replaces 'Start a session'", () => {
   it("a live session offers no 'new conversation' button", () => {
     storage.set("mandate.card", JSON.stringify(card("sid-live")));
     expect(renderToStaticMarkup(<Console />)).not.toContain("Start a new conversation");
+  });
+
+  it("hands the chat its ways back: Try again for this session, and a new conversation", async () => {
+    storage.set("mandate.card", JSON.stringify(card("sid-live")));
+    retryAgent.mockReset().mockResolvedValue({ sid: "sid-live", agent: "started", retriesLeft: 2 });
+    renderToStaticMarkup(<Console />);
+    expect(typeof panelProps.onNewConversation).toBe("function");
+    await panelProps.retryAgent!();
+    expect(retryAgent).toHaveBeenCalledWith("sid-live");
   });
 });
