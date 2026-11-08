@@ -1,0 +1,130 @@
+{
+  "round": 0,
+  "at": "2026-11-08T11:38:12.897Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/connections",
+  "passed": [
+    "C5",
+    "C7"
+  ],
+  "failed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C6",
+    "C8",
+    "C9"
+  ],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Full Python suite: no failure outside the 66 already failing on origin/main",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q -rf Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests packages/identity-gateway/tests 2>&1 | grep '^FAILED' | sed 's/ - .*//' | sort -u | comm -23 - docs/loops/connected-accounts.rounds/baseline-failures.txt | sed 's/^/NEW /'; test -f Backend/tests/test_connections.py && echo SUITE_RAN",
+      "passWhen": "stdout matches /^SUITE_RAN\\s*$/",
+      "pass": false,
+      "exit": 1,
+      "ms": 96215,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Connections API + OAuth security tests (isolation, state forged/missing/replayed/other user, no token leaks, disconnect, offboarding, agent can't connect)",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q Backend/tests/test_connections.py",
+      "passWhen": "stdout matches /\\b([2-9][0-9]) passed(?!.*failed)/",
+      "pass": false,
+      "exit": 4,
+      "ms": 299,
+      "note": "",
+      "stdoutTail": "no tests ran in 0.00s",
+      "stderrTail": "ERROR: file or directory not found: Backend/tests/test_connections.py"
+    },
+    {
+      "id": "C3",
+      "check": "Gateway helper: require_connection, KMS context binding, senders, needs_connection through guarded()",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q packages/identity-gateway/tests/test_gw_connections.py",
+      "passWhen": "stdout matches /\\b([1-9][0-9]) passed(?!.*failed)/",
+      "pass": false,
+      "exit": 4,
+      "ms": 242,
+      "note": "",
+      "stdoutTail": "no tests ran in 0.00s",
+      "stderrTail": "ERROR: file or directory not found: packages/identity-gateway/tests/test_gw_connections.py"
+    },
+    {
+      "id": "C4",
+      "check": "/me returns the email from Cognito userInfo when the access token lacks it",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q Backend/tests/test_me_email.py",
+      "passWhen": "stdout matches /[1-9][0-9]* passed(?!.*failed)/",
+      "pass": false,
+      "exit": 4,
+      "ms": 242,
+      "note": "",
+      "stdoutTail": "no tests ran in 0.00s",
+      "stderrTail": "ERROR: file or directory not found: Backend/tests/test_me_email.py"
+    },
+    {
+      "id": "C5",
+      "check": "Frontend typecheck and all vitest suites",
+      "command": "cd Frontend && npx tsc --noEmit && npx vitest run 2>&1 | tail -5",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 6876,
+      "note": "",
+      "stdoutTail": "Test Files  16 passed (16)\n      Tests  75 passed (75)\n   Start at  03:38:05\n   Duration  5.58s (transform 601ms, setup 0ms, collect 1.44s, tests 5.42s, environment 2ms, prepare 1.24s)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C6",
+      "check": "Account page + ConnectPrompt tests (connected / not connected / not set up / connect / disconnect / callback / chat prompt)",
+      "command": "cd Frontend && npx vitest run src/pages/Account.test.tsx src/components/ConnectPrompt.test.tsx src/pages/ConnectCallback.test.tsx 2>&1 | tail -5",
+      "passWhen": "stdout matches /Tests\\s+([1-9][0-9]) passed/",
+      "pass": false,
+      "exit": 0,
+      "ms": 555,
+      "note": "",
+      "stdoutTail": "filter: src/pages/Account.test.tsx, src/components/ConnectPrompt.test.tsx, src/pages/ConnectCallback.test.tsx\ninclude: **/*.{test,spec}.?(c|m)[jt]s?(x)\nexclude:  **/node_modules/**, **/dist/**, **/cypress/**, **/.{idea,git,cache,output,temp}/**, **/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*",
+      "stderrTail": ""
+    },
+    {
+      "id": "C7",
+      "check": "Production build",
+      "command": "cd Frontend && npm run -s build 2>&1 | tail -3",
+      "passWhen": "stdout contains built in",
+      "pass": true,
+      "exit": 0,
+      "ms": 1385,
+      "note": "",
+      "stdoutTail": "dist/assets/index-DG2tT9Ug.css               65.24 kB │ gzip:  13.03 kB\ndist/assets/index-B3c5ijlI.js               328.23 kB │ gzip: 102.09 kB\n✓ built in 830ms",
+      "stderrTail": ""
+    },
+    {
+      "id": "C8",
+      "check": "KMS setup script dry-runs and is idempotent-shaped",
+      "command": "bash -n Backend/infra/connections.sh && env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null bash Backend/infra/connections.sh 2>&1",
+      "passWhen": "stdout contains kms create-key",
+      "pass": false,
+      "exit": 127,
+      "ms": 6,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": "bash: Backend/infra/connections.sh: No such file or directory"
+    },
+    {
+      "id": "C9",
+      "check": "The connected-accounts frontend files never handle provider tokens, secrets or ciphertext",
+      "command": "test -f Frontend/src/lib/connections.ts && test -f Frontend/src/components/ConnectPrompt.tsx && ! grep -nE 'access_token|refresh_token|client_secret|ciphertext' Frontend/src/lib/connections.ts Frontend/src/pages/Account.tsx Frontend/src/components/ConnectPrompt.tsx Frontend/src/pages/ConnectCallback.tsx",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 2,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": ""
+    }
+  ]
+}
