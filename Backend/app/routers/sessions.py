@@ -49,14 +49,49 @@ def _created_epoch(created_at: str) -> float:
         return 0.0
 
 
+class NewSessionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Carry on a conversation whose 1-hour session has ended: the caller's own, expired, never revoked.
+    continues: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+def _refuse(code: int, message: str, reason: str) -> HTTPException:
+    return HTTPException(code, {"message": message, "code": reason})
+
+
+def _check_continuable(old_sid: str, staff: StaffIdentity, now: float) -> bool:
+    """Raise unless `old_sid` may be continued by this staffer. Returns whether it had one-time grants."""
+    store = get_gateway().store
+    old = store.get_session(old_sid)
+    if old is None or old.acting_for != staff.username or conversations.is_deleted(old_sid, staff.username):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")  # never someone else's
+    if old.status != "active":
+        raise _refuse(status.HTTP_403_FORBIDDEN, "A revoked session can't be continued.", "revoked")
+    if now < _created_epoch(old.created_at) + SESSION_TTL_SECONDS:
+        raise _refuse(status.HTTP_409_CONFLICT, "This session is still running; keep using it.", "still_active")
+    if conversations.get_meta(old_sid, staff.username).continued_by:
+        raise _refuse(status.HTTP_409_CONFLICT, "This conversation was already continued; use its newest session.",
+                      "already_continued")
+    return bool(store.grants_for(old_sid))
+
+
 @router.post("/sessions")
-def create_session(staff: StaffIdentity = Depends(require_staff)) -> dict:
+def create_session(body: NewSessionIn | None = None, staff: StaffIdentity = Depends(require_staff)) -> dict:
+    """A new session. With `continues`, the next link of an expired conversation: still a fresh 1-hour session
+    with fresh mandate tokens, and the old session's one-time grants do not carry over."""
     store = get_gateway().store
     staffer = store.get_staffer(staff.username)
     if staffer is None or not staffer.active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Staffer is not active")
     started = time.time()
     sid = str(uuid.uuid4())
+    old_sid = body.continues if body else None
+    grants_reset = False
+    if old_sid:
+        grants_reset = _check_continuable(old_sid, staff, started)
+        if not conversations.claim_continuation(old_sid, sid, staff.username):  # a second tab got there first
+            raise _refuse(status.HTTP_409_CONFLICT, "This conversation was already continued; use its newest session.",
+                          "already_continued")
     session = SessionItem(
         status="active",
         agent=AGENT_ID,
@@ -66,7 +101,7 @@ def create_session(staff: StaffIdentity = Depends(require_staff)) -> dict:
         created_at=datetime.fromtimestamp(started, timezone.utc).isoformat(),  # sub-second, so tabs sort newest first
     )
     store.put_session(sid, session)
-    return {
+    card = {
         "sid": sid,
         "agent": session.agent,
         "actingFor": session.acting_for,
@@ -75,6 +110,10 @@ def create_session(staff: StaffIdentity = Depends(require_staff)) -> dict:
         "allowedTools": ALLOWED_TOOLS,
         "expiresAt": _iso(started + SESSION_TTL_SECONDS),
     }
+    if old_sid:
+        conversations.link_back(sid, old_sid, staff.username)
+        card |= {"continuesFrom": old_sid, "grantsReset": grants_reset}
+    return card
 
 
 def _status(session: SessionItem, staffer_active: bool, now: float) -> str:
@@ -83,26 +122,48 @@ def _status(session: SessionItem, staffer_active: bool, now: float) -> str:
     return "expired" if now >= _created_epoch(session.created_at) + SESSION_TTL_SECONDS else "active"
 
 
-def _row(sid: str, session: SessionItem, meta: conversations.ConversationMeta, staffer_active: bool, waiting: int) -> dict:
-    last = get_gateway().store.last_chat_message(sid)
+def _chains(staffer_id: str) -> list[tuple[list[str], dict[str, SessionItem], conversations.ConversationMeta]]:
+    """The staffer's conversations: (sids oldest first, sessions by sid, the root's metadata)."""
+    sessions = dict(get_gateway().store.sessions_for(staffer_id))
+    metas = {sid: conversations.get_meta(sid, staffer_id) for sid in sessions}
+    chains = []
+    for root, meta in metas.items():
+        if meta.continues_from:  # not a root: it is listed with its chain
+            continue
+        sids = [root]
+        while (following := metas[sids[-1]].continued_by) in sessions and len(sids) < conversations.MAX_CHAIN:
+            sids.append(following)
+        chains.append((sids, sessions, meta))
+    return chains
+
+
+def _row(sids: list[str], sessions: dict[str, SessionItem], meta: conversations.ConversationMeta,
+         staffer_active: bool, waiting: Counter) -> dict:
+    """One sidebar row per conversation: the newest session, with the title and marks of the first."""
+    store = get_gateway().store
+    newest = sessions[sids[-1]]
+    last = [m.ts for sid in sids if (m := store.last_chat_message(sid))]
     return {
-        "sid": sid,
-        "title": meta.title or conversations.fallback_title(sid),
-        "createdAt": session.created_at,
-        "expiresAt": _iso(_created_epoch(session.created_at) + SESSION_TTL_SECONDS),
-        "lastActivityAt": last.ts if last else session.created_at,
-        "status": _status(session, staffer_active, time.time()),
-        "waitingDrafts": waiting,
+        "sid": sids[-1],
+        "title": meta.title or conversations.fallback_title(sids[0]),
+        "createdAt": newest.created_at,
+        "expiresAt": _iso(_created_epoch(newest.created_at) + SESSION_TTL_SECONDS),
+        "lastActivityAt": max(last) if last else newest.created_at,
+        "status": _status(newest, staffer_active, time.time()),
+        "waitingDrafts": sum(waiting[sid] for sid in sids),
         "pinned": meta.pinned,
         "group": meta.group,
         "archived": meta.archived,
+        "earlier": sids[-2::-1],  # older sessions, newest first; each readable with GET /sessions/{sid}/messages
     }
 
 
-def _matches(sid: str, title: str, q: str) -> bool:
-    """Case-insensitive search over the title and the staffer's own messages (never the agent's)."""
+def _matches(sids: list[str], title: str, q: str) -> bool:
+    """Case-insensitive search over the title and the staffer's own messages (never the agent's), in every link."""
     needle = q.casefold()
-    return needle in title.casefold() or any(needle in text.casefold() for text in conversations.staffer_messages(sid))
+    return needle in title.casefold() or any(
+        needle in text.casefold() for sid in sids for text in conversations.staffer_messages(sid)
+    )
 
 
 @router.get("/sessions")
@@ -111,26 +172,22 @@ def list_sessions(
     archived: bool = False,
     staff: StaffIdentity = Depends(require_staff),
 ) -> dict:
-    """The caller's own conversations: pinned first, then by last activity. Nobody can list another staffer's.
-
-    Deleted conversations never appear; archived ones only with `?archived=1` (and then only those).
+    """The caller's own conversations, one row each: pinned first, then by last activity. Nobody can list another
+    staffer's. Deleted conversations never appear; archived ones only with `?archived=1` (and then only those).
     """
     store = get_gateway().store
     staffer = store.get_staffer(staff.username)
     active = staffer is not None and staffer.active
     waiting = Counter(draft.sid for _, draft in store.pending_drafts_for(staff.username))
-    kept = [
-        (sid, session, meta)
-        for sid, session in store.sessions_for(staff.username)
-        if not (meta := conversations.get_meta(sid, staff.username)).deleted
-    ]
-    rows = [_row(sid, session, meta, active, waiting[sid]) for sid, session, meta in kept if meta.archived == archived]
+    kept = [(sids, sessions, meta) for sids, sessions, meta in _chains(staff.username) if not meta.deleted]
+    rows = [(_row(sids, sessions, meta, active, waiting), sids) for sids, sessions, meta in kept if meta.archived == archived]
     if q and q.strip():
-        rows = [r for r in rows if _matches(r["sid"], r["title"], q.strip())]
-    rows.sort(key=lambda r: r["lastActivityAt"], reverse=True)
-    rows.sort(key=lambda r: not r["pinned"])  # stable: pinned first, each part still newest first
+        rows = [(r, sids) for r, sids in rows if _matches(sids, r["title"], q.strip())]
+    found = [r for r, _ in rows]
+    found.sort(key=lambda r: r["lastActivityAt"], reverse=True)
+    found.sort(key=lambda r: not r["pinned"])  # stable: pinned first, each part still newest first
     groups = sorted({meta.group for _, _, meta in kept if meta.group})
-    return {"sessions": rows, "groups": groups}
+    return {"sessions": found, "groups": groups}
 
 
 class ConversationPatch(BaseModel):
@@ -170,43 +227,51 @@ class ConversationPatch(BaseModel):
         return self
 
 
-def _own_conversation(sid: str, staff: StaffIdentity) -> tuple[SessionItem, conversations.ConversationMeta]:
-    """The caller's own, not deleted conversation; anything else is 404, as if it did not exist."""
+def _own_conversation(sid: str, staff: StaffIdentity) -> tuple[SessionItem, str]:
+    """The caller's own, not deleted conversation, and its root (first session); anything else is 404."""
     session = get_gateway().store.get_session(sid)
     if session is None or session.acting_for != staff.username:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")
-    meta = conversations.get_meta(sid, staff.username)
-    if meta.deleted:
+    root = conversations.root_of(sid, staff.username)
+    if conversations.get_meta(root, staff.username).deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")
-    return session, meta
+    return session, root
+
+
+def _chain_of(root: str, staffer_id: str):
+    return next((chain for chain in _chains(staffer_id) if chain[0][0] == root), None)
 
 
 @router.patch("/sessions/{sid}")
 def update_conversation(sid: str, body: ConversationPatch, staff: StaffIdentity = Depends(require_staff)) -> dict:
-    session, meta = _own_conversation(sid, staff)
+    _, root = _own_conversation(sid, staff)
     changes = {field: getattr(body, field) for field in body.model_fields_set}
     if "title" in changes:
         changes["title_source"] = "user"  # automatic titles never replace the staffer's own
-    meta = conversations.update_meta(sid, staff.username, changes)
+    conversations.update_meta(root, staff.username, changes)  # the root carries the marks for the whole chain
     store = get_gateway().store
     staffer = store.get_staffer(staff.username)
-    waiting = sum(1 for _, draft in store.pending_drafts_for(staff.username) if draft.sid == sid)
-    return _row(sid, session, meta, staffer is not None and staffer.active, waiting)
+    waiting = Counter(draft.sid for _, draft in store.pending_drafts_for(staff.username))
+    sids, sessions, meta = _chain_of(root, staff.username)
+    return _row(sids, sessions, meta, staffer is not None and staffer.active, waiting)
 
 
 @router.delete("/sessions/{sid}")
 def delete_conversation(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dict:
     """Soft delete: hidden from the staffer, revoked, its agent stopped. Events, drafts and the chat stay
     in the table for the audit log."""
-    session, _ = _own_conversation(sid, staff)
+    _, root = _own_conversation(sid, staff)
     store = get_gateway().store
-    revoked = session.status == "active"
-    if revoked:
-        store.put_session(sid, session.model_copy(update={"status": "revoked"}))
-    conversations.update_meta(sid, staff.username, {"deleted": True})
+    sids, sessions, _ = _chain_of(root, staff.username)
+    revoked = False
     supervisor = get_supervisor()
-    if supervisor:
-        supervisor.stop(sid, "conversation deleted")
+    for link in sids:  # every session of the conversation
+        if sessions[link].status == "active":
+            store.put_session(link, sessions[link].model_copy(update={"status": "revoked"}))
+            revoked = revoked or link == sid
+        if supervisor:
+            supervisor.stop(link, "conversation deleted")
+    conversations.update_meta(root, staff.username, {"deleted": True})
     return {"sid": sid, "deleted": True, "revoked": revoked}
 
 
@@ -217,7 +282,7 @@ def read_session(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dic
     session = store.get_session(sid)
     if session is None or (session.acting_for != staff.username and "admin" not in staff.groups):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")
-    if "admin" not in staff.groups and conversations.get_meta(sid, staff.username).deleted:
+    if "admin" not in staff.groups and conversations.is_deleted(sid, staff.username):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")  # admins keep it for the audit
     staffer = store.get_staffer(session.acting_for)
     # Same rule as the gateway: an inactive or missing staffer means the session is over.

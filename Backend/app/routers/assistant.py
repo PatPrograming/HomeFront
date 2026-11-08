@@ -70,7 +70,7 @@ def _own_active_session(sid: str, staff: StaffIdentity) -> None:
     """Only the session's own staffer chats in it; anyone else gets 404, as if it did not exist."""
     store = get_gateway().store
     session = store.get_session(sid)
-    if session is None or session.acting_for != staff.username or conversations.get_meta(sid, staff.username).deleted:
+    if session is None or session.acting_for != staff.username or conversations.is_deleted(sid, staff.username):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")
     staffer = store.get_staffer(staff.username)
     if session.status != "active" or staffer is None or not staffer.active:
@@ -112,7 +112,7 @@ def require_agent_session(creds: HTTPAuthorizationCredentials | None = Depends(b
 @router.get("/sessions/{sid}/messages")
 def read_messages(sid: str, after: str | None = None, staff: StaffIdentity = Depends(require_staff)) -> dict:
     session = get_gateway().store.get_session(sid)
-    if session is None or session.acting_for != staff.username or conversations.get_meta(sid, staff.username).deleted:
+    if session is None or session.acting_for != staff.username or conversations.is_deleted(sid, staff.username):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")
     page = _chat_page(sid, after)
     if "admin" in staff.groups:  # admins also see what went wrong technically; staffers see plain words

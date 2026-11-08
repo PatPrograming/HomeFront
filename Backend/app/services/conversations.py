@@ -44,6 +44,10 @@ class ConversationMeta(BaseModel):
     group: str | None = None
     archived: bool = False
     deleted: bool = False
+    # A conversation that outlives its 1-hour session continues in a new one (a chain of sessions).
+    # The first link (the root) holds the title, pin, group, archive and delete marks for the whole chain.
+    continues_from: str | None = None
+    continued_by: str | None = None
 
 
 def _key(sid: str) -> dict[str, str]:
@@ -94,6 +98,46 @@ def put_title_if_allowed(sid: str, staffer_id: str, title: str, source: str, bas
         )
     except table.meta.client.exceptions.ConditionalCheckFailedException:
         return
+
+
+# --- chains: one conversation over several 1-hour sessions -----------------------------------
+
+MAX_CHAIN = 200  # a bound on walking links, far above any real conversation
+
+
+def root_of(sid: str, staffer_id: str) -> str:
+    """The first session of the conversation `sid` belongs to."""
+    for _ in range(MAX_CHAIN):
+        previous = get_meta(sid, staffer_id).continues_from
+        if not previous:
+            return sid
+        sid = previous
+    return sid
+
+
+def is_deleted(sid: str, staffer_id: str) -> bool:
+    """Deleting a conversation marks its root, so every link of it is gone for the staffer."""
+    return get_meta(root_of(sid, staffer_id), staffer_id).deleted
+
+
+def claim_continuation(old_sid: str, new_sid: str, staffer_id: str) -> bool:
+    """Mark `old_sid` as continued by `new_sid`, unless something already continued it (two tabs)."""
+    table = get_gateway().store.table
+    try:
+        table.update_item(
+            Key=_key(old_sid),
+            UpdateExpression="SET #next = :next, #owner = if_not_exists(#owner, :owner)",
+            ConditionExpression="attribute_not_exists(#next) OR #next = :none",
+            ExpressionAttributeNames={"#next": "continued_by", "#owner": "acting_for"},
+            ExpressionAttributeValues={":next": new_sid, ":owner": staffer_id, ":none": None},
+        )
+    except table.meta.client.exceptions.ConditionalCheckFailedException:
+        return False
+    return True
+
+
+def link_back(new_sid: str, old_sid: str, staffer_id: str) -> None:
+    _set(new_sid, staffer_id, {"continues_from": old_sid})
 
 
 # --- titles ------------------------------------------------------------------------------
@@ -168,6 +212,8 @@ def refresh_title(sid: str, staffer_id: str) -> None:
     meta = get_meta(sid, staffer_id)
     mine = staffer_messages(sid)
     due = max((level for level in REFRESH_AT if len(mine) >= level), default=0)
+    if meta.continues_from:
+        return  # a later session of a conversation that already has its title (kept on the first session)
     if meta.title_source == "user" or meta.deleted or not due or meta.title_basis >= due:
         return  # (counting, not matching: two messages that land together don't skip a title)
     title, source = "", "auto"

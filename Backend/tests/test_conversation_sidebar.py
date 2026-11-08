@@ -250,7 +250,7 @@ def test_the_list_names_the_groups_in_use(client):
     assert body["groups"] == ["Casework", "Events"]
     for r in body["sessions"]:
         assert {"sid", "title", "createdAt", "expiresAt", "lastActivityAt", "status", "waitingDrafts",
-                "pinned", "group", "archived"} == set(r)
+                "pinned", "group", "archived", "earlier"} == set(r)
 
 
 # --- search ------------------------------------------------------------------------------
