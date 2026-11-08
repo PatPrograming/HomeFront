@@ -1,20 +1,24 @@
 .footer {
-  height: 58px;
+  margin-top: auto;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+
+.footer-inner {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 16px 32px;
+  flex-wrap: wrap;
+  padding-block: 28px;
+  font-size: 14px;
+  color: var(--muted);
 }
 
-.footer-top {
-  height: 17px;
-  background: var(--color-blue);
-}
-
-.footer-stripe {
-  height: 9px;
-  background: var(--color-light-yellow);
-}
-
-.footer-bottom {
+.footer-inner p:nth-of-type(1) {
   flex: 1;
-  background: var(--color-blue);
+  min-width: 220px;
+}
+
+.footer-copy {
+  white-space: nowrap;
 }

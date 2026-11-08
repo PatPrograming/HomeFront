@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   autoSignIn,
   confirmSignUp,
@@ -11,25 +19,57 @@ import {
 import { Hub } from "aws-amplify/utils";
 import { cognitoConfigured } from "./cognito.js";
 
-const AuthContext = createContext(null);
+export interface AuthUser {
+  id: string | undefined;
+  email: string | undefined;
+  name: string | undefined;
+}
+
+export interface AuthSession {
+  user: AuthUser;
+}
+
+type SignInResult = Awaited<ReturnType<typeof signIn>>;
+type SignUpResult = Awaited<ReturnType<typeof signUp>>;
+
+export interface AuthContextValue {
+  session: AuthSession | null;
+  user: AuthUser | null;
+  loading: boolean;
+  configured: boolean;
+  refresh: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<SignInResult>;
+  signUp: (email: string, password: string, fullName?: string) => Promise<SignUpResult>;
+  confirmSignUp: (email: string, code: string) => Promise<boolean>;
+  resendCode: (email: string) => Promise<unknown>;
+  signOut: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null);
 
 // The session is the Cognito ID token, decoded. Amplify stores the tokens and
 // refreshes them itself; Hub events tell us when they change.
-async function loadSession() {
+async function loadSession(): Promise<AuthSession | null> {
   if (!cognitoConfigured) return null;
   try {
     const { tokens } = await fetchAuthSession();
     const idToken = tokens?.idToken;
     if (!idToken) return null;
     const p = idToken.payload;
-    return { user: { id: p.sub, email: p.email, name: p.name } };
+    return {
+      user: {
+        id: p.sub,
+        email: p.email as string | undefined,
+        name: p.name as string | undefined,
+      },
+    };
   } catch {
     return null;
   }
 }
 
-export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -47,7 +87,7 @@ export function AuthProvider({ children }) {
     return stop;
   }, [refresh]);
 
-  const value = useMemo(
+  const value = useMemo<AuthContextValue>(
     () => ({
       session,
       user: session?.user ?? null,
@@ -58,9 +98,9 @@ export function AuthProvider({ children }) {
       // All of these throw on failure (Amplify errors carry a readable .message).
       // Returns { isSignedIn, nextStep }; nextStep.signInStep === "CONFIRM_SIGN_UP"
       // means the account exists but the email code was never entered.
-      signIn: (email, password) => signIn({ username: email, password }),
+      signIn: (email: string, password: string) => signIn({ username: email, password }),
       // Returns { nextStep }; "CONFIRM_SIGN_UP" = a code was emailed.
-      signUp: (email, password, fullName) =>
+      signUp: (email: string, password: string, fullName?: string) =>
         signUp({
           username: email,
           password,
@@ -71,7 +111,7 @@ export function AuthProvider({ children }) {
         }),
       // Confirms the emailed code, then signs in when the sign-up started in
       // this tab. Returns true if the user ends up signed in.
-      confirmSignUp: async (email, code) => {
+      confirmSignUp: async (email: string, code: string) => {
         const { nextStep } = await confirmSignUp({ username: email, confirmationCode: code });
         if (nextStep.signUpStep !== "COMPLETE_AUTO_SIGN_IN") return false;
         try {
@@ -81,7 +121,7 @@ export function AuthProvider({ children }) {
           return false; // e.g. page reloaded since sign-up: sign in normally
         }
       },
-      resendCode: (email) => resendSignUpCode({ username: email }),
+      resendCode: (email: string) => resendSignUpCode({ username: email }),
       signOut: () => signOut(),
     }),
     [session, loading, refresh]

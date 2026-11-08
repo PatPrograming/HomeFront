@@ -1,19 +1,64 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Layout from "../components/Layout.jsx";
+import Layout from "../components/Layout";
 import { api, ApiError } from "../lib/api.js";
 import "./Monitoring.css";
 
 const DEMO_AGENT = "agent-comms-01";
 
+interface Agent {
+  agent_id: string;
+  name: string;
+  agency: string;
+  token_version: number | string;
+  tool_grants: string[];
+}
+
+interface Tool {
+  name: string;
+  description: string;
+  risk_level: string;
+  atlas_techniques?: string[];
+}
+
+interface AtlasEntry {
+  id: string;
+  name?: string;
+}
+
+interface Matrix {
+  atlas_version: string;
+  techniques?: AtlasEntry[];
+  mitigations?: AtlasEntry[];
+}
+
+interface AuditEvent {
+  id: string | number;
+  decision: string;
+  type: string;
+  tool?: string;
+  ts: number;
+  atlas?: { narrative?: string; technique_ids?: string[]; mitigation_ids?: string[] };
+}
+
+interface Flash {
+  kind: "ok" | "deny" | "info";
+  title: string;
+  body: string;
+  technique_ids?: string[];
+  mitigation_ids?: string[];
+}
+
+const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
 export default function Monitoring() {
-  const [agents, setAgents] = useState([]);
-  const [tools, setTools] = useState([]);
-  const [audit, setAudit] = useState([]);
-  const [matrix, setMatrix] = useState(null);
-  const [token, setToken] = useState(null);
-  const [flash, setFlash] = useState(null);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [tools, setTools] = useState<Tool[]>([]);
+  const [audit, setAudit] = useState<AuditEvent[]>([]);
+  const [matrix, setMatrix] = useState<Matrix | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [flash, setFlash] = useState<Flash | null>(null);
   const [busy, setBusy] = useState(false);
-  const [lastResult, setLastResult] = useState(null);
+  const [lastResult, setLastResult] = useState<unknown>(null);
   const [atlasVersion, setAtlasVersion] = useState("");
 
   const agent = useMemo(
@@ -40,7 +85,7 @@ export default function Monitoring() {
       setFlash({
         kind: "deny",
         title: "Gateway unreachable",
-        body: String(e.message || e),
+        body: errText(e),
       }),
     );
     const id = window.setInterval(() => {
@@ -64,13 +109,13 @@ export default function Monitoring() {
       });
       await refresh();
     } catch (e) {
-      setFlash({ kind: "deny", title: "Auth failed", body: String(e.message || e) });
+      setFlash({ kind: "deny", title: "Auth failed", body: errText(e) });
     } finally {
       setBusy(false);
     }
   }
 
-  async function runTool(tool, args) {
+  async function runTool(tool: string, args: Record<string, unknown>) {
     if (!token) {
       setFlash({
         kind: "info",
@@ -97,11 +142,11 @@ export default function Monitoring() {
         detail && typeof detail === "object"
           ? detail
           : null;
-      setLastResult(detail ?? { error: String(e.message || e) });
+      setLastResult(detail ?? { error: errText(e) });
       setFlash({
         kind: "deny",
         title: atlas?.message || `Denied ${tool}`,
-        body: atlas?.atlas?.narrative || e.message || "Request blocked",
+        body: atlas?.atlas?.narrative || errText(e) || "Request blocked",
         technique_ids: atlas?.atlas?.technique_ids || atlas?.technique_ids,
         mitigation_ids: atlas?.atlas?.mitigation_ids || atlas?.mitigation_ids,
       });
@@ -111,7 +156,7 @@ export default function Monitoring() {
     }
   }
 
-  async function revoke(tool) {
+  async function revoke(tool: string) {
     if (!agent) return;
     setBusy(true);
     try {
@@ -125,13 +170,13 @@ export default function Monitoring() {
       });
       await refresh();
     } catch (e) {
-      setFlash({ kind: "deny", title: "Revoke failed", body: String(e.message || e) });
+      setFlash({ kind: "deny", title: "Revoke failed", body: errText(e) });
     } finally {
       setBusy(false);
     }
   }
 
-  async function restore(tool) {
+  async function restore(tool: string) {
     if (!agent) return;
     setBusy(true);
     try {
@@ -144,7 +189,7 @@ export default function Monitoring() {
       });
       await refresh();
     } catch (e) {
-      setFlash({ kind: "deny", title: "Restore failed", body: String(e.message || e) });
+      setFlash({ kind: "deny", title: "Restore failed", body: errText(e) });
     } finally {
       setBusy(false);
     }

@@ -1,95 +1,157 @@
-@import "../../styles/variables.css";
-
-@font-face {
-  font-family: "Obra Letra";
-  src: url("../../../fonts/KCObraLetraBold.ttf") format("truetype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
+.hero {
+  background:
+    radial-gradient(900px 420px at 85% -10%, rgba(0, 79, 151, 0.1), transparent 70%),
+    linear-gradient(180deg, var(--surface) 0%, var(--canvas) 100%);
+  border-bottom: 1px solid var(--line);
 }
 
-.hero {
-  flex: 1;
-  min-height: 617px;
-  display: flex;
-  flex-direction: row;
-  margin-top: 52px;
-  justify-content: space-around;
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   align-items: center;
-  gap: 120px; /* distance between the mission text and the demo box */
+  gap: 64px;
+  padding-block: 88px 96px;
 }
 
 .hero-text {
-  width: 535px;
-  flex-shrink: 0;
-  padding: 92px 0 0;
-  align-self: flex-start;
-  justify-content: space-around;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  gap: 20px;
+  justify-items: start;
 }
 
 .mission {
-  width: 100%;
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 92pt;
-  line-height: 1;
-  text-align: center;
-  text-shadow: 0 0 12px var(--text-glow), 3px 3px 6px var(--text-glow);
+  font-size: clamp(44px, 6vw, 72px);
+  line-height: 1.02;
+  letter-spacing: -0.025em;
 }
 
-.mission span {
-  display: block;
+.mission .line-2 {
+  color: var(--red-600);
 }
 
-.line-1 {
-  color: var(--color-white);
-}
-
-.line-2 {
-  color: var(--color-light-yellow);
+.hero-lede {
+  max-width: 52ch;
+  font-size: 19px;
+  line-height: 1.6;
+  color: var(--ink-soft);
 }
 
 .hero-buttons {
-  margin-top: 56px;
   display: flex;
-  flex-direction: row;
-  justify-content: space-around;
-  gap: 26px;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
 }
 
-.btn {
-  width: 235px;
-  height: 76px;
-  border-radius: 16px;
-  font-family: var(--font-body);
-  font-size: 22px;
-  color: var(--color-black);
-  cursor: pointer;
+.hero-buttons .btn {
+  min-height: 52px;
+  padding-inline: 28px;
 }
 
-.btn-primary {
-  background: var(--color-yellow);
-  border: 0;
-}
-
-.btn-outline {
-  background: transparent;
-  border: 5px solid var(--color-white);
-}
-
+/* Decorative preview of the composer */
 .demo-box {
-  width: 525px;
-  flex-shrink: 0;
-  min-height: 471px;
-  align-self: flex-start;
-  background: var(--color-blue);
-  border: 5px solid var(--color-light-yellow);
-  color: var(--color-white);
-  font-size: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  transform: rotate(1.2deg);
+}
+
+.demo-bar {
+  display: flex;
+  gap: 6px;
+  padding: 14px 18px;
+  background: var(--canvas);
+  border-bottom: 1px solid var(--line);
+}
+
+.demo-bar span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.demo-body {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+}
+
+.demo-chips {
   display: flex;
   align-items: center;
-  justify-content: center;
-  text-align: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.demo-chip {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #fff;
+}
+
+.demo-chip-x { background: #000; }
+.demo-chip-bluesky { background: #1185fe; }
+.demo-chip-reddit {
+  background: #ff4500;
+  --glyph-cut: #ff4500;
+}
+
+.demo-chip-label {
+  margin-left: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.demo-line {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--blue-100);
+}
+
+.demo-line-title {
+  width: 62%;
+  height: 16px;
+  background: var(--blue-800);
+  margin-bottom: 4px;
+}
+
+.demo-line-short {
+  width: 40%;
+}
+
+.demo-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--blue-600);
+}
+
+.demo-link span {
+  height: 10px;
+  width: 55%;
+  border-radius: 5px;
+  background: var(--blue-100);
+}
+
+@media (max-width: 900px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 48px;
+    padding-block: 56px 64px;
+  }
+
+  .demo-box {
+    transform: none;
+  }
 }
