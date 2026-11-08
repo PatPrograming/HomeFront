@@ -82,7 +82,8 @@ agent/.venv/bin/python agent/agent.py --sid <session id>
 
 Chat mode: Maya talks to the agent in the console instead of it working the inbox once. There is
 no "Start" button: Maya's first chat message starts the session through the broker (her Cognito
-login, an active staffer). Copy the session id the chat shows, then start the agent; it gets its
+login, an active staffer). Copy the session id (an admin sees it under **Technical details**; a staffer
+finds it as `sid` in the browser's Session Storage key `mandate.card`), then start the agent; it gets its
 mandate token with its own client credentials and answers the chat until the session is revoked:
 
 ```bash
