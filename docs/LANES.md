@@ -1,4 +1,4 @@
-# Mandate — lane handbook
+# HomeFront — lane handbook
 
 Four lanes build WP1–WP7 in parallel, each in its own session, worktree and branch, each running `/converge`.
 This file is what every lane must know. The full plan is `MANAGER_BRIEF.md` (v2) at

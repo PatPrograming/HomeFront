@@ -1,4 +1,4 @@
-# Mandate — task board
+# HomeFront — task board
 
 Source of truth for the plan: `MANAGER_BRIEF.md` (v2), kept in Huy's planning folder outside this repo. Updated after every merge.
 Last updated: Sat Nov 7, 2026, 16:10 PT.
