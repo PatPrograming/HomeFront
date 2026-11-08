@@ -263,3 +263,113 @@ def test_with_the_module_absent_outbound_calls_behave_as_today(gw_, store, make_
     assert held.event.reason == HELD
     _, out = _approve(gw_, store, held)
     assert out.allowed and out.event.reason == APPROVED and handler_spy.calls == ["email.send"]
+
+
+# ---- the chat tells the staffer: a server-side message with a Connect button -----------------------
+
+
+def _chat(store, sid):
+    return store.chat_since(sid, None)[0]
+
+
+def _said(name, label):
+    return f"I couldn't send this: {name} hasn't connected {label}. Nothing was sent."
+
+
+@pytest.mark.parametrize(
+    "tool,args,provider,label",
+    [
+        ("email_send", SEND_ARGS, "gmail", "Gmail"),
+        ("social_post", POST_ARGS, "x", "X"),
+        ("social_reply", REPLY_ARGS, "x", "X"),
+    ],
+)
+def test_a_missing_connection_posts_one_assistant_chat_message_with_a_connect_button(
+    gw_, store, events_of, make_token, world, poster, conn, tool, args, provider, label
+):
+    """Without the server-side post, the staffer sees nothing unless the agent happens to repeat the deny."""
+    conn.missing = {provider}
+    out = gw_.guarded(tool, args, make_token())
+    messages = _chat(store, world.sid)
+    assert len(messages) == 1
+    assert (messages[0].role, messages[0].text, messages[0].connect) == ("assistant", _said("maya", label), provider)
+    # the audit event and the no-draft rule are unchanged
+    assert out.event.decision == "DENY" and events_of(store)[-1].reason == NEEDS
+    assert store.pending_drafts_for("maya") == []
+
+
+def test_the_connect_message_goes_to_the_calling_session_only(gw_, store, make_token, world, conn):
+    conn.missing = {"gmail"}
+    gw_.guarded("email_send", SEND_ARGS, make_token())
+    assert len(_chat(store, world.sid)) == 1 and _chat(store, world.chief_sid) == []
+
+
+def test_the_list_email_for_the_chief_posts_the_message_with_the_chiefs_name(gw_, store, make_token, world, conn):
+    conn.missing = {"gmail"}
+    gw_.guarded("email_send_list", {"subject": "s", "body": "b"}, make_token(act="chiefofstaff", sid=world.chief_sid))
+    messages = _chat(store, world.chief_sid)
+    assert [(m.text, m.connect) for m in messages] == [(_said("chiefofstaff", "Gmail"), "gmail")]
+
+
+def test_a_connected_send_posts_no_connect_message(gw_, store, make_token, world, poster, conn):
+    store.put_autonomy("maya", "social_post", AutonomyItem(level="auto"))
+    gw_.guarded("email_send", SEND_ARGS, make_token())  # held
+    gw_.guarded("social_post", POST_ARGS, make_token())  # sent through X
+    assert _chat(store, world.sid) == []
+
+
+def test_a_cedar_deny_posts_no_connect_message(gw_, store, make_token, world, conn):
+    store.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer", office_role="intern"))
+    conn.missing = {"gmail"}
+    gw_.guarded("email_send", SEND_ARGS, make_token())
+    assert _chat(store, world.sid) == []
+
+
+def test_send_draft_with_a_missing_connection_posts_to_the_drafts_session_and_keeps_it_pending(
+    gw_, store, make_token, world, conn
+):
+    """The approve click is the other place the send can fail; the chat must say so there too."""
+    held = gw_.guarded("email_send", SEND_ARGS, make_token())
+    assert _chat(store, world.sid) == []
+    conn.missing = {"gmail"}
+    draft_id, out = _approve(gw_, store, held)
+    messages = _chat(store, world.sid)
+    assert [(m.role, m.text, m.connect) for m in messages] == [("assistant", _said("maya", "Gmail"), "gmail")]
+    assert out.event.reason == NEEDS and store.get_draft(draft_id).status == "pending"
+
+
+def test_send_draft_when_the_sender_raises_needs_connection_also_posts(gw_, store, make_token, world, conn):
+    held = gw_.guarded("email_send", SEND_ARGS, make_token())
+
+    def expired(*a, **k):
+        raise NeedsConnection("gmail")
+
+    conn.send_gmail = expired
+    _approve(gw_, store, held)
+    assert [(m.text, m.connect) for m in _chat(store, world.sid)] == [(_said("maya", "Gmail"), "gmail")]
+
+
+def test_a_connected_approval_posts_no_connect_message(gw_, store, make_token, world, conn):
+    held = gw_.guarded("email_send", SEND_ARGS, make_token())
+    _approve(gw_, store, held)
+    assert _chat(store, world.sid) == []
+
+
+def test_chat_message_item_round_trips_the_connect_field():
+    from mandate_contracts.ddb import ChatMessageItem
+
+    plain = ChatMessageItem(id="1", ts="t", role="assistant", text="hi")
+    assert plain.connect is None
+    assert plain.model_dump(mode="json")["connect"] is None
+    for provider in ("gmail", "x"):
+        item = ChatMessageItem(id="1", ts="t", role="assistant", text="hi", connect=provider)
+        dumped = item.model_dump(mode="json")
+        assert dumped["connect"] == provider
+        assert ChatMessageItem.model_validate(dumped).connect == provider
+
+
+def test_chat_message_item_rejects_an_unknown_connect_provider():
+    from mandate_contracts.ddb import ChatMessageItem
+
+    with pytest.raises(Exception):
+        ChatMessageItem(id="1", ts="t", role="assistant", text="hi", connect="myspace")
