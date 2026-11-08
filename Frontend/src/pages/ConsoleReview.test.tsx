@@ -61,6 +61,7 @@ describe("Console: review from the chat", () => {
   it("opens the chosen draft, and only that one, in the side panel with a read-only recipient", () => {
     state.openId = "d2";
     const html = renderToStaticMarkup(<Console />);
+    expect(html).toContain('<section class="review-panel" role="dialog"');
     const panel = html.slice(html.indexOf('<section class="review-panel" role="dialog"')); // the side panel only:
     expect(panel).toContain("Body d2"); // draft cards in the chat now show every draft's text, on purpose
     expect(panel).not.toContain("Body d1");
