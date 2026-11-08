@@ -19,7 +19,7 @@ denials honestly, and the agent stopping when Maya is offboarded.
 | `mandate_agent/guard.py` | The rules for the gateway's answers, enforced in code (see below). Also adds the bearer header to every MCP request. |
 | `mandate_agent/runner.py` | Builds the Strands agent (Bedrock model, MCP tools, system prompt) and runs it. |
 | `attacker/compromised_agent.py` | The staged compromised agent for the demo: real identity and gateway, scripted attack, no LLM. See `attacker/README.md`. |
-| `stub_server.py` | A fake gateway for development: the same 7 tools, gateway-like allow/deny, planted injections, a revocation switch. |
+| `stub_server.py` | A fake gateway for development: every contract tool, gateway-like allow/deny, planted injections, a revocation switch. |
 | `data/emails.json` | 25 labelled test emails (`email-1` to `email-25`). Lane B seeds them into DynamoDB. |
 | `data/cases.json` | 25 cases: `case-1` to `case-20` belong to office `rep-x`, `case-21` to `case-25` to `rep-y`. |
 | `data/scrape_page.txt` | The page `web_scrape` returns in the stub, with the planted injection. |

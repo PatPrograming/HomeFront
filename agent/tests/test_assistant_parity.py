@@ -156,7 +156,6 @@ def test_research_and_report_tools_get_a_normal_result(stub, tool):
 
     assert [c["tool"] for c in stub[2].calls] == [tool]
     assert guard.denied == []
-    assert [c["tool"] for c in stub[2].calls] == ["nasa_search"]
     assert not tool_result_texts(model)[-1].startswith("DENIED")
 
 

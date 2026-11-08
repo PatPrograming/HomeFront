@@ -31,7 +31,7 @@ CONNECTION_LOST_RESULT = f"Tool execution failed: {CONNECTION_LOST}"  # Strands'
 UNAUTHORIZED = "the gateway rejected the mandate token (HTTP 401)"
 ALLOW, DENY, REJECTED, ERROR = "allow", "deny", "rejected", "error"
 HELD_STATUS = "held_for_review"  # mandate_contracts' gateway result for a draft kept for review
-OUTBOUND_TOOLS = ("email_send", "social_post")
+OUTBOUND_TOOLS = ("email_send", "social_post", "email_send_list", "social_reply")
 
 
 def result_text(result: dict[str, Any]) -> str:
