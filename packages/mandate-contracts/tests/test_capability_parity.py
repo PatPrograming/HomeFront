@@ -1,0 +1,368 @@
+"""C1: every Agents-tab capability has a mandate tool, Cedar action, role policy and starter permit,
+and one role table (roles.py ROLE_TOOLS) drives both the assistant path and the Agents-tab path.
+
+Expected values come from docs/loops/agent-permissions.md (Design 1 to 3). The tool list is derived from
+the mcp_tools registry, so a new registry tool with no mandate twin fails here.
+"""
+
+import json
+import re
+import sys
+from pathlib import Path
+
+import pytest
+
+PKG = Path(__file__).resolve().parents[1]
+ROOT = PKG.parents[1]
+sys.path.insert(0, str(PKG / "src"))
+sys.path.insert(0, str(ROOT / "packages" / "mcp-tools" / "src"))
+
+from mandate_contracts import TOOLS  # noqa: E402
+from mandate_contracts.cedar import STARTER_POLICIES  # noqa: E402
+from mandate_contracts.roles import (  # noqa: E402
+    ROLE_GOVERNED_TOOLS,
+    ROLE_POLICIES,
+    ROLE_TOOLS,
+    role_policy_id,
+)
+from mcp_tools.registry import TOOL_REGISTRY  # noqa: E402
+
+RESEARCH = (
+    "census_query",
+    "openfda_search",
+    "eia_query",
+    "nasa_search",
+    "noaa_climate",
+    "nps_parks",
+    "bls_series",
+    "fec_search",
+    "epa_search",
+    "fcc_search",
+)
+NEW_TOOLS = ("email_send_list", "social_reply", "usaspending_search", "sam_entity_lookup", "report_save", *RESEARCH)
+STARTER_ADDED = ("research-tools", "email-send-list-office", "social-reply-official", "forbid-campaign-reply", "report-save")
+
+CURRENT = {
+    "caseworker": ("inbox_read", "case_read", "datagov_search", "web_scrape", "email_send"),
+    "communications_director": ("inbox_read", "datagov_search", "web_scrape", "email_send", "social_post"),
+    "legislative_aide": ("inbox_read", "datagov_search", "web_scrape"),
+}
+
+
+def _dotted_to_mandate(dotted: str) -> str:
+    return dotted.replace(".", "_")
+
+
+# ---- registry <-> TOOLS ----------------------------------------------------------------------
+
+
+def test_every_registry_tool_has_a_mandate_twin_in_TOOLS():
+    missing = [d for d in TOOL_REGISTRY if _dotted_to_mandate(d) not in TOOLS]
+    assert missing == []
+
+
+def test_mandate_tool_name_maps_every_registry_tool():
+    from mandate_contracts.roles import mandate_tool_name
+
+    for dotted in TOOL_REGISTRY:
+        assert mandate_tool_name(dotted) == _dotted_to_mandate(dotted)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["Email.send", " email.send", "email.send ", "email_send", "ｅmail.send", "email․send", "email.send​", "", "nope.tool"],
+)
+def test_mandate_tool_name_rejects_anything_but_the_exact_registry_name(bad):
+    from mandate_contracts.roles import mandate_tool_name
+
+    with pytest.raises(KeyError):
+        mandate_tool_name(bad)
+
+
+def test_the_15_new_tools_are_in_TOOLS_and_governed():
+    for name in NEW_TOOLS:
+        assert name in TOOLS, name
+        assert name in ROLE_GOVERNED_TOOLS, name
+        assert not TOOLS[name].always_denied, name
+
+
+def test_governed_tools_are_every_tool_except_the_always_denied_ones():
+    assert set(ROLE_GOVERNED_TOOLS) == {n for n, s in TOOLS.items() if not s.always_denied}
+    assert list(ROLE_GOVERNED_TOOLS) == [n for n in TOOLS if n in ROLE_GOVERNED_TOOLS]
+
+
+# ---- input models ----------------------------------------------------------------------------
+
+
+def _fields(name: str) -> set[str]:
+    model = TOOLS[name].input_model
+    return {(f.alias or n) for n, f in model.model_fields.items()}
+
+
+@pytest.mark.parametrize("name", NEW_TOOLS)
+def test_new_tool_input_covers_every_registry_property(name):
+    dotted = next(d for d in TOOL_REGISTRY if _dotted_to_mandate(d) == name)
+    registry_props = set(TOOL_REGISTRY[dotted].input_schema["properties"])
+    assert registry_props <= _fields(name)
+
+
+def test_email_send_list_input_has_only_subject_and_body_and_drops_recipients():
+    assert _fields("email_send_list") == {"subject", "body"}
+    parsed = TOOLS["email_send_list"].input_model.model_validate(
+        {"subject": "s", "body": "b", "recipients": ["x@evil.test"], "to": "x@evil.test"}
+    )
+    assert parsed.model_dump() == {"subject": "s", "body": "b"}
+
+
+def test_social_reply_input_shape_and_default_platform():
+    model = TOOLS["social_reply"].input_model
+    assert _fields("social_reply") == {"account", "reply_to", "text", "platform"}
+    parsed = model.model_validate({"account": "official", "reply_to": "123", "text": "hi"})
+    assert parsed.platform == "x"
+
+
+def test_social_post_gains_platform_defaulting_to_x():
+    parsed = TOOLS["social_post"].input_model.model_validate({"account": "official", "text": "hi"})
+    assert parsed.platform == "x"
+
+
+def test_census_query_accepts_for_and_in_aliases():
+    parsed = TOOLS["census_query"].input_model.model_validate(
+        {"year": 2022, "dataset": "acs/acs5", "get": "NAME", "for": "state:06", "in": "county:001"}
+    )
+    dumped = parsed.model_dump(by_alias=True)
+    assert dumped["for"] == "state:06" and dumped["in"] == "county:001"
+
+
+def test_usaspending_search_takes_an_integer_fiscal_year():
+    model = TOOLS["usaspending_search"].input_model
+    assert model.model_validate({"keywords": "roads", "fiscal_year": "2024"}).fiscal_year == 2024
+
+
+def test_untrusted_output_is_exactly_inbox_scrape_research_and_procurement():
+    expected = {"inbox_read", "web_scrape", "usaspending_search", "sam_entity_lookup", *RESEARCH}
+    assert {n for n, s in TOOLS.items() if s.untrusted_output} == expected
+
+
+def test_tools_json_schema_file_lists_every_tool_in_order():
+    committed = json.loads((PKG / "schemas" / "tools.json").read_text())
+    assert [t["name"] for t in committed] == list(TOOLS)
+
+
+# ---- Cedar -----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tool", ROLE_GOVERNED_TOOLS)
+def test_every_governed_tool_has_a_role_forbid_in_the_starter_policies(tool):
+    pid = role_policy_id(tool)
+    assert pid in ROLE_POLICIES
+    assert pid in STARTER_POLICIES
+    text = STARTER_POLICIES[pid]
+    assert text.startswith("forbid(") and f'Mandate::Action::"{tool}"' in text
+
+
+@pytest.mark.parametrize("tool", [t for t in ROLE_GOVERNED_TOOLS])
+def test_every_governed_tool_has_a_starter_permit_naming_its_action(tool):
+    permits = [
+        name
+        for name, text in STARTER_POLICIES.items()
+        if not name.startswith("role-") and text.startswith("permit(") and f'Mandate::Action::"{tool}"' in text
+    ]
+    assert permits, f"no starter permit for {tool}"
+
+
+def test_role_policy_ids_are_hyphenated_tool_names():
+    assert role_policy_id("email_send_list") == "role-email-send-list"
+    assert "role-email-send-list" in ROLE_POLICIES
+    assert "role-social-reply" in ROLE_POLICIES
+    assert "role-report-save" in ROLE_POLICIES
+
+
+def test_five_new_starter_policies_exist():
+    for name in STARTER_ADDED:
+        assert name in STARTER_POLICIES, name
+
+
+def test_research_tools_permit_covers_the_apis_and_procurement_when_delegator_active():
+    text = STARTER_POLICIES["research-tools"]
+    assert text.startswith("permit(")
+    for tool in (*RESEARCH, "usaspending_search", "sam_entity_lookup"):
+        assert f'Mandate::Action::"{tool}"' in text, tool
+    assert "context.delegatorActive" in text
+
+
+def test_email_send_list_and_report_save_permits_need_only_an_active_delegator():
+    for name, tool in (("email-send-list-office", "email_send_list"), ("report-save", "report_save")):
+        text = STARTER_POLICIES[name]
+        assert text.startswith("permit(") and f'Mandate::Action::"{tool}"' in text
+        assert "context.delegatorActive" in text
+
+
+def test_social_reply_permit_requires_the_official_account():
+    text = STARTER_POLICIES["social-reply-official"]
+    assert text.startswith("permit(") and 'Mandate::Action::"social_reply"' in text
+    assert "context.delegatorActive" in text and 'context.account == "official"' in text
+
+
+def test_campaign_reply_is_forbidden_in_official_mode():
+    text = STARTER_POLICIES["forbid-campaign-reply"]
+    assert text.startswith("forbid(") and 'Mandate::Action::"social_reply"' in text
+    assert 'principal.mode == "official"' in text and 'context.account == "campaign"' in text
+
+
+def test_the_existing_starter_policies_are_not_edited():
+    # setup.sh never updates an existing AVP policy, so additions must be new files.
+    assert 'Mandate::Action::"social_reply"' not in STARTER_POLICIES["read-tools"]
+    assert 'Mandate::Action::"social_reply"' not in STARTER_POLICIES["forbid-campaign-post"]
+    assert "census_query" not in STARTER_POLICIES["read-tools"]
+
+
+def test_committed_cedar_files_match_STARTER_POLICIES_exactly():
+    committed = {p.stem: p.read_text() for p in (PKG / "policies").glob("*.cedar")}
+    assert set(committed) == set(STARTER_POLICIES)
+    assert committed == {k: v + "\n" for k, v in STARTER_POLICIES.items()}
+
+
+@pytest.mark.parametrize("name", [*STARTER_ADDED, *(role_policy_id(t) for t in NEW_TOOLS)])
+def test_each_new_cedar_file_exists(name):
+    assert (PKG / "policies" / f"{name}.cedar").is_file()
+
+
+def test_there_are_21_role_policies_and_5_new_starter_policies_in_total():
+    assert len([n for n in STARTER_POLICIES if n.startswith("role-")]) == 21
+    assert len(STARTER_POLICIES) == 6 + 5 + 21
+
+
+# ---- one role table --------------------------------------------------------------------------
+
+
+def test_role_values_are_subsets_of_governed_tools():
+    for role, tools in ROLE_TOOLS.items():
+        assert set(tools) <= set(ROLE_GOVERNED_TOOLS), role
+        assert len(set(tools)) == len(tools), role
+
+
+def test_chief_of_staff_has_every_governed_tool():
+    assert set(ROLE_TOOLS["chief_of_staff"]) == set(ROLE_GOVERNED_TOOLS)
+    assert len(ROLE_TOOLS["chief_of_staff"]) == 21
+
+
+def test_email_send_list_is_chief_of_staff_only():
+    assert [r for r, tools in ROLE_TOOLS.items() if "email_send_list" in tools] == ["chief_of_staff"]
+    assert '"chief_of_staff"' in ROLE_POLICIES["role-email-send-list"]
+    for other in ("caseworker", "communications_director", "legislative_aide", "intern"):
+        assert f'"{other}"' not in ROLE_POLICIES["role-email-send-list"]
+
+
+def test_caseworker_is_current_plus_research_and_report_save():
+    assert set(ROLE_TOOLS["caseworker"]) == {*CURRENT["caseworker"], *RESEARCH, "report_save"}
+
+
+def test_communications_director_adds_social_reply_research_and_report_save():
+    expected = {*CURRENT["communications_director"], "social_reply", *RESEARCH, "report_save"}
+    assert set(ROLE_TOOLS["communications_director"]) == expected
+
+
+def test_legislative_aide_adds_research_procurement_and_report_save():
+    expected = {*CURRENT["legislative_aide"], *RESEARCH, "usaspending_search", "sam_entity_lookup", "report_save"}
+    assert set(ROLE_TOOLS["legislative_aide"]) == expected
+
+
+def test_intern_gets_exactly_the_six_listed_tools():
+    assert set(ROLE_TOOLS["intern"]) == {
+        "datagov_search",
+        "web_scrape",
+        "census_query",
+        "nasa_search",
+        "nps_parks",
+        "noaa_climate",
+    }
+
+
+def test_only_communications_director_and_chief_can_reply_on_social():
+    allowed = {r for r, tools in ROLE_TOOLS.items() if "social_reply" in tools}
+    assert allowed == {"chief_of_staff", "communications_director"}
+
+
+def test_only_chief_and_legislative_aide_get_procurement_tools():
+    for tool in ("usaspending_search", "sam_entity_lookup"):
+        assert {r for r, t in ROLE_TOOLS.items() if tool in t} == {"chief_of_staff", "legislative_aide"}
+
+
+def test_role_policy_lists_are_generated_from_ROLE_TOOLS():
+    for tool in ROLE_GOVERNED_TOOLS:
+        listed = set(re.findall(r'"(\w+)"', re.search(r"\[(.*?)\]", ROLE_POLICIES[role_policy_id(tool)]).group(1)))
+        assert listed == {r for r, tools in ROLE_TOOLS.items() if tool in tools}, tool
+
+
+def test_role_allows_reads_the_same_table_for_dotted_registry_names():
+    from mandate_contracts.roles import role_allows
+
+    for role in ROLE_TOOLS:
+        for dotted in TOOL_REGISTRY:
+            assert role_allows(role, dotted) is (_dotted_to_mandate(dotted) in ROLE_TOOLS[role]), (role, dotted)
+
+
+def test_role_allows_fails_closed_for_unknown_or_missing_roles():
+    from mandate_contracts.roles import role_allows
+
+    for role in ("admin", "Chief_Of_Staff", "", "staffer", None):
+        assert role_allows(role, "datagov.search") is False, role
+
+
+def test_role_allows_blocks_a_caseworker_from_the_mailing_list():
+    from mandate_contracts.roles import role_allows
+
+    assert role_allows("chief_of_staff", "email.send_list") is True
+    assert role_allows("caseworker", "email.send_list") is False
+
+
+# ---- plain words -----------------------------------------------------------------------------
+
+
+def test_TOOL_ACTIONS_has_plain_words_for_every_governed_tool():
+    from mandate_contracts.roles import TOOL_ACTIONS
+
+    assert set(ROLE_GOVERNED_TOOLS) <= set(TOOL_ACTIONS)
+    for tool in ROLE_GOVERNED_TOOLS:
+        assert TOOL_ACTIONS[tool].strip() and "_" not in TOOL_ACTIONS[tool], tool
+
+
+def test_role_reason_for_a_new_tool_uses_plain_words_not_the_tool_name():
+    from mandate_contracts.roles import TOOL_ACTIONS, role_reason
+
+    reason = role_reason("caseworker", "email_send_list")
+    assert TOOL_ACTIONS["email_send_list"] in reason
+    assert "email_send_list" not in reason
+    assert reason.startswith("a Caseworker's assistant may not")
+
+
+# ---- TypeScript mirror -----------------------------------------------------------------------
+
+
+def test_ts_TOOL_NAMES_and_ROLE_TOOLS_equal_python():
+    ts = (PKG / "ts" / "index.ts").read_text()
+    names = re.search(r"TOOL_NAMES = \[(.*?)\]", ts, re.S).group(1)
+    assert re.findall(r'"(\w+)"', names) == list(TOOLS)
+    body = re.search(r"ROLE_TOOLS: .*? = \{(.*?)\};", ts, re.S).group(1)
+    parsed = {m[0]: tuple(re.findall(r'"(\w+)"', m[1])) for m in re.findall(r"(\w+): \[(.*?)\]", body)}
+    assert parsed == ROLE_TOOLS
+
+
+def test_ts_Reason_includes_needs_connection():
+    from typing import get_args
+
+    from mandate_contracts import Reason
+
+    assert "needs connection" in get_args(Reason)
+    ts = (PKG / "ts" / "index.ts").read_text()
+    assert '"needs connection"' in re.search(r"type Reason =(.*?);", ts, re.S).group(1)
+
+
+def test_draft_item_accepts_the_new_outbound_tools():
+    from typing import get_args
+
+    from mandate_contracts.ddb import DraftItem
+
+    literal = get_args(DraftItem.model_fields["tool"].annotation)
+    assert {"email_send_list", "social_reply"} <= set(literal)
