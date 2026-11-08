@@ -102,7 +102,7 @@ class DraftItem(WireModel):
     agent: str
     acting_for: str
     office: str
-    tool: Literal["email_send", "social_post"]
+    tool: Literal["email_send", "social_post", "email_send_list", "social_reply"]
     category: str
     args: dict[str, str]  # the tool input as the agent sent it
     created_at: str

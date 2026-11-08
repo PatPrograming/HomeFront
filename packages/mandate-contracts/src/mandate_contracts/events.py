@@ -20,6 +20,7 @@ Reason = Literal[
     "invalid token",
     "held for staff review",  # Cedar allowed it, but the staffer has not let the agent send this kind alone
     "approved by staff",  # a held draft the staffer approved, so the gateway sent it
+    "needs connection",  # Cedar allowed it, but the staffer has not connected the Gmail or X account yet
 ]
 
 

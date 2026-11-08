@@ -125,6 +125,12 @@
         "text": {
           "title": "Text",
           "type": "string"
+        },
+        "platform": {
+          "default": "x",
+          "description": "Platform to post on, e.g. 'x'.",
+          "title": "Platform",
+          "type": "string"
         }
       },
       "required": [
@@ -132,6 +138,405 @@
         "text"
       ],
       "title": "SocialPostInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "email_send_list",
+    "description": "Email everyone on the office's mailing list. Always held for staff review.",
+    "inputSchema": {
+      "properties": {
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        },
+        "body": {
+          "title": "Body",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject",
+        "body"
+      ],
+      "title": "EmailSendListInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "social_reply",
+    "description": "Reply to a comment or mention from the office's official account.",
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "description": "Which office account to reply from, e.g. 'official'.",
+          "title": "Account",
+          "type": "string"
+        },
+        "reply_to": {
+          "description": "Id or URL of the post or comment to reply to.",
+          "title": "Reply To",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "platform": {
+          "default": "x",
+          "description": "Platform the comment is on, e.g. 'x'.",
+          "title": "Platform",
+          "type": "string"
+        }
+      },
+      "required": [
+        "account",
+        "reply_to",
+        "text"
+      ],
+      "title": "SocialReplyInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "usaspending_search",
+    "description": "Search past federal contract awards on USAspending.gov.",
+    "inputSchema": {
+      "properties": {
+        "keywords": {
+          "description": "Keywords describing the product or service, e.g. 'body worn cameras'.",
+          "title": "Keywords",
+          "type": "string"
+        },
+        "fiscal_year": {
+          "description": "Federal fiscal year to search, e.g. 2025. Use 0 for the last five.",
+          "title": "Fiscal Year",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "keywords",
+        "fiscal_year"
+      ],
+      "title": "UsaspendingSearchInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "sam_entity_lookup",
+    "description": "Look up vendors registered in SAM.gov by business name.",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "description": "Legal business name, or part of it, to search for.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SamEntityLookupInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "report_save",
+    "description": "Save a finished markdown report for the office staff.",
+    "inputSchema": {
+      "properties": {
+        "title": {
+          "description": "Report title (up to 200 characters).",
+          "title": "Title",
+          "type": "string"
+        },
+        "body": {
+          "description": "Report body in markdown.",
+          "title": "Body",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "body"
+      ],
+      "title": "ReportSaveInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "census_query",
+    "description": "Query the U.S. Census Data API.",
+    "inputSchema": {
+      "properties": {
+        "year": {
+          "description": "Vintage year, e.g. '2023'.",
+          "title": "Year",
+          "type": "string"
+        },
+        "dataset": {
+          "description": "Path after year, e.g. 'acs/acs1' or 'pep/population'.",
+          "title": "Dataset",
+          "type": "string"
+        },
+        "get": {
+          "description": "Comma-separated variables, e.g. 'NAME,B01003_001E'.",
+          "title": "Get",
+          "type": "string"
+        },
+        "for": {
+          "description": "Geography for= clause, e.g. 'place:69084'.",
+          "title": "For",
+          "type": "string"
+        },
+        "in": {
+          "description": "Optional in= clause, e.g. 'state:06'. Use '' if none.",
+          "title": "In",
+          "type": "string"
+        }
+      },
+      "required": [
+        "year",
+        "dataset",
+        "get",
+        "for",
+        "in"
+      ],
+      "title": "CensusQueryInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "openfda_search",
+    "description": "Search openFDA (drugs, devices, food).",
+    "inputSchema": {
+      "properties": {
+        "endpoint": {
+          "description": "API path without .json, e.g. 'drug/event' or 'drug/label'.",
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "search": {
+          "description": "openFDA search expression.",
+          "title": "Search",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max results 1-20 as a string, e.g. '5'.",
+          "title": "Limit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "search",
+        "limit"
+      ],
+      "title": "OpenfdaSearchInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "eia_query",
+    "description": "Query U.S. Energy Information Administration open data.",
+    "inputSchema": {
+      "properties": {
+        "route": {
+          "description": "EIA v2 route without /data, e.g. 'petroleum/crd/crpdn'.",
+          "title": "Route",
+          "type": "string"
+        },
+        "frequency": {
+          "description": "e.g. 'monthly' or 'annual'.",
+          "title": "Frequency",
+          "type": "string"
+        },
+        "length": {
+          "description": "Number of rows to return, e.g. '5'.",
+          "title": "Length",
+          "type": "string"
+        },
+        "facet": {
+          "description": "Optional facet as name:value, e.g. 'respondent:CISO'. Use '' if none.",
+          "title": "Facet",
+          "type": "string"
+        }
+      },
+      "required": [
+        "route",
+        "frequency",
+        "length",
+        "facet"
+      ],
+      "title": "EiaQueryInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "nasa_search",
+    "description": "Search the NASA image library.",
+    "inputSchema": {
+      "properties": {
+        "q": {
+          "description": "Search keywords, e.g. 'mars rover'.",
+          "title": "Q",
+          "type": "string"
+        }
+      },
+      "required": [
+        "q"
+      ],
+      "title": "NasaSearchInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "noaa_climate",
+    "description": "Fetch NOAA Climate Data Online observations.",
+    "inputSchema": {
+      "properties": {
+        "datasetid": {
+          "description": "e.g. 'GHCND'.",
+          "title": "Datasetid",
+          "type": "string"
+        },
+        "locationid": {
+          "description": "e.g. 'ZIP:95050' or 'FIPS:06'.",
+          "title": "Locationid",
+          "type": "string"
+        },
+        "startdate": {
+          "description": "YYYY-MM-DD",
+          "title": "Startdate",
+          "type": "string"
+        },
+        "enddate": {
+          "description": "YYYY-MM-DD",
+          "title": "Enddate",
+          "type": "string"
+        },
+        "datatypeid": {
+          "description": "Optional datatype, e.g. 'TMAX'. Use '' if none.",
+          "title": "Datatypeid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "datasetid",
+        "locationid",
+        "startdate",
+        "enddate",
+        "datatypeid"
+      ],
+      "title": "NoaaClimateInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "nps_parks",
+    "description": "Search National Park Service parks.",
+    "inputSchema": {
+      "properties": {
+        "q": {
+          "description": "Search text, e.g. 'yosemite'. Use '' if using parkCode only.",
+          "title": "Q",
+          "type": "string"
+        },
+        "parkCode": {
+          "description": "Optional park code, e.g. 'yose'. Use '' if none.",
+          "title": "Parkcode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "q",
+        "parkCode"
+      ],
+      "title": "NpsParksInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "bls_series",
+    "description": "Fetch BLS time series (CPI, employment, etc.).",
+    "inputSchema": {
+      "properties": {
+        "series_id": {
+          "description": "BLS series id, e.g. 'CUUR0000SA0' (CPI-U).",
+          "title": "Series Id",
+          "type": "string"
+        },
+        "startyear": {
+          "description": "Start year YYYY.",
+          "title": "Startyear",
+          "type": "string"
+        },
+        "endyear": {
+          "description": "End year YYYY.",
+          "title": "Endyear",
+          "type": "string"
+        }
+      },
+      "required": [
+        "series_id",
+        "startyear",
+        "endyear"
+      ],
+      "title": "BlsSeriesInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "fec_search",
+    "description": "Search FEC candidates (campaign finance).",
+    "inputSchema": {
+      "properties": {
+        "q": {
+          "description": "Candidate name search.",
+          "title": "Q",
+          "type": "string"
+        }
+      },
+      "required": [
+        "q"
+      ],
+      "title": "FecSearchInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "epa_search",
+    "description": "Search EPA Envirofacts facilities.",
+    "inputSchema": {
+      "properties": {
+        "q": {
+          "description": "City or facility search text, e.g. 'SANTA CLARA'.",
+          "title": "Q",
+          "type": "string"
+        }
+      },
+      "required": [
+        "q"
+      ],
+      "title": "EpaSearchInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "fcc_search",
+    "description": "Search FCC licenses.",
+    "inputSchema": {
+      "properties": {
+        "q": {
+          "description": "Licensee or callsign search.",
+          "title": "Q",
+          "type": "string"
+        }
+      },
+      "required": [
+        "q"
+      ],
+      "title": "FccSearchInput",
       "type": "object"
     }
   },

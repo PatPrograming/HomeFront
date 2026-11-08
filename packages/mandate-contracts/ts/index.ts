@@ -7,11 +7,11 @@ export type Role = (typeof ROLES)[number];
 
 /** The tools each role may use (roles.py ROLE_TOOLS); for display and mocks only, Cedar enforces it. */
 export const ROLE_TOOLS: Record<Role, readonly string[]> = {
-  chief_of_staff: ["inbox_read", "case_read", "datagov_search", "web_scrape", "email_send", "social_post"],
-  caseworker: ["inbox_read", "case_read", "datagov_search", "web_scrape", "email_send"],
-  communications_director: ["inbox_read", "datagov_search", "web_scrape", "email_send", "social_post"],
-  legislative_aide: ["inbox_read", "datagov_search", "web_scrape"],
-  intern: ["datagov_search", "web_scrape"],
+  chief_of_staff: ["inbox_read", "case_read", "datagov_search", "web_scrape", "email_send", "social_post", "email_send_list", "social_reply", "usaspending_search", "sam_entity_lookup", "report_save", "census_query", "openfda_search", "eia_query", "nasa_search", "noaa_climate", "nps_parks", "bls_series", "fec_search", "epa_search", "fcc_search"],
+  caseworker: ["inbox_read", "case_read", "datagov_search", "web_scrape", "email_send", "census_query", "openfda_search", "eia_query", "nasa_search", "noaa_climate", "nps_parks", "bls_series", "fec_search", "epa_search", "fcc_search", "report_save"],
+  communications_director: ["inbox_read", "datagov_search", "web_scrape", "email_send", "social_post", "social_reply", "census_query", "openfda_search", "eia_query", "nasa_search", "noaa_climate", "nps_parks", "bls_series", "fec_search", "epa_search", "fcc_search", "report_save"],
+  legislative_aide: ["inbox_read", "datagov_search", "web_scrape", "census_query", "openfda_search", "eia_query", "nasa_search", "noaa_climate", "nps_parks", "bls_series", "fec_search", "epa_search", "fcc_search", "usaspending_search", "sam_entity_lookup", "report_save"],
+  intern: ["datagov_search", "web_scrape", "census_query", "nasa_search", "nps_parks", "noaa_climate"],
 };
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -29,6 +29,21 @@ export const TOOL_NAMES = [
   "web_scrape",
   "email_send",
   "social_post",
+  "email_send_list",
+  "social_reply",
+  "usaspending_search",
+  "sam_entity_lookup",
+  "report_save",
+  "census_query",
+  "openfda_search",
+  "eia_query",
+  "nasa_search",
+  "noaa_climate",
+  "nps_parks",
+  "bls_series",
+  "fec_search",
+  "epa_search",
+  "fcc_search",
   "records_bulk_export",
 ] as const;
 
@@ -42,7 +57,8 @@ export type Reason =
   | "session revoked / delegator inactive"
   | "invalid token"
   | "held for staff review"
-  | "approved by staff";
+  | "approved by staff"
+  | "needs connection";
 
 export interface GuardrailFlag {
   flagged: boolean;
