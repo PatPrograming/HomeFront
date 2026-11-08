@@ -5,7 +5,7 @@ Attributes are snake_case; items are stored in DynamoDB with camelCase keys (see
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -161,3 +161,5 @@ class ChatMessageItem(WireModel):
     role: Literal["user", "assistant"]
     text: str
     connect: Literal["gmail", "x"] | None = None  # set on a "connect your account" message; the console adds a Connect button
+    # set on a plan card: {id, steps: [{agent, label, purpose, tools: [{name, label, outbound}], dropped}], status}
+    plan: dict[str, Any] | None = None

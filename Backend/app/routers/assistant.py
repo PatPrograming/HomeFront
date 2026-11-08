@@ -469,3 +469,123 @@ def grant_for_session(sid: str, body: GrantIn, staff: StaffIdentity = Depends(re
 def assistant_status(admin: StaffIdentity = Depends(require_admin)) -> dict:
     """For admins' Technical details: does the console start the agent, and with which AWS credentials."""
     return {"autostart": get_supervisor() is not None, "agentCredentials": credentials_mode()}
+
+
+# --- plan card: which helper agents the assistant will use, approved before it acts -----------
+# The agent proposes; the server writes the card from the staffer's role, so the agent cannot
+# describe a permission it does not have. Only this staffer route can approve, and chat text
+# saying "approved" is not an approval: the agent waits for the message this route posts.
+
+PLAN_AGENTS = {"research": "Research agent", "social": "Social media agent", "email": "Email agent"}
+PLAN_TOOL_WORDS = {
+    "datagov_search": "search government data (data.gov)",
+    "web_scrape": "read public web pages",
+    "census_query": "look up Census data",
+    "bls_series": "look up labor statistics (BLS)",
+    "openfda_search": "search openFDA",
+    "eia_query": "look up energy data (EIA)",
+    "nasa_search": "search NASA images",
+    "noaa_climate": "look up NOAA climate data",
+    "nps_parks": "look up National Parks",
+    "fec_search": "search FEC campaign finance",
+    "epa_search": "search EPA facilities",
+    "fcc_search": "search FCC licenses",
+    "usaspending_search": "search federal contract awards",
+    "sam_entity_lookup": "look up vendors in SAM.gov",
+    "inbox_read": "read the office inbox",
+    "case_read": "read a constituent case",
+    "report_save": "save a report for staff",
+    "social_post": "write one social post draft",
+    "social_reply": "write one social reply draft",
+    "email_send": "write one email draft",
+    "email_send_list": "write one mailing-list email draft",
+}
+OUTBOUND_TOOLS = {"social_post", "social_reply", "email_send", "email_send_list"}
+
+
+class PlanStepIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent: Literal["research", "social", "email"]
+    purpose: str = Field(min_length=1, max_length=300)
+    tools: list[str] = Field(max_length=20)
+
+
+class PlanIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    steps: list[PlanStepIn] = Field(min_length=1, max_length=5)
+
+
+class PlanDecisionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["approve", "cancel"]
+
+
+def build_plan_steps(steps: list[PlanStepIn], role_tools: set[str]) -> list[dict]:
+    """The card's steps: each tool in plain words, only if the staffer's role has it."""
+    card = []
+    for step in steps:
+        allowed, dropped = [], []
+        for raw in dict.fromkeys(t.replace(".", "_") for t in step.tools):
+            if raw in PLAN_TOOL_WORDS and raw in role_tools:
+                outbound = raw in OUTBOUND_TOOLS
+                words = PLAN_TOOL_WORDS[raw] + (" (held for your review)" if outbound else "")
+                allowed.append({"name": raw, "label": words, "outbound": outbound})
+            else:
+                dropped.append(raw)
+        card.append(
+            {
+                "agent": step.agent,
+                "label": PLAN_AGENTS[step.agent],
+                "purpose": step.purpose,
+                "tools": allowed,
+                "readOnly": not any(t["outbound"] for t in allowed),
+                "dropped": dropped,  # shown as "not allowed for your role"
+            }
+        )
+    return card
+
+
+@router.post("/agent/plans")
+def agent_propose_plan(body: PlanIn, claims: MandateClaims = Depends(require_agent_session)) -> dict:
+    store = get_gateway().store
+    staffer = store.get_staffer(claims.act)
+    steps = build_plan_steps(body.steps, set(store.get_role_tools(staffer.office_role)))
+    plan_id = str(uuid.uuid4())
+    plan = {"id": plan_id, "steps": steps, "status": "pending"}
+    message = ChatMessageItem(
+        id=str(uuid.uuid4()),
+        ts=datetime.now(timezone.utc).isoformat(),
+        role="assistant",
+        text="To do this I'll use these helper agents. Approve the plan and I'll start; nothing is sent without your review.",
+        plan=plan,
+    )
+    store.put_plan(claims.sid, plan_id, {"status": "pending", "actingFor": claims.act, "msgTs": message.ts,
+                                          "msgId": message.id})
+    store.put_chat_message(claims.sid, message)
+    return {"status": "awaiting_approval", "plan_id": plan_id, "steps": steps}
+
+
+@router.post("/sessions/{sid}/plans/{plan_id}")
+def decide_plan(sid: str, plan_id: str, body: PlanDecisionIn, staff: StaffIdentity = Depends(require_staff)) -> dict:
+    _own_active_session(sid, staff)
+    store = get_gateway().store
+    item = store.get_plan(sid, plan_id)
+    if item is None or item.get("actingFor") != staff.username:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown plan")
+    new_status = "approved" if body.decision == "approve" else "cancelled"
+    if item.get("status") != "pending" or not store.decide_plan(sid, plan_id, new_status):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Plan already {item.get('status')}")
+    # Rewrite the card's message so a reload shows the decision.
+    for message in store.chat_since(sid, None)[0]:
+        if message.id == item.get("msgId") and message.plan:
+            store.put_chat_message(sid, message.model_copy(update={"plan": {**message.plan, "status": new_status}}))
+            break
+    session = store.get_session(sid)
+    now = int(time.time())
+    claims = MandateClaims(sub=session.agent, act=staff.username, office=session.office, mode="official", sid=sid,
+                           iat=now, exp=now)
+    approved = body.decision == "approve"
+    get_gateway()._record(claims, "plan_decide", f"plan {plan_id}", "ALLOW" if approved else "DENY",
+                          "approved by staff" if approved else "cancelled by staff")
+    _post(sid, "user", "Approved the plan." if approved else "Cancelled the plan.")
+    return {"id": plan_id, "status": new_status}

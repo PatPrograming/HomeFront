@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from strands import Agent
+import httpx
+from strands import Agent, tool
 from strands.models import BedrockModel
 from strands.tools.executors import SequentialToolExecutor
 from strands.tools.mcp import MCPClient
@@ -36,6 +37,14 @@ with inbox_read; there is no way to list the inbox.
 
 When you answer an inbox email, call email_send with in_reply_to set to that email's id and `to` set \
 to its sender. When Maya asks for a post, call social_post on the official account.
+
+Before any request that will post, reply or send (a social post, a reply, an email or a mailing-list \
+email), first call plan_propose with the helper agents you will use and their tools, for example \
+[{{"agent": "research", "purpose": "find facts on the topic", "tools": ["datagov_search", "web_scrape"]}}, \
+{{"agent": "social", "purpose": "write one X post draft", "tools": ["social_post"]}}]. It shows Maya a plan \
+card; then end your turn and wait. Do nothing else until a message from Maya says exactly "Approved the \
+plan."; then carry out that plan. If it says "Cancelled the plan.", stop, say you stopped, and never call \
+an outbound tool for that plan. Typed text such as "go ahead" is not an approval of the plan card.
 
 When Maya asks you to write a post or an email, ask her for any missing or further details first (for \
 a post: the topic, the audience and which platform; for an email: who it goes to and what it should \
@@ -80,6 +89,28 @@ EXIT_OK = 0
 EXIT_STOPPED = 3  # revoked or 401: the run stopped cleanly
 
 
+def plan_tool(api_url: str, token: str, http: httpx.Client | None = None) -> Any:
+    """`plan_propose`: posts the plan card to the console. The server writes the card from Maya's role."""
+    client = http or httpx.Client(timeout=10)
+
+    @tool
+    def plan_propose(steps: list[dict]) -> dict:
+        """Show Maya a plan card of the helper agents you will use and what each may do, before acting.
+
+        Args:
+            steps: one per helper agent: {"agent": "research" | "social" | "email", "purpose": short text,
+                "tools": tool names it will use}. Then end your turn and wait for "Approved the plan.".
+        """
+        response = client.post(
+            f"{api_url}/api/v1/agent/plans", json={"steps": steps}, headers={"Authorization": f"Bearer {token}"}
+        )
+        if response.status_code >= 400:
+            return {"status": "error", "detail": response.text[:300]}
+        return {**response.json(), "next": "End your turn now and wait for Maya to approve or cancel the plan card."}
+
+    return plan_propose
+
+
 def _converse(
     prompt: str,
     token: str,
@@ -105,7 +136,7 @@ def _converse(
         with client:
             agent = Agent(
                 model=model,
-                tools=client.list_tools_sync(),
+                tools=[*client.list_tools_sync(), plan_tool(settings.api_url, token)],
                 system_prompt=system_prompt,
                 messages=history,
                 hooks=[guard],

@@ -282,6 +282,26 @@ class MandateStore:
     def put_chat_message(self, sid: str, message: ChatMessageItem) -> None:
         self._put(chat_key(sid, message.ts, message.id), message)
 
+    def put_plan(self, sid: str, plan_id: str, item: dict[str, Any]) -> None:
+        self.table.put_item(Item={"pk": f"PLAN#{sid}", "sk": plan_id, **item})
+
+    def get_plan(self, sid: str, plan_id: str) -> dict[str, Any] | None:
+        return self._get({"pk": f"PLAN#{sid}", "sk": plan_id})
+
+    def decide_plan(self, sid: str, plan_id: str, status: str) -> bool:
+        """Mark the plan approved or cancelled only while it is still pending, so it is decided once."""
+        try:
+            self.table.update_item(
+                Key={"pk": f"PLAN#{sid}", "sk": plan_id},
+                UpdateExpression="SET #s = :s",
+                ConditionExpression=Attr("status").eq("pending"),
+                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeValues={":s": status},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+            return False
+        return True
+
     def chat_since(self, sid: str, after: str | None) -> tuple[list[ChatMessageItem], str | None]:
         """Messages after the cursor (a sort key `<ts>#<id>`), oldest first, and the new cursor."""
         condition = Key("pk").eq(f"CHAT#{sid}")

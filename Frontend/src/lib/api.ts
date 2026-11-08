@@ -58,6 +58,29 @@ export interface ChatMessage {
   detail?: string; // admins only: what went wrong technically, when the assistant had to stop
   /** Set by the gateway when a send needed an account the staffer has not connected. */
   connect?: "gmail" | "x" | null;
+  /** Set on a plan card: the helper agents the assistant will use, waiting for the staffer to approve. */
+  plan?: ChatPlan | null;
+}
+
+export interface PlanTool {
+  name: string;
+  label: string;
+  outbound: boolean;
+}
+
+export interface PlanStep {
+  agent: "research" | "social" | "email";
+  label: string;
+  purpose: string;
+  tools: PlanTool[];
+  readOnly: boolean;
+  dropped: string[];
+}
+
+export interface ChatPlan {
+  id: string;
+  steps: PlanStep[];
+  status: "pending" | "approved" | "cancelled";
 }
 
 /** GET /sessions/{sid}/messages?after=<cursor> */
@@ -311,6 +334,12 @@ export const api = {
     request<Draft>(`/drafts/${encodeURIComponent(id)}`, { method: "PATCH", body: patch }),
   reviseDraft: (id: string, instruction: string) =>
     request<{ id: string; revising: true }>(`/drafts/${encodeURIComponent(id)}/revise`, { method: "POST", body: { instruction } }),
+  // Approve or cancel the assistant's plan card (staffer's own login; chat text never approves it)
+  decidePlan: (sid: string, planId: string, decision: "approve" | "cancel") =>
+    request<{ id: string; status: ChatPlan["status"] }>(
+      `/sessions/${encodeURIComponent(sid)}/plans/${encodeURIComponent(planId)}`,
+      { method: "POST", body: { decision } },
+    ),
   // Let the agent send this category alone for one session (staffer's own login; chat text never grants)
   grant: (sid: string, category: string) =>
     request<{ sid: string; category: string; label: string; scope: string }>(`/sessions/${encodeURIComponent(sid)}/grants`, {

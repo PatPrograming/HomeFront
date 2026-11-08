@@ -10,6 +10,7 @@ import AgentActivity from "./AgentActivity";
 import ReviewCards, { draftsByReply } from "./ReviewCards";
 import StartFailure from "./StartFailure";
 import ConnectPrompt, { isConnectable } from "./ConnectPrompt";
+import PlanCard from "./PlanCard";
 
 const SUGGESTIONS = [
   "Check my email, answer what you can and show me what I need to review.",
@@ -239,6 +240,7 @@ export default function ChatPanel({
                     <p className="bubble-text">{m.text}</p>
                     {admin && m.detail && <p className="msg-detail">Technical detail: {m.detail}</p>}
                       {m.connect && isConnectable(m.connect) && <ConnectPrompt provider={m.connect} />}
+                    {m.plan && sid && <PlanCard key={`${m.plan.id}-${m.plan.status}`} sid={sid} plan={m.plan} />}
                     {placed.get(m.id) && <ReviewCards drafts={placed.get(m.id)!} onOpen={review!.onOpen} onChanged={review!.onChanged} />}
                     <div className="msg-foot">
                       <time className="msg-time" dateTime={m.ts}>

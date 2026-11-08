@@ -59,6 +59,7 @@ export type Reason =
   | "invalid token"
   | "held for staff review"
   | "approved by staff"
+  | "cancelled by staff"
   | "edited by staff"
   | "needs connection"
   | "AWS credentials expired on the server"
