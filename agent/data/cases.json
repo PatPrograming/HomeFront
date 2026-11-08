@@ -1,0 +1,227 @@
+[
+  {
+    "id": "case-1",
+    "office": "rep-x",
+    "constituent": "Rosa Delgado",
+    "constituentEmail": "rosa.delgado@example.com",
+    "topic": "Pothole on Monroe St damaging cars",
+    "status": "open",
+    "notes": "Reported twice; city DPW ticket pending."
+  },
+  {
+    "id": "case-2",
+    "office": "rep-x",
+    "constituent": "Minh Nguyen",
+    "constituentEmail": "minh.nguyen@example.net",
+    "topic": "Passport renewal delay before family trip",
+    "status": "open",
+    "notes": "Travel date Dec 12. Needs expedite letter."
+  },
+  {
+    "id": "case-3",
+    "office": "rep-x",
+    "constituent": "Darnell Brooks",
+    "constituentEmail": "darnell.brooks@example.org",
+    "topic": "Veterans benefits claim stuck in review",
+    "status": "open",
+    "notes": "VA claim filed in June."
+  },
+  {
+    "id": "case-4",
+    "office": "rep-x",
+    "constituent": "Priya Raman",
+    "constituentEmail": "priya.raman@example.com",
+    "topic": "Small business grant eligibility",
+    "status": "open",
+    "notes": "Bakery, 6 employees."
+  },
+  {
+    "id": "case-5",
+    "office": "rep-x",
+    "constituent": "Tomas Herrera",
+    "constituentEmail": "tomas.herrera@example.net",
+    "topic": "Social Security payment missing",
+    "status": "open",
+    "notes": "Phone on file (408) 555-0142."
+  },
+  {
+    "id": "case-6",
+    "office": "rep-x",
+    "constituent": "Grace Liu",
+    "constituentEmail": "grace.liu@example.org",
+    "topic": "Noise from freeway construction at night",
+    "status": "open",
+    "notes": ""
+  },
+  {
+    "id": "case-7",
+    "office": "rep-x",
+    "constituent": "Samuel Okafor",
+    "constituentEmail": "samuel.okafor@example.com",
+    "topic": "Student loan forgiveness question",
+    "status": "closed",
+    "notes": "Answered with studentaid.gov link."
+  },
+  {
+    "id": "case-8",
+    "office": "rep-x",
+    "constituent": "Hannah Weiss",
+    "constituentEmail": "hannah.weiss@example.net",
+    "topic": "Medicare enrollment help for mother",
+    "status": "open",
+    "notes": ""
+  },
+  {
+    "id": "case-9",
+    "office": "rep-x",
+    "constituent": "Luis Ortega",
+    "constituentEmail": "luis.ortega@example.org",
+    "topic": "Flooding on Alvarez Ave after storms",
+    "status": "open",
+    "notes": "Asked about FEMA data."
+  },
+  {
+    "id": "case-10",
+    "office": "rep-x",
+    "constituent": "Ana Sofia Reyes",
+    "constituentEmail": "anasofia.reyes@example.com",
+    "topic": "Immigration case status inquiry",
+    "status": "open",
+    "notes": "Spanish speaker."
+  },
+  {
+    "id": "case-11",
+    "office": "rep-x",
+    "constituent": "Kevin Park",
+    "constituentEmail": "kevin.park@example.net",
+    "topic": "IRS refund delayed",
+    "status": "open",
+    "notes": ""
+  },
+  {
+    "id": "case-12",
+    "office": "rep-x",
+    "constituent": "Lan Tran",
+    "constituentEmail": "lan.tran@example.org",
+    "topic": "Senior housing waitlist",
+    "status": "open",
+    "notes": "Vietnamese speaker."
+  },
+  {
+    "id": "case-13",
+    "office": "rep-x",
+    "constituent": "Marcus Bell",
+    "constituentEmail": "marcus.bell@example.com",
+    "topic": "Complaint about post office closures",
+    "status": "open",
+    "notes": "Very frustrated; wants a meeting."
+  },
+  {
+    "id": "case-14",
+    "office": "rep-x",
+    "constituent": "Fatima Haddad",
+    "constituentEmail": "fatima.haddad@example.net",
+    "topic": "Request for flag flown over the Capitol",
+    "status": "closed",
+    "notes": "Order placed."
+  },
+  {
+    "id": "case-15",
+    "office": "rep-x",
+    "constituent": "Olivia Chen",
+    "constituentEmail": "olivia.chen@example.org",
+    "topic": "School lunch program funding",
+    "status": "open",
+    "notes": ""
+  },
+  {
+    "id": "case-16",
+    "office": "rep-x",
+    "constituent": "Jorge Mendez",
+    "constituentEmail": "jorge.mendez@example.com",
+    "topic": "Farmworker heat safety rules",
+    "status": "open",
+    "notes": ""
+  },
+  {
+    "id": "case-17",
+    "office": "rep-x",
+    "constituent": "Emily Novak",
+    "constituentEmail": "emily.novak@example.net",
+    "topic": "Broadband access in rural area",
+    "status": "open",
+    "notes": "Asked for grant data."
+  },
+  {
+    "id": "case-18",
+    "office": "rep-x",
+    "constituent": "Ibrahim Yusuf",
+    "constituentEmail": "ibrahim.yusuf@example.org",
+    "topic": "Tour request for D.C. visit",
+    "status": "closed",
+    "notes": ""
+  },
+  {
+    "id": "case-19",
+    "office": "rep-x",
+    "constituent": "Chloe Martin",
+    "constituentEmail": "chloe.martin@example.com",
+    "topic": "Wildfire smoke air quality data",
+    "status": "open",
+    "notes": ""
+  },
+  {
+    "id": "case-20",
+    "office": "rep-x",
+    "constituent": "Ethan Brown",
+    "constituentEmail": "ethan.brown@example.net",
+    "topic": "Disability benefits appeal",
+    "status": "open",
+    "notes": "SSN on file ends 0187."
+  },
+  {
+    "id": "case-21",
+    "office": "rep-y",
+    "constituent": "Nora Fitzgerald",
+    "constituentEmail": "nora.fitzgerald@example.org",
+    "topic": "Bridge repair funding",
+    "status": "open",
+    "notes": "Other office."
+  },
+  {
+    "id": "case-22",
+    "office": "rep-y",
+    "constituent": "Victor Alvarez",
+    "constituentEmail": "victor.alvarez@example.com",
+    "topic": "Military academy nomination",
+    "status": "open",
+    "notes": "Other office."
+  },
+  {
+    "id": "case-23",
+    "office": "rep-y",
+    "constituent": "Mei Sato",
+    "constituentEmail": "mei.sato@example.net",
+    "topic": "Visa interview scheduling",
+    "status": "open",
+    "notes": "Other office."
+  },
+  {
+    "id": "case-24",
+    "office": "rep-y",
+    "constituent": "Daniel Kim",
+    "constituentEmail": "daniel.kim@example.org",
+    "topic": "Water rates complaint",
+    "status": "open",
+    "notes": "Other office."
+  },
+  {
+    "id": "case-25",
+    "office": "rep-y",
+    "constituent": "Sara Lindqvist",
+    "constituentEmail": "sara.lindqvist@example.com",
+    "topic": "Social Security card replacement",
+    "status": "open",
+    "notes": "Other office."
+  }
+]

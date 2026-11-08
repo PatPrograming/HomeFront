@@ -7,11 +7,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app  # puts packages/*/src on sys.path
-from tests.helpers import auth
+from tests.helpers import ADMIN, ADMIN_USER, auth
 from tests.test_runner import response, text, tool_use, use_model  # noqa: F401 (fixture)
 
 from app.core.dynamodb import table  # noqa: E402
-from identity_gateway import app as gateway  # noqa: E402
+from identity_gateway import agents_api as gateway  # noqa: E402
 from identity_gateway.approvals import (  # noqa: E402
     ApprovalConflict,
     ApprovalRecord,
@@ -19,7 +19,9 @@ from identity_gateway.approvals import (  # noqa: E402
     MemoryApprovalRepository,
 )
 
-client = TestClient(app)
+# Every call signs in as an admin with our Cognito login (tests/helpers.py).
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login", "old_tables")
 ALICE = "00000000-0000-0000-0000-0000000a11ce"
 EMAIL = {"to": "resident@example.gov", "subject": "Town hall", "body": "Tuesday at 6pm."}
 
@@ -37,11 +39,12 @@ def _agent(headers=None, kind="email", **body):
 
 def _token(agent_id, headers=None):
     r = client.post("/api/v1/auth/token", json={"agent_id": agent_id}, headers=headers or {})
-    return {"Authorization": f"Bearer {r.json()['access_token']}"}, r.json()["session_id"]
+    # Our Cognito login (the owner's, or the client's default admin) plus the workload token.
+    return {**(headers or {}), "X-Agent-Token": r.json()["access_token"]}, r.json()["session_id"]
 
 
 def _call(tool, args, agent_headers):
-    return client.post("/api/v1/mcp/call", json={"tool": tool, "arguments": args}, headers=agent_headers)
+    return client.post("/api/v1/agents/tool-call", json={"tool": tool, "arguments": args}, headers=agent_headers)
 
 
 def _request(headers=None, tool="email.send", args=EMAIL, **agent_body):
@@ -107,7 +110,7 @@ def test_approve_executes_once_and_is_traced(approvals_backend):
     done = r.json()
     assert done["status"] == "executed"
     assert done["result"]["status"] == "simulated" and done["result"]["to"] == EMAIL["to"]
-    assert done["decided_by"] == "anonymous" and done["note"] == "Looks right"
+    assert done["decided_by"] == f"user:{ADMIN_USER}" and done["note"] == "Looks right"
     assert done["edited"] is False
 
     again = client.post(f"/api/v1/approvals/{aid}/approve", json={})
@@ -201,25 +204,25 @@ def test_other_users_cannot_see_or_decide():
     assert done["decided_by"] == f"user:{ALICE}"
 
 
-def test_approval_routes_require_login_when_configured(monkeypatch):
-    from app.core.config import get_settings
-
-    monkeypatch.setenv("AGENT_ADMIN_REQUIRES_LOGIN", "true")
-    get_settings.cache_clear()
-    try:
-        assert client.get("/api/v1/approvals").status_code == 401
-        assert client.post("/api/v1/approvals/apr_x/approve", json={}).status_code == 401
-    finally:
-        monkeypatch.undo()
-        get_settings.cache_clear()
+def test_approval_routes_require_login():
+    anonymous = TestClient(app)
+    assert anonymous.get("/api/v1/approvals").status_code == 401
+    assert anonymous.post("/api/v1/approvals/apr_x/approve", json={}).status_code == 401
+    maya = auth("maya", groups=("staffer",))
+    assert client.get("/api/v1/approvals", headers=maya).status_code == 200
+    assert client.post("/api/v1/approvals/apr_x/approve", json={}, headers=maya).status_code == 403
 
 
 def test_agent_token_cannot_approve_its_own_request():
     agent = _agent()
     headers, _ = _token(agent["agent_id"])
     out = _call("email.send", EMAIL, headers).json()
-    # An agent's workload token is not a user token: rejected outright.
-    r = client.post(f"/api/v1/approvals/{out['approval_id']}/approve", json={}, headers=headers)
+    # An agent's workload token is not a user login: rejected outright.
+    r = TestClient(app).post(
+        f"/api/v1/approvals/{out['approval_id']}/approve",
+        json={},
+        headers={"Authorization": f"Bearer {headers['X-Agent-Token']}"},
+    )
     assert r.status_code == 401
 
 

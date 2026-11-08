@@ -1,7 +1,7 @@
 // "Can this agent actually deliver?": SES sender verification, sandbox recipients,
 // IAM permissions and a real test send. Every AWS action here is a button.
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../lib/api.js";
+import { agentsApi as api } from "../lib/agentsApi";
 import {
   describeError,
   type Agent,

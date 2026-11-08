@@ -1,64 +1,74 @@
 import os
 
-# Deterministic settings, independent of any developer Backend/.env (env vars
-# take precedence over the .env file). Must run before the app is imported.
-from tests.helpers import APP_CLIENT_ID, JWKS, JWKS_URL, REGION, USER_POOL_ID
+# Empty Cognito ids beat a real .env file, so tests never fetch the real pool's keys.
+# (Values already exported in the shell still win: run the suite from a clean shell.)
+# Tests that need a working login opt in with the `cognito_login` fixture below.
+os.environ.setdefault("COGNITO_USER_POOL_ID", "")
+os.environ.setdefault("COGNITO_STAFF_CLIENT_ID", "")
+os.environ.setdefault("COGNITO_AGENT_CLIENT_ID", "")
 
-# TEST_DYNAMODB_ENDPOINT_URL=http://localhost:8000 runs the suite against
-# DynamoDB Local (scripts/run-dynamodb-local.sh) instead of moto.
-_REAL_DYNAMO = os.environ.get("TEST_DYNAMODB_ENDPOINT_URL", "")
-
+# The teammates' agent API (identity_gateway.agents_api): fake AWS credentials, an
+# in-memory agent store, no Bedrock runner and never a real email sender, whatever a
+# developer .env says (env vars beat the .env file). Must run before the app is imported.
 os.environ.update(
     {
-        "COGNITO_USER_POOL_ID": USER_POOL_ID,
-        "COGNITO_APP_CLIENT_ID": APP_CLIENT_ID,
-        "AWS_REGION": REGION,
         "AWS_ACCESS_KEY_ID": "testing",
         "AWS_SECRET_ACCESS_KEY": "testing",
         "AWS_SESSION_TOKEN": "testing",
+        "AWS_REGION": "us-east-1",
         "DYNAMODB_TABLE_PREFIX": "test-",
-        "DYNAMODB_ENDPOINT_URL": _REAL_DYNAMO,
+        "DYNAMODB_ENDPOINT_URL": "",
         "AGENT_STORE": "memory",
-        "AGENT_ADMIN_REQUIRES_LOGIN": "false",
         "BEDROCK_REGION": "",
         "AWS_BEARER_TOKEN_BEDROCK": "",
-        # Never a real sender in tests: apply_aws_env() only fills unset keys,
-        # so these blanks keep a developer .env's sender out.
         "HOMEFRONT_EMAIL_FROM": "",
         "HOMEFRONT_SES_REGION": "",
         "HOMEFRONT_LIVE_DATAGOV": "0",
+        "HOMEFRONT_AUTOSTART_AGENT": "0",  # never start a real agent process
     }
 )
 os.environ.pop("AWS_PROFILE", None)
 
+import jwt  # noqa: E402
 import pytest  # noqa: E402
 
-import jwt  # noqa: E402
-from moto import mock_aws  # noqa: E402
-
-# In-memory DynamoDB for the whole session (unless targeting DynamoDB Local).
-_aws = None if _REAL_DYNAMO else mock_aws()
-if _aws:
-    _aws.start()
+from tests.helpers import APP_CLIENT_ID, JWKS, JWKS_URL, USER_POOL_ID  # noqa: E402
 
 
-def _fake_fetch_data(self):
-    # Serve the test pool's JWKS instead of calling Cognito, and make sure the
-    # verifier asked for the right pool's URL.
-    assert self.uri == JWKS_URL, self.uri
-    return JWKS
+@pytest.fixture
+def cognito_login(monkeypatch):
+    """Point our Cognito check (app.core.cognito) at the test pool in tests/helpers.py:
+    tokens from `helpers.auth()` verify, nothing reaches AWS."""
+    from app.core import cognito
+    from app.core.config import get_settings
+
+    def fake_fetch_data(self):
+        assert self.uri == JWKS_URL, self.uri
+        return JWKS
+
+    monkeypatch.setattr(jwt.PyJWKClient, "fetch_data", fake_fetch_data)
+    monkeypatch.setenv("COGNITO_USER_POOL_ID", USER_POOL_ID)
+    monkeypatch.setenv("COGNITO_STAFF_CLIENT_ID", APP_CLIENT_ID)
+    get_settings.cache_clear()
+    cognito._jwks_client.cache_clear()
+    yield
+    get_settings.cache_clear()
+    cognito._jwks_client.cache_clear()
 
 
-jwt.PyJWKClient.fetch_data = _fake_fetch_data
+@pytest.fixture
+def old_tables():
+    """moto DynamoDB with the teammates' tables (agents, audit, approvals), for the
+    tests that exercise their DynamoDB repositories."""
+    from moto import mock_aws
 
-from app.core.dynamodb import create_tables  # noqa: E402
+    from app.core import dynamodb
 
-create_tables()
-
-
-def pytest_unconfigure(config):
-    if _aws:
-        _aws.stop()
+    with mock_aws():
+        dynamodb.dynamodb_resource.cache_clear()  # a resource made outside this mock
+        dynamodb.create_tables()
+        yield
+    dynamodb.dynamodb_resource.cache_clear()
 
 
 class _NoAws:
@@ -75,10 +85,13 @@ class _NoAws:
 
 @pytest.fixture(autouse=True)
 def _no_real_email(monkeypatch):
-    """No test can reach real SES/IAM/STS, whatever .env says. Tests that need
-    them patch handlers._ses_client / email_admin._aws_client themselves."""
-    from mcp_tools import handlers
+    """No test can reach real SES/IAM/STS. Tests that need them patch
+    handlers._ses_client / email_admin._aws_client themselves."""
+    from app.agent_iam import ensure_package_paths
+
+    ensure_package_paths()
     from identity_gateway import email_admin
+    from mcp_tools import handlers
 
     monkeypatch.delenv("HOMEFRONT_EMAIL_FROM", raising=False)
     monkeypatch.setattr(handlers, "_ses_client", lambda quick=False: _NoAws())

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Hero from "../components/Hero/Hero";
-import { api } from "../lib/api.js";
+import { api } from "../lib/api";
 import "./Home.css";
 
 // "Agentic Outreach / for Federal Agencies." — second line is accented in the hero.

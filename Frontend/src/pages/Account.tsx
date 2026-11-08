@@ -1,68 +1,64 @@
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
-import { api } from "../lib/api.js";
-import { useAuth } from "../lib/AuthProvider";
+import { api, type Me } from "../lib/api";
+import { useSession, useAuth } from "../lib/AuthProvider";
 import "./Auth.css";
+import "./Console.css";
 
-type Profile = {
-  id: string;
-  username?: string | null;
-  full_name?: string | null;
-  avatar_url?: string | null;
-  created_at?: string;
-  updated_at?: string;
-};
-
+// Who the API says you are (GET /api/v1/me checks your Cognito token): the WP1 "email + group" check.
+// Read-only: profiles live in Cognito, not in this app.
 export default function Account() {
-  const { user, signOut } = useAuth();
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const { signOut } = useAuth();
+  const session = useSession();
+  const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .me()
-      .then(setProfile)
-      .catch((e) => setError(e.message));
+      .then(setMe)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
+
+  const dash = <span className="muted">—</span>;
 
   return (
     <Layout>
       <div className="auth">
         <section className="auth-card auth-card-wide">
           <h1>Account</h1>
-          <p className="auth-sub">
-            Signed in as <strong>{user?.email}</strong>
-          </p>
           {error && (
-            <p role="alert" className="alert alert-error">
-              Backend: {error}
+            <p className="alert alert-error" role="alert">
+              The API could not confirm your sign-in: {error}
             </p>
           )}
-          {profile && (
-            <dl className="auth-details">
-              {profile.full_name && (
-                <>
-                  <dt>Name</dt>
-                  <dd>{profile.full_name}</dd>
-                </>
-              )}
-              {profile.username && (
-                <>
-                  <dt>Username</dt>
-                  <dd>{profile.username}</dd>
-                </>
-              )}
-              {profile.created_at && (
-                <>
-                  <dt>Member since</dt>
-                  <dd>{new Date(profile.created_at).toLocaleDateString()}</dd>
-                </>
-              )}
-            </dl>
-          )}
-          <button className="btn btn-outline" onClick={signOut}>
-            Sign out
-          </button>
+          <dl className="facts">
+            <div>
+              <dt>Username</dt>
+              <dd>{me?.username ?? dash}</dd>
+            </div>
+            <div>
+              <dt>Email</dt>
+              <dd>{me?.email ?? dash}</dd>
+            </div>
+            <div>
+              <dt>Groups</dt>
+              <dd>{me ? me.groups.join(", ") || "none" : dash}</dd>
+            </div>
+            <div className="sid">
+              <dt>Cognito sub</dt>
+              <dd>{me ? <code>{me.sub}</code> : dash}</dd>
+            </div>
+            <div>
+              <dt>Signed in until</dt>
+              <dd>{new Date(session.expiresAt).toLocaleTimeString([], { hour12: false })}</dd>
+            </div>
+          </dl>
+          <div className="login-actions">
+            <button type="button" className="btn btn-outline" onClick={signOut}>
+              Sign out
+            </button>
+          </div>
         </section>
       </div>
     </Layout>

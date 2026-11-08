@@ -1,0 +1,107 @@
+"""Authorization: ask Amazon Verified Permissions (Cedar) whether a tool call is allowed.
+
+The gateway builds an `AuthzRequest` from the token and DynamoDB, never from
+tool input. `AvpAuthorizer` is the real one. `StarterPolicyAuthorizer` is a
+test double that applies the same six starter policies in plain Python.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+from mandate_contracts import cedar
+
+
+@dataclass(frozen=True)
+class AuthzRequest:
+    agent_id: str
+    office: str  # the agent's office, from the SESSION item
+    mode: str  # "official" or "campaign", from the SESSION item
+    tool: str
+    resource: dict[str, Any]  # cedar.case_entity(...) or cedar.tool_entity(...)
+    context: dict[str, Any]  # cedar.build_context(...): every key always present
+
+
+@dataclass(frozen=True)
+class AuthzDecision:
+    allowed: bool
+    policy_ids: list[str] = field(default_factory=list)  # readable names, e.g. "forbid-bulk-export"
+
+
+class Authorizer(Protocol):
+    def is_authorized(self, req: AuthzRequest) -> AuthzDecision: ...
+
+
+class AvpAuthorizer:
+    def __init__(self, client: Any, policy_store_id: str, policy_names: dict[str, str]) -> None:
+        self.client = client
+        self.policy_store_id = policy_store_id
+        self.policy_names = policy_names  # AVP's generated policy id -> readable name
+
+    @classmethod
+    def from_env(cls) -> "AvpAuthorizer":
+        import boto3
+
+        store_id = os.environ.get("AVP_POLICY_STORE_ID")
+        if not store_id:
+            raise RuntimeError("AVP_POLICY_STORE_ID is not set (run Backend/infra/setup.sh)")
+        names = json.loads(os.environ.get("AVP_POLICY_NAMES") or "{}")
+        client = boto3.client("verifiedpermissions", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+        return cls(client, store_id, names)
+
+    def is_authorized(self, req: AuthzRequest) -> AuthzDecision:
+        response = self.client.is_authorized(
+            policyStoreId=self.policy_store_id,
+            principal={"entityType": f"{cedar.NAMESPACE}::Agent", "entityId": req.agent_id},
+            action=cedar.action(req.tool),
+            resource=req.resource["identifier"],
+            context=req.context,
+            entities={"entityList": [cedar.agent_entity(req.agent_id, req.office, req.mode), req.resource]},
+        )
+        ids = [self.policy_names.get(p["policyId"], p["policyId"]) for p in response.get("determiningPolicies", [])]
+        # A Cedar evaluation error means some policy was skipped; a skipped forbid would
+        # fail open, so any error is a deny.
+        allowed = response.get("decision") == "ALLOW" and not response.get("errors")
+        return AuthzDecision(allowed=allowed, policy_ids=ids)
+
+
+def _attr(entity_or_context: dict[str, Any], key: str) -> Any:
+    """Read a value out of AVP's typed-attribute format, e.g. {"string": "rep-x"} -> "rep-x"."""
+    typed = entity_or_context[key]
+    return next(iter(typed.values()))
+
+
+class StarterPolicyAuthorizer:
+    """Test double: the six starter policies (packages/mandate-contracts/policies) in Python.
+
+    Cedar semantics: any matching forbid wins; otherwise allow if a permit matches;
+    otherwise deny with no determining policy.
+    """
+
+    def is_authorized(self, req: AuthzRequest) -> AuthzDecision:
+        ctx = req.context["contextMap"]
+        delegator_active = _attr(ctx, "delegatorActive")
+        account = _attr(ctx, "account")
+
+        forbids = []
+        if req.tool == "records_bulk_export":
+            forbids.append("forbid-bulk-export")
+        if req.tool == "social_post" and req.mode == "official" and account == "campaign":
+            forbids.append("forbid-campaign-post")
+        if forbids:
+            return AuthzDecision(False, forbids)
+
+        permits = []
+        if req.tool == "case_read" and delegator_active:
+            if _attr(req.resource["attributes"], "office") == req.office:
+                permits.append("case-read-same-office")
+        if req.tool in ("inbox_read", "datagov_search", "web_scrape") and delegator_active:
+            permits.append("read-tools")
+        if req.tool == "email_send" and delegator_active and _attr(ctx, "recipientKnown"):
+            permits.append("email-send-known-recipient")
+        if req.tool == "social_post" and delegator_active and account == "official":
+            permits.append("social-post-official")
+        return AuthzDecision(bool(permits), permits)

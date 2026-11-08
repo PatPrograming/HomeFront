@@ -10,11 +10,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app  # puts packages/*/src on sys.path
+from tests.helpers import ADMIN
 
 from mcp_tools import share_links  # noqa: E402
 from mcp_tools.share_links import ShareLinkError, build_post_link, build_reply_link  # noqa: E402
 
-client = TestClient(app)
+# Every call signs in as an admin with our Cognito login (tests/helpers.py).
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login", "old_tables")
 LINK = "https://www.agency.gov/flood-update"
 
 
@@ -154,17 +157,18 @@ def _social_agent():
     assert r.status_code == 201, r.text
     agent = r.json()
     token = client.post("/api/v1/auth/token", json={"agent_id": agent["agent_id"]}).json()
-    return agent, {"Authorization": f"Bearer {token['access_token']}"}, token["session_id"]
+    return agent, {"X-Agent-Token": token["access_token"]}, token["session_id"]
 
 
 def _call(headers, tool, args):
-    return client.post("/api/v1/mcp/call", json={"tool": tool, "arguments": args}, headers=headers)
+    return client.post("/api/v1/agents/tool-call", json={"tool": tool, "arguments": args}, headers=headers)
 
 
 def test_tool_schema_lists_only_supported_platforms():
-    tools = {t["name"]: t for t in client.get("/api/v1/tools").json()}
+    from mcp_tools.registry import get_tool
+
     for name in ("social.post", "social.reply"):
-        enum = tools[name]["input_schema"]["properties"]["platform"]["enum"]
+        enum = get_tool(name).input_schema["properties"]["platform"]["enum"]
         assert enum == ["x", "bluesky", "reddit", "facebook", "linkedin"]
 
 

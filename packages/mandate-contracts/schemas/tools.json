@@ -1,0 +1,156 @@
+[
+  {
+    "name": "inbox_read",
+    "description": "Read one email from the office's public inbox.",
+    "inputSchema": {
+      "properties": {
+        "email_id": {
+          "description": "ID of the email to read, e.g. 'email-3'.",
+          "title": "Email Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email_id"
+      ],
+      "title": "InboxReadInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "case_read",
+    "description": "Read a constituent case belonging to this office.",
+    "inputSchema": {
+      "properties": {
+        "case_id": {
+          "description": "ID of the constituent case, e.g. 'case-7'.",
+          "title": "Case Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id"
+      ],
+      "title": "CaseReadInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "datagov_search",
+    "description": "Search public datasets on api.data.gov.",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "description": "Search terms for api.data.gov datasets.",
+          "title": "Query",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "title": "DatagovSearchInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "web_scrape",
+    "description": "Fetch the text of a public web page.",
+    "inputSchema": {
+      "properties": {
+        "url": {
+          "description": "Public URL to fetch.",
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "WebScrapeInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "email_send",
+    "description": "Send an email to a constituent on file or a .gov address.",
+    "inputSchema": {
+      "properties": {
+        "to": {
+          "description": "Recipient email address.",
+          "title": "To",
+          "type": "string"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        },
+        "body": {
+          "title": "Body",
+          "type": "string"
+        },
+        "in_reply_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID of the inbox email this replies to, e.g. 'email-7'.",
+          "title": "In Reply To"
+        }
+      },
+      "required": [
+        "to",
+        "subject",
+        "body"
+      ],
+      "title": "EmailSendInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "social_post",
+    "description": "Publish a post on the office's official account.",
+    "inputSchema": {
+      "properties": {
+        "account": {
+          "description": "Which office account to post from, e.g. 'official'.",
+          "title": "Account",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "account",
+        "text"
+      ],
+      "title": "SocialPostInput",
+      "type": "object"
+    }
+  },
+  {
+    "name": "records_bulk_export",
+    "description": "Export constituent records in bulk.",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "description": "Which records to export.",
+          "title": "Query",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "title": "RecordsBulkExportInput",
+      "type": "object"
+    }
+  }
+]

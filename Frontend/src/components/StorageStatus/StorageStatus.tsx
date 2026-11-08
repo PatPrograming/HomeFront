@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, ApiError } from "../../lib/api.js";
+import { ApiError } from "../../lib/api";
+import { agentsApi as api } from "../../lib/agentsApi";
 import { isDurable, type StorageStatus as Status } from "../../lib/agents";
 import "./StorageStatus.css";
 

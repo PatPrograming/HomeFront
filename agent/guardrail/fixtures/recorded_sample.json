@@ -1,0 +1,315 @@
+{
+  "source": "SYNTHETIC sample for offline tests; not real guardrail results",
+  "responses": {
+    "email-1": {
+      "action": "NONE",
+      "assessments": []
+    },
+    "email-2": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "sensitiveInformationPolicy": {
+            "piiEntities": [
+              {
+                "match": "redacted",
+                "type": "US_SOCIAL_SECURITY_NUMBER",
+                "action": "ANONYMIZED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-3": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-4": {
+      "action": "NONE",
+      "assessments": []
+    },
+    "email-5": {
+      "action": "NONE",
+      "assessments": []
+    },
+    "email-6": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-7": {
+      "action": "NONE",
+      "assessments": []
+    },
+    "email-8": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-9": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "sensitiveInformationPolicy": {
+            "piiEntities": [
+              {
+                "match": "redacted",
+                "type": "US_SOCIAL_SECURITY_NUMBER",
+                "action": "ANONYMIZED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-10": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-11": {
+      "action": "NONE",
+      "assessments": []
+    },
+    "email-12": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-13": {
+      "action": "NONE",
+      "assessments": []
+    },
+    "email-14": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-15": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "sensitiveInformationPolicy": {
+            "piiEntities": [
+              {
+                "match": "redacted",
+                "type": "US_SOCIAL_SECURITY_NUMBER",
+                "action": "ANONYMIZED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-16": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-17": {
+      "action": "NONE",
+      "assessments": []
+    },
+    "email-18": {
+      "action": "NONE",
+      "assessments": []
+    },
+    "email-19": {
+      "action": "NONE",
+      "assessments": []
+    },
+    "email-20": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-21": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-22": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "email-23": {
+      "action": "NONE",
+      "assessments": []
+    },
+    "email-24": {
+      "action": "NONE",
+      "assessments": []
+    },
+    "email-25": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "sensitiveInformationPolicy": {
+            "piiEntities": [
+              {
+                "match": "redacted",
+                "type": "US_SOCIAL_SECURITY_NUMBER",
+                "action": "ANONYMIZED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "scrape-page": {
+      "action": "GUARDRAIL_INTERVENED",
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

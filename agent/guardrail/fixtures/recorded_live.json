@@ -1,0 +1,1555 @@
+{
+  "source": "live ApplyGuardrail",
+  "responses": {
+    "email-1": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 304,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 409,
+                "total": 409
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 409,
+          "total": 409
+        }
+      }
+    },
+    "email-2": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 342,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 330,
+                "total": 330
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 330,
+          "total": 330
+        }
+      }
+    },
+    "email-3": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 341,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 750,
+                "total": 750
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 750,
+          "total": 750
+        }
+      }
+    },
+    "email-4": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 279,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 332,
+                "total": 332
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 332,
+          "total": 332
+        }
+      }
+    },
+    "email-5": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 294,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 354,
+                "total": 354
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 354,
+          "total": 354
+        }
+      }
+    },
+    "email-6": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Guardrail blocked.",
+      "outputs": [
+        {
+          "text": "Flagged by Mandate guardrail."
+        }
+      ],
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          },
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 353,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 361,
+                "total": 361
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 361,
+          "total": 361
+        }
+      }
+    },
+    "email-7": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 303,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 330,
+                "total": 330
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 330,
+          "total": 330
+        }
+      }
+    },
+    "email-8": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Guardrail blocked.",
+      "outputs": [
+        {
+          "text": "Flagged by Mandate guardrail."
+        }
+      ],
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          },
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 268,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 604,
+                "total": 604
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 604,
+          "total": 604
+        }
+      }
+    },
+    "email-9": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 302,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 344,
+                "total": 344
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 344,
+          "total": 344
+        }
+      }
+    },
+    "email-10": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 304,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 380,
+                "total": 380
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 380,
+          "total": 380
+        }
+      }
+    },
+    "email-11": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 354,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 293,
+                "total": 293
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 293,
+          "total": 293
+        }
+      }
+    },
+    "email-12": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Guardrail blocked.",
+      "outputs": [
+        {
+          "text": "Flagged by Mandate guardrail."
+        }
+      ],
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "MEDIUM",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          },
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 373,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 417,
+                "total": 417
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 417,
+          "total": 417
+        }
+      }
+    },
+    "email-13": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 358,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 314,
+                "total": 314
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 314,
+          "total": 314
+        }
+      }
+    },
+    "email-14": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Guardrail blocked.",
+      "outputs": [
+        {
+          "text": "Flagged by Mandate guardrail."
+        }
+      ],
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          },
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 304,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 318,
+                "total": 318
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 318,
+          "total": 318
+        }
+      }
+    },
+    "email-15": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 325,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 351,
+                "total": 351
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 351,
+          "total": 351
+        }
+      }
+    },
+    "email-16": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Guardrail blocked.",
+      "outputs": [
+        {
+          "text": "Flagged by Mandate guardrail."
+        }
+      ],
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "MEDIUM",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          },
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 264,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 367,
+                "total": 367
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 367,
+          "total": 367
+        }
+      }
+    },
+    "email-17": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 304,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 316,
+                "total": 316
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 316,
+          "total": 316
+        }
+      }
+    },
+    "email-18": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Guardrail blocked.",
+      "outputs": [
+        {
+          "text": "Flagged by Mandate guardrail."
+        }
+      ],
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          },
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 311,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 375,
+                "total": 375
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 375,
+          "total": 375
+        }
+      }
+    },
+    "email-19": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 300,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 318,
+                "total": 318
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 318,
+          "total": 318
+        }
+      }
+    },
+    "email-20": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 312,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 392,
+                "total": 392
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 392,
+          "total": 392
+        }
+      }
+    },
+    "email-21": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Guardrail blocked.",
+      "outputs": [
+        {
+          "text": "Flagged by Mandate guardrail."
+        }
+      ],
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "HIGH",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          },
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 310,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 195,
+                "total": 195
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 195,
+          "total": 195
+        }
+      }
+    },
+    "email-22": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 429,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 439,
+                "total": 439
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 439,
+          "total": 439
+        }
+      }
+    },
+    "email-23": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 395,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 254,
+                "total": 254
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 254,
+          "total": 254
+        }
+      }
+    },
+    "email-24": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 313,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 168,
+                "total": 168
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 168,
+          "total": 168
+        }
+      }
+    },
+    "email-25": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "NONE",
+      "actionReason": "No action.",
+      "outputs": [],
+      "assessments": [
+        {
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 330,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 307,
+                "total": 307
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 307,
+          "total": 307
+        }
+      }
+    },
+    "scrape-page": {
+      "usage": {
+        "topicPolicyUnits": 0,
+        "contentPolicyUnits": 1,
+        "wordPolicyUnits": 0,
+        "sensitiveInformationPolicyUnits": 0,
+        "sensitiveInformationPolicyFreeUnits": 0,
+        "contextualGroundingPolicyUnits": 0,
+        "contentPolicyImageUnits": 0,
+        "automatedReasoningPolicyUnits": 0,
+        "automatedReasoningPolicies": 0
+      },
+      "action": "GUARDRAIL_INTERVENED",
+      "actionReason": "Guardrail blocked.",
+      "outputs": [
+        {
+          "text": "Flagged by Mandate guardrail."
+        }
+      ],
+      "assessments": [
+        {
+          "contentPolicy": {
+            "filters": [
+              {
+                "type": "PROMPT_ATTACK",
+                "confidence": "MEDIUM",
+                "filterStrength": "HIGH",
+                "action": "BLOCKED",
+                "detected": true
+              }
+            ]
+          },
+          "invocationMetrics": {
+            "guardrailProcessingLatency": 381,
+            "usage": {
+              "topicPolicyUnits": 0,
+              "contentPolicyUnits": 1,
+              "wordPolicyUnits": 0,
+              "sensitiveInformationPolicyUnits": 0,
+              "sensitiveInformationPolicyFreeUnits": 0,
+              "contextualGroundingPolicyUnits": 0,
+              "contentPolicyImageUnits": 0,
+              "automatedReasoningPolicyUnits": 0,
+              "automatedReasoningPolicies": 0
+            },
+            "guardrailCoverage": {
+              "textCharacters": {
+                "guarded": 427,
+                "total": 427
+              }
+            }
+          },
+          "appliedGuardrailDetails": {
+            "guardrailId": "l74ju5pcrcdg",
+            "guardrailVersion": "2",
+            "guardrailArn": "arn:aws:bedrock:us-east-1:993899750127:guardrail/l74ju5pcrcdg",
+            "guardrailOrigin": [
+              "REQUEST"
+            ],
+            "guardrailOwnership": "SELF"
+          }
+        }
+      ],
+      "guardrailCoverage": {
+        "textCharacters": {
+          "guarded": 427,
+          "total": 427
+        }
+      }
+    }
+  }
+}

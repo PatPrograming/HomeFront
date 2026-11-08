@@ -20,7 +20,7 @@
 }
 
 .mission {
-  font-size: clamp(40px, 5.2vw, 64px);
+  font-size: clamp(30px, 4vw, 48px);
   line-height: 1.05;
   letter-spacing: -0.025em;
 }
@@ -45,6 +45,7 @@
 .hero-buttons {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start; /* keep sibling buttons from stretching when the menu opens */
   gap: 12px;
   margin-top: 8px;
 }
@@ -52,6 +53,56 @@
 .hero-buttons .btn {
   min-height: 52px;
   padding-inline: 28px;
+}
+
+/* "Reach out!" button with hamburger dropdown */
+.reach {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 0 1 auto;
+  min-width: 200px; /* wider than the label alone to make room for the hamburger */
+}
+
+.hero-buttons .reach-toggle {
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+}
+
+.reach-menu {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  background: var(--blue-700);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+}
+
+.reach-menu a {
+  display: block;
+  padding: 14px 28px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.reach-menu li + li a {
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.reach-menu a:hover,
+.reach-menu a:focus-visible {
+  background: var(--blue-800);
+  outline: none;
+}
+
+@media (max-width: 480px) {
+  .reach {
+    flex: 1 1 100%;
+  }
 }
 
 /* Decorative preview of the composer */

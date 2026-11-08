@@ -1,5 +1,10 @@
 # HomeFront Architecture
 
+> **Merge note (Lead, 2026-11-07):** this draft describes the teammates' pre-merge design (Amplify sign-in,
+> profiles and agents tables, per-tool grants, `/auth/token`, the Bedrock runner). Those routes are not part of
+> the merged app. The enforced path is the mandate broker + `/mcp` + `guarded()`: see
+> `packages/identity-gateway/README.md` and `docs/LANES.md`.
+
 > Status: **Draft template**. Sections marked `TODO` still need decisions from the team.
 > Last updated: 2026-11-07 (moved from Supabase to Amazon Cognito + DynamoDB)
 
@@ -141,16 +146,12 @@ The activity log: one item per gateway decision or agent change (`identity_gatew
 ### `approvals` (pk `id`)
 Human approval for tools with `requires_hitl` (`email.send`, `social.post`, `social.reply`; `identity_gateway/approvals.py`, ATLAS AML.M0029). The gateway does not run these tools on a call: it stores a `pending` approval and returns `pending_approval` to the agent. A signed-in user approves (optionally editing the arguments, which must still match the tool schema) or rejects through `/approvals/{id}/approve|reject`. Approval re-checks the grant, the agent type and `active`, so a revoke after the request blocks it. Status leaves `pending` exactly once (conditional write), so a request can't be sent twice; requests expire after 24 hours. `/approvals` is a user-only route: an agent's workload token can't approve its own request.
 
-<<<<<<< Updated upstream
-`GET /status` reports which store (DynamoDB or memory) agents, the activity log and approvals are using, plus any startup fallback warnings.
-=======
 ### `reports` (pk `agent_id`, sk `<ts>#<id>`)
 Markdown reports agents save with `report.save` (`identity_gateway/reports.py`): `report_id`, `title` (≤ 200), `body` (≤ 50 000), `trace_id`, `run_id`, `created_at`. The agent id comes from the caller's workload token, never from arguments. Listed newest-first through `GET /agents/{id}/reports`, owner-scoped like other `/agents` routes.
 
 **Social posts are share links, not API posts.** HomeFront holds no social logins. After a person approves a `social.post` or `social.reply`, the handler (`packages/mcp-tools/src/mcp_tools/share_links.py`) builds a prefilled compose URL for X, Bluesky, Reddit, Facebook or LinkedIn. The person opens it in their own signed-in browser and presses Post. The result is `status: "handed_off"`, `published: false`, and the activity log says so: HomeFront can't tell whether the post went out. X, Bluesky and Reddit carry the text; Facebook and LinkedIn carry only a link; images can't be attached to any. Instagram has no compose link and is rejected (`platform_not_supported`). The gateway builds every URL from a fixed host, and a reply target is used only if it is already on that platform's domain. For unattended posting you would need per-platform OAuth instead.
 
 `GET /status` reports which store (DynamoDB or memory) agents, the activity log, approvals and reports are using, plus any startup fallback warnings.
->>>>>>> Stashed changes
 
 ### Domain tables
 TODO: list HomeFront's own tables. Add each to `TABLES` in `Backend/app/core/dynamodb.py` **and** the CloudFormation template (plus the IAM policy). Every item that belongs to a user should carry the owner's `sub`, and every access should check it.

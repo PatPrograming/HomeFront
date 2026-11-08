@@ -2,71 +2,41 @@
 
 AWS × A10 Hackathon — **Prompt 1: Agentic Identity**
 
-Government-agency agents that email, post/reply on social, scrape the web, and query **api.data.gov** — behind **Amazon Cognito** user auth (data in **DynamoDB**) plus **agent workload identity**, fine-grained MCP tool grants, mid-task revoke, and **MITRE ATLAS** labels on every allow/deny.
+Government-office AI agents that read the inbox and cases, query **api.data.gov**, scrape the web, send email and post to social, each acting **for one staffer** under a short-lived **mandate token**. Staff sign in with **Amazon Cognito**; every MCP tool call is checked live against **DynamoDB** (session and staffer still active) and **Amazon Verified Permissions** (Cedar), scanned by Bedrock Guardrails, and logged with **MITRE ATLAS** labels. Fail closed everywhere.
 
 ## What the demo shows
 
-1. Authenticate an agency agent (workload token)
-2. Allow selected MCP tools (`web.scrape`, `datagov.search`, `email.send`, …)
-3. Revoke a grant mid-task
-4. Block the next call — response tagged **`AML.T0053`** / **`AML.M0028`**
+1. **Authenticate an agent:** Maya signs in (Cognito), presses **Start assistant** (`POST /api/v1/sessions`); the agent uses its own Cognito client credentials to get a 15-minute mandate token for that session (`POST /api/v1/sessions/{sid}/mandate`).
+2. **Allow selected MCP tools:** the agent calls the 7 tools at `/mcp` with that token; Cedar allows routine work and denies bulk export, unknown recipients and campaign posts.
+3. **Revoke mid-task:** the Chief of Staff presses **Offboard** (`POST /api/v1/staff/{id}/offboard`).
+4. **Block subsequent requests:** the agent's very next call is denied (`session revoked / delegator inactive`) and shows up in the live feed (`GET /api/v1/events`).
 
-ATLAS data is **vendored** from [mitre-atlas/atlas-data](https://github.com/mitre-atlas/atlas-data) (Agentic AI subset). Runtime does not call MITRE’s authoring API.
+There is no route that issues an agent token on its own. How the gateway decides is in [`packages/identity-gateway/README.md`](packages/identity-gateway/README.md); lane setup in [`docs/LANES.md`](docs/LANES.md).
+
+ATLAS data is **vendored** from [mitre-atlas/atlas-data](https://github.com/mitre-atlas/atlas-data) (Agentic AI subset). Runtime does not call MITRE's authoring API.
 
 ## Quick start
 
 ```bash
-cp .env.example .env   # once — fill Cognito (from deploy), DATA_GOV_API_KEY, optional AWS/Bedrock
+cp .env.example .env   # once: public Cognito ids are filled in; add MANDATE_SIGNING_SECRET, AVP ids, DATA_GOV_API_KEY
 
 chmod +x scripts/*.sh
-./scripts/run-gateway.sh    # API on :8080
-./scripts/run-frontend.sh   # main app on :3000
+./scripts/run-gateway.sh    # API + /mcp on :8080
+./scripts/run-frontend.sh   # console on :3000 (VITE_MOCK_API=1 for a no-backend demo)
 ```
 
-### Demo (inside the product UI)
-
-1. Open http://localhost:3000 → **Sign in** (or sign up) when Cognito is configured
-2. Nav → **Monitoring** (http://localhost:3000/monitoring)
-3. **Authenticate agent** → **2. datagov.search** (live Catalog data) → **3. email.send**
-4. **4. Revoke email.send** → **5. Retry** → blocked as **`AML.T0053`** / **`AML.M0028`**
-
-- API docs: http://127.0.0.1:8080/docs  
-- Everything is under `/api/v1`; Frontend proxies `/api` to :8080  
-- User API: `/api/v1/home`, `/api/v1/health`, `/api/v1/me` (Cognito ID token)  
-- Agent IAM: `/api/v1/auth/token`, `/api/v1/mcp/call`, `/api/v1/atlas/*`, `/api/v1/agents/...`  
-- Set `AGENT_ADMIN_REQUIRES_LOGIN=true` in `.env` to require a Cognito login for `/agents*`, `/auth/token` and `/audit`  
-- Agents are owner-scoped: a signed-in user sees and manages only their own agents plus ownerless demo agents (like `agent-comms-01`). Without a login, only the demo agents are reachable  
-- Set `AGENT_STORE=dynamodb` to keep agents in the `<prefix>agents` DynamoDB table instead of memory  
+- API docs: http://127.0.0.1:8080/docs. Everything except `/mcp` is under `/api/v1`; the frontend proxies `/api` to :8080.
+- Console pages: `/console` (staffer: start the assistant, live decisions), `/admin` (Chief of Staff: offboard, audit log), `/account` (`GET /api/v1/me`).
+- AWS resources (Cognito pool `us-east-1_MLfQpodxG`, the `mandate` DynamoDB table, the AVP policy store) are created by `Backend/infra/cognito.sh` and `Backend/infra/setup.sh`; see [`Backend/infra/README.md`](Backend/infra/README.md).
+- `infra/` holds the teammates' alternative CloudFormation stack (its own pool and `homefront-*` tables). The running app does not use it; see [`infra/README.md`](infra/README.md).
 
 ### Env (one file for Backend + Frontend)
 
-Copy [`.env.example`](.env.example) → `.env` at the **repo root**. Both the API and Vite frontend load it. Vite maps `COGNITO_*` into `VITE_COGNITO_*` — secrets like `DATA_GOV_API_KEY` and AWS keys never ship to the browser.
+Copy [`.env.example`](.env.example) to `.env` at the **repo root**. Both the API and the Vite frontend load it. Only `VITE_*` values reach the browser, and none of them are secrets.
 
-### AWS setup: Cognito + DynamoDB
+### Chat agent auto-start
 
-```bash
-AWS_REGION=us-east-1 ./infra/deploy.sh   # creates the user pool, app client, tables, IAM policy
-```
-
-Paste the printed values into the repo-root `.env`. The template is `infra/cloudformation/homefront.yaml`.
-
-**Local data without AWS:** `./scripts/run-dynamodb-local.sh` starts DynamoDB Local in Docker and creates the tables. Then set `DYNAMODB_ENDPOINT_URL=http://localhost:8000` in `.env`. Sign-in still needs a real Cognito pool.
-
-**Tests:** `pytest Backend/tests` uses an in-memory DynamoDB (moto). Against DynamoDB Local: `TEST_DYNAMODB_ENDPOINT_URL=http://localhost:8000 pytest Backend/tests`.
-
-### Running agents (Claude on Amazon Bedrock)
-
-1. In the AWS console, enable Bedrock model access for Claude Opus 5.5 (and Opus 4.8, the refusal fallback) in your region.
-2. In `.env`, set `BEDROCK_REGION` (e.g. `us-east-1`) and either `AWS_BEARER_TOKEN_BEDROCK` or standard AWS credentials (`AWS_PROFILE`, access keys, SSO).
-3. Restart the gateway, then start a run and poll it:
-
-```bash
-curl -X POST localhost:8080/api/v1/agents/agent-comms-01/runs \
-  -H 'Content-Type: application/json' -d '{"task": "Find data.gov datasets on flood risk and summarize them"}'
-curl localhost:8080/api/v1/agents/agent-comms-01/runs/<run_id>
-```
-
-The runner offers the model only the agent's granted tools, and sends every tool call through the same gateway checks as `/mcp/call`. A revoke mid-run blocks the next call. Runs stop after the agent's `max_steps`.
+Set `HOMEFRONT_AUTOSTART_AGENT=1` in `.env` and restart `./scripts/run-gateway.sh`: the staffer's first chat message then starts the agent (`agent/agent.py --sid <sid> --chat`) for them, so nobody needs a terminal. It needs `agent/.venv` and `agent/.env` on the server; starts and stops print in the gateway's terminal. Off by default. Details in [`agent/README.md`](agent/README.md).
 
 ### api.data.gov key
 
@@ -76,13 +46,15 @@ The runner offers the model only the agent's granted tools, and sends every tool
 ## Layout
 
 ```
-Backend/                   # FastAPI — Cognito auth, DynamoDB, agent IAM/ATLAS
-Frontend/                  # Main product UI — Monitoring = agent IAM demo
+Backend/                   # FastAPI: Cognito auth, broker (/sessions), offboard, events; infra/ scripts
+Frontend/                  # React + TypeScript: public site, staff console, admin page
+agent/                     # the AI agent (Claude on Bedrock) that calls /mcp with a mandate token
 packages/atlas-pack/       # vendored ATLAS Agentic pack + build script
 packages/atlas-enricher/   # local ATLAS lookup + annotate
-packages/identity-gateway/ # agent workload identity, grants, MCP authZ, Bedrock runner
+packages/identity-gateway/ # /mcp endpoint and guarded(): token, DynamoDB, Cedar, guardrail, events
+packages/mandate-contracts/ # shared tool names, token claims, events, DynamoDB keys, Cedar
 packages/mcp-tools/        # email / social / scrape / data.gov tools
-infra/                     # CloudFormation: Cognito, DynamoDB, IAM (deploy.sh)
+infra/                     # teammates' alternative CloudFormation stack (not used by the app)
 references/                # design/reference assets
 docs/ARCHITECTURE.md       # system design
 ```

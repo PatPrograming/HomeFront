@@ -1,148 +1,68 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
-import {
-  autoSignIn,
-  confirmSignUp,
-  fetchAuthSession,
-  resendSignUpCode,
-  signIn,
-  signOut,
-  signUp,
-} from "aws-amplify/auth";
-import { Hub } from "aws-amplify/utils";
-import { cognitoConfigured } from "./cognito.js";
-
-export interface AuthUser {
-  id: string | undefined;
-  email: string | undefined;
-  name: string | undefined;
-}
-
-export interface AuthSession {
-  user: AuthUser;
-}
-
-type SignInResult = Awaited<ReturnType<typeof signIn>>;
-type SignUpResult = Awaited<ReturnType<typeof signUp>>;
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import * as auth from "./auth";
+import type { Session } from "./auth";
+import { MOCK } from "./mode";
+import { isAdmin } from "./roles";
 
 export interface AuthContextValue {
-  session: AuthSession | null;
-  user: AuthUser | null;
-  loading: boolean;
+  session: Session | null;
   configured: boolean;
-  refresh: () => Promise<void>;
-  signIn: (email: string, password: string) => Promise<SignInResult>;
-  signUp: (email: string, password: string, fullName?: string) => Promise<SignUpResult>;
-  confirmSignUp: (email: string, code: string) => Promise<boolean>;
-  resendCode: (email: string) => Promise<unknown>;
-  signOut: () => Promise<void>;
+  signIn: (returnTo?: string | null) => Promise<void>;
+  finishLogin: (search: string) => Promise<string>;
+  mockSignIn: (username: string, groups: string[]) => void;
+  signOut: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// The session is the Cognito ID token, decoded. Amplify stores the tokens and
-// refreshes them itself; Hub events tell us when they change.
-async function loadSession(): Promise<AuthSession | null> {
-  if (!cognitoConfigured) return null;
-  try {
-    const { tokens } = await fetchAuthSession();
-    const idToken = tokens?.idToken;
-    if (!idToken) return null;
-    const p = idToken.payload;
-    return {
-      user: {
-        id: p.sub,
-        email: p.email as string | undefined,
-        name: p.name as string | undefined,
-      },
-    };
-  } catch {
-    return null;
-  }
-}
-
+// Keeps the Cognito session (see auth.ts) in React state so pages re-render on sign-in / sign-out.
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<AuthSession | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(() => auth.loadSession());
 
-  const refresh = useCallback(async () => {
-    setSession(await loadSession());
-    setLoading(false);
-  }, []);
-
+  // Drop the session the moment the access token expires.
   useEffect(() => {
-    refresh();
-    const stop = Hub.listen("auth", ({ payload }) => {
-      if (["signedIn", "signedOut", "tokenRefresh", "tokenRefresh_failure"].includes(payload.event)) {
-        refresh();
-      }
-    });
-    return stop;
-  }, [refresh]);
+    if (!session) return undefined;
+    const id = window.setTimeout(() => setSession(auth.loadSession()), session.expiresAt - Date.now());
+    return () => window.clearTimeout(id);
+  }, [session]);
+
+  const finishLogin = useCallback(async (search: string) => {
+    const returnTo = await auth.completeLogin(search);
+    const next = auth.loadSession();
+    setSession(next);
+    return returnTo || (isAdmin(next) ? "/admin" : "/console");
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
-      user: session?.user ?? null,
-      loading,
-      configured: cognitoConfigured,
-      // Re-read the session now (e.g. right after sign-in) instead of waiting for Hub.
-      refresh,
-      // All of these throw on failure (Amplify errors carry a readable .message).
-      // Returns { isSignedIn, nextStep }; nextStep.signInStep === "CONFIRM_SIGN_UP"
-      // means the account exists but the email code was never entered.
-      signIn: (email: string, password: string) => signIn({ username: email, password }),
-      // Returns { nextStep }; "CONFIRM_SIGN_UP" = a code was emailed.
-      signUp: (email: string, password: string, fullName?: string) =>
-        signUp({
-          username: email,
-          password,
-          options: {
-            userAttributes: { email, ...(fullName ? { name: fullName } : {}) },
-            autoSignIn: true,
-          },
-        }),
-      // Confirms the emailed code, then signs in when the sign-up started in
-      // this tab. Returns true if the user ends up signed in.
-      confirmSignUp: async (email: string, code: string) => {
-        const { nextStep } = await confirmSignUp({ username: email, confirmationCode: code });
-        if (nextStep.signUpStep !== "COMPLETE_AUTO_SIGN_IN") return false;
-        try {
-          const res = await autoSignIn();
-          return res.isSignedIn;
-        } catch {
-          return false; // e.g. page reloaded since sign-up: sign in normally
-        }
+      configured: MOCK || auth.cognitoConfigured,
+      signIn: auth.beginLogin,
+      finishLogin,
+      mockSignIn: (username, groups) => {
+        auth.mockSignIn(username, groups);
+        setSession(auth.loadSession());
       },
-      resendCode: (email: string) => resendSignUpCode({ username: email }),
-      signOut: () => signOut(),
+      signOut: () => {
+        auth.signOut();
+        setSession(null);
+      },
     }),
-    [session, loading, refresh]
+    [session, finishLogin],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
+export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
   return ctx;
 }
 
-// Bearer token for the backend: the current ID token (refreshed if expired).
-export async function getIdToken() {
-  if (!cognitoConfigured) return null;
-  try {
-    const { tokens } = await fetchAuthSession();
-    return tokens?.idToken?.toString() ?? null;
-  } catch {
-    return null;
-  }
+// For pages behind <RequireAuth>, where a session always exists.
+export function useSession(): Session {
+  const { session } = useAuth();
+  if (!session) throw new Error("useSession must be used inside <RequireAuth>");
+  return session;
 }

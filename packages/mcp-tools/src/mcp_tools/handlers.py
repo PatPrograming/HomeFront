@@ -208,7 +208,8 @@ def handle_social_post(args: dict[str, Any]) -> dict[str, Any]:
     ShareLinkError (a ValueError) for an unsupported platform or an unusable
     draft, so an approved post that can't be built is recorded as failed.
     """
-    return share_links.build_post_link(args.get("platform"), args.get("text"))
+    # The mandate gateway's social_post names an office account, not a platform: default to X.
+    return share_links.build_post_link(args.get("platform") or "x", args.get("text"))
 
 
 def handle_social_reply(args: dict[str, Any]) -> dict[str, Any]:

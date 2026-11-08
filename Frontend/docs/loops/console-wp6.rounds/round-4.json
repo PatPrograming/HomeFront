@@ -1,0 +1,129 @@
+{
+  "round": 4,
+  "at": "2026-11-08T00:55:39.405Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8",
+  "passed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "C6",
+    "C7",
+    "C8",
+    "C9"
+  ],
+  "failed": [],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Clean install and production build",
+      "command": "cd Frontend && npm ci --no-audit --no-fund && npm run build",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 2421,
+      "note": "",
+      "stdoutTail": "> guardrail-frontend@0.1.0 build\n> vite build\n\nvite v5.4.8 building for production...\ntransforming...\n✓ 74 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/index.html                             0.82 kB │ gzip:  0.45 kB\ndist/assets/logo-Dg8EW0du.png               7.47 kB\ndist/assets/KCObraLetraBold-j0dwxB6y.ttf   48.00 kB\ndist/assets/mountains-Do1FFF8W.png        941.89 kB\ndist/assets/index-CnsIBy9x.css              9.05 kB │ gzip:  2.82 kB\ndist/assets/index-DwPTtqMQ.js             203.32 kB │ gzip: 66.20 kB\n✓ built in 604ms",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "No Supabase or AWS SDK in the frontend",
+      "command": "! grep -rniE '@supabase|aws-sdk|@aws-sdk' Frontend/src Frontend/package.json Frontend/vite.config.js",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 56,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "PKCE helpers (verifier, S256 challenge, authorize URL, token exchange body)",
+      "command": "cd Frontend && npx vitest run src/lib/pkce.test.js",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 830,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend\n\n ✓ src/lib/pkce.test.js (6 tests) 5ms\n\n Test Files  1 passed (1)\n      Tests  6 passed (6)\n   Start at  16:55:35\n   Duration  222ms (transform 16ms, setup 0ms, collect 12ms, tests 5ms, environment 0ms, prepare 44ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Role gate (admin-only routes, groups from access token)",
+      "command": "cd Frontend && npx vitest run src/lib/roles.test.js",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 725,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend\n\n ✓ src/lib/roles.test.js (7 tests) 2ms\n\n Test Files  1 passed (1)\n      Tests  7 passed (7)\n   Start at  16:55:36\n   Duration  234ms (transform 18ms, setup 0ms, collect 15ms, tests 2ms, environment 0ms, prepare 59ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C5",
+      "check": "Events cursor and merge logic (since=, newest first, no duplicates)",
+      "command": "cd Frontend && npx vitest run src/lib/events.test.js",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 862,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend\n\n ✓ src/lib/events.test.js (8 tests) 3ms\n\n Test Files  1 passed (1)\n      Tests  8 passed (8)\n   Start at  16:55:36\n   Duration  329ms (transform 19ms, setup 0ms, collect 17ms, tests 3ms, environment 0ms, prepare 58ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C6",
+      "check": "api.js sends the Bearer token and the lane B routes",
+      "command": "cd Frontend && npx vitest run src/lib/api.test.js",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 734,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend\n\n ✓ src/lib/api.test.js (5 tests) 14ms\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  16:55:37\n   Duration  263ms (transform 27ms, setup 0ms, collect 27ms, tests 14ms, environment 0ms, prepare 35ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C7",
+      "check": "Mock mode refuses a production build",
+      "command": "cd Frontend && ! VITE_MOCK_API=1 npx vite build --emptyOutDir --outDir /tmp/mandate-mock-build-check",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 316,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": "failed to load config from /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend/vite.config.js\nerror during build:\nError: VITE_MOCK_API=1 is for the dev server only. Unset it to build for production.\n    at file:///Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend/vite.config.js.timestamp-1794099338492-38bc73eac939a.mjs:12:11\n    at loadConfigFromFile (file:///Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend/node_modules/vite/dist/node/chunks/dep-CDnG8rE7.js:66481:62)\n    at async resolveConfig (file:///Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend/node_modules/vite/dist/node/chunks/dep-CDnG8rE7.js:66083:24)\n    at async build (file:///Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend/node_modules/vite/dist/node/chunks/dep-CDnG8rE7.js:65180:18)\n    at async CAC.<anonymous> (file:///Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend/node_modules/vite/dist/node/cli.js:828:5)"
+    },
+    {
+      "id": "C8",
+      "check": "Production bundle contains no mock code",
+      "command": "cd Frontend && npx vite build --emptyOutDir --outDir /tmp/mandate-prod-build-check >/dev/null && ! grep -rq MANDATE_MOCK_API_MODULE /tmp/mandate-prod-build-check",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 892,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": ""
+    },
+    {
+      "id": "C9",
+      "check": "README explains Cognito and mock mode",
+      "command": "grep -q VITE_COGNITO_DOMAIN Frontend/README.md && grep -q VITE_MOCK_API Frontend/README.md && grep -q cognito:groups Frontend/README.md",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 6,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": ""
+    }
+  ]
+}
