@@ -1,17 +1,15 @@
 import contextlib
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from app.agent_iam import ensure_package_paths, include_agent_iam
-from app.core.config import apply_aws_env, apply_datagov_env, apply_gateway_env, get_settings
+from app.core.config import apply_aws_env, apply_datagov_env, get_settings
 
 ensure_package_paths()  # the routers below import the gateway packages
 
 from app.routers import assistant, events, health, home, profiles, sessions, staff  # noqa: E402
 from identity_gateway.app import lifespan as gateway_lifespan  # noqa: E402
-from identity_gateway.gateway import GatewayNotConfigured  # noqa: E402
 
 from app.services.agent_supervisor import supervision  # noqa: E402
 
@@ -29,18 +27,12 @@ def create_app() -> FastAPI:
     settings = get_settings()
     apply_datagov_env()
     apply_aws_env()
-    apply_gateway_env()
     app = FastAPI(
         title="HomeFront API",
         description="HomeFront: delegated agent identity, Cedar-authorized MCP tools, instant offboarding",
         version="0.2.0",
         lifespan=lifespan,  # starts the MCP endpoint's session manager
     )
-
-    @app.exception_handler(GatewayNotConfigured)
-    async def gateway_not_configured(_: Request, exc: GatewayNotConfigured) -> JSONResponse:
-        # A missing AWS setting is not a crash: say what to set instead of a bare HTTP 500.
-        return JSONResponse(status_code=503, content={"detail": f"The gateway is not configured: {exc}"})
 
     app.add_middleware(
         CORSMiddleware,

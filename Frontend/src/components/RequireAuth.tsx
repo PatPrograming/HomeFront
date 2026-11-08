@@ -11,10 +11,7 @@ export default function RequireAuth({ role, children }: { role?: Role; children:
   const location = useLocation();
   const verdict = gate(session, role);
 
-  // Keep the query string and hash too, or /agents/new?kind=research comes back as /agents/new after sign-in.
-  if (verdict === "login") {
-    return <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }} />;
-  }
+  if (verdict === "login") return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (verdict === "forbidden") {
     return (
       <Layout>

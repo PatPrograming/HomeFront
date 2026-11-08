@@ -239,9 +239,7 @@ def test_tool_outside_offered_set_is_rejected(use_model):
         response(text("ok")),
     )
     run = _run(_agent()["agent_id"])
-    step = run["steps"][0]
-    assert isinstance(step.pop("ts"), float)  # every step carries its time
-    assert step == {
+    assert run["steps"][0] == {
         "type": "tool_call",
         "tool": "email_send",
         "input": {"to": "a", "subject": "b", "body": "c"},
@@ -481,6 +479,4 @@ def test_bedrock_refusal_falls_back_and_pins():
         "anthropic.claude-opus-4-8",
         "anthropic.claude-opus-4-8",
     ]
-    fallback = next(s for s in run["steps"] if s["type"] == "model_fallback")
-    assert isinstance(fallback.pop("ts"), float)
-    assert fallback == {"type": "model_fallback", "from": "anthropic.claude-opus-5-5", "to": "anthropic.claude-opus-4-8"}
+    assert {"type": "model_fallback", "from": "anthropic.claude-opus-5-5", "to": "anthropic.claude-opus-4-8"} in run["steps"]

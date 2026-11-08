@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import StorageStatus from "../components/StorageStatus/StorageStatus";
 import { ApiError } from "../lib/api";
-import { agentsApi as api, type MonitoringData } from "../lib/agentsApi";
+import { agentsApi as api } from "../lib/agentsApi";
 import {
   describeError,
   kindLabel,
@@ -11,6 +11,7 @@ import {
   typeAllows,
   type Agent,
   type AgentType,
+  type AuditEvent,
   type Tool,
 } from "../lib/agents";
 import EmailSetup, { NoEmailNote, emailSetupPath } from "./EmailSetup";
@@ -47,14 +48,14 @@ export default function Monitoring() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [types, setTypes] = useState<AgentType[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
-  // The selected agent's own monitoring data from the backend: audit stream and last tool result.
-  const [mon, setMon] = useState<MonitoringData | null>(null);
+  const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [matrix, setMatrix] = useState<Matrix | null>(null);
   const [token, setToken] = useState<string | null>(null);
   // Trace id of the current token's calls in the activity log.
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [flash, setFlash] = useState<Flash | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lastResult, setLastResult] = useState<unknown>(null);
   const [atlasVersion, setAtlasVersion] = useState("");
 
   // ?agent=<id> picks the agent; otherwise the shared demo agent.
@@ -69,33 +70,27 @@ export default function Monitoring() {
   const agentType = useMemo(() => types.find((t) => t.kind === agent?.kind), [types, agent?.kind]);
 
   // A workload token belongs to one agent: drop it when switching agents.
-  const agentIdRef = useRef<string | undefined>(undefined);
-  agentIdRef.current = agent?.agent_id;
-
-  // Loads the selected agent's monitoring data. A late answer for an agent we've since left is dropped.
-  const loadMonitoring = useCallback(async () => {
-    const id = agentIdRef.current;
-    if (!id) return;
-    const data = await api.monitoring(id);
-    if (agentIdRef.current === id) setMon(data);
-  }, []);
-
   useEffect(() => {
     setToken(null);
     setSessionId(null);
-    setMon(null);
-    loadMonitoring().catch(() => {});
-  }, [agent?.agent_id, loadMonitoring]);
+    setLastResult(null);
+  }, [agent?.agent_id]);
 
   const refresh = useCallback(async () => {
-    const [a, ty, t, m] = await Promise.all([api.agents(), api.agentTypes(), api.tools(), api.matrix()]);
+    const [a, ty, t, au, m] = await Promise.all([
+      api.agents(),
+      api.agentTypes(),
+      api.tools(),
+      api.audit(),
+      api.matrix(),
+    ]);
     setAgents(a);
     setTypes(ty);
     setTools(t);
+    setAudit(au);
     setMatrix(m);
     setAtlasVersion(m.atlas_version);
-    await loadMonitoring();
-  }, [loadMonitoring]);
+  }, []);
 
   useEffect(() => {
     refresh().catch((e) =>
@@ -106,11 +101,11 @@ export default function Monitoring() {
       }),
     );
     const id = window.setInterval(() => {
-      loadMonitoring().catch(() => {});
+      api.audit().then(setAudit).catch(() => {});
       api.agents().then(setAgents).catch(() => {});
     }, 2500);
     return () => window.clearInterval(id);
-  }, [refresh, loadMonitoring]);
+  }, [refresh]);
 
   async function authenticate() {
     if (!agent) return;
@@ -145,6 +140,7 @@ export default function Monitoring() {
     setBusy(true);
     try {
       const res = await api.callTool(token, tool, args);
+      setLastResult(res.result);
       if (res.decision === "pending_approval") {
         setFlash({
           kind: "info",
@@ -176,6 +172,7 @@ export default function Monitoring() {
               atlas?: { narrative?: string; technique_ids?: string[]; mitigation_ids?: string[] };
             })
           : null;
+      setLastResult(detail ?? { error: errText(e) });
       setFlash({
         kind: "deny",
         title:
@@ -468,14 +465,7 @@ export default function Monitoring() {
                 </button>
               </div>
               <h3>Last tool result</h3>
-              {mon?.last_tool_result && (
-                <p className="hint">
-                  <code>{mon.last_tool_result.tool}</code> · {mon.last_tool_result.decision} ·{" "}
-                  {new Date(mon.last_tool_result.ts * 1000).toLocaleString()}
-                  {mon.last_tool_result.truncated ? " · shortened" : ""}
-                </p>
-              )}
-              <pre className="result">{JSON.stringify(mon?.last_tool_result?.result ?? null, null, 2) || "—"}</pre>
+              <pre className="result">{JSON.stringify(lastResult, null, 2) || "—"}</pre>
             </section>
 
             <aside className="panel atlas">
@@ -516,7 +506,7 @@ export default function Monitoring() {
                 </div>
               </div>
               <ul className="audit-list">
-                {(mon?.audit ?? []).map((ev) => (
+                {audit.map((ev) => (
                   <li key={ev.id} className={`dec-${ev.decision}`}>
                     <div className="audit-head">
                       <span className="decision">{ev.decision}</span>
@@ -524,14 +514,14 @@ export default function Monitoring() {
                       <code>{ev.tool || "—"}</code>
                       <time>{new Date(ev.ts * 1000).toLocaleTimeString()}</time>
                     </div>
-                    <p>{ev.narrative}</p>
+                    <p>{ev.atlas?.narrative}</p>
                     <div className="id-row compact">
-                      {ev.technique_ids.map((id) => (
+                      {(ev.atlas?.technique_ids || []).map((id) => (
                         <code key={id} className="tech">
                           {id}
                         </code>
                       ))}
-                      {ev.mitigation_ids.map((id) => (
+                      {(ev.atlas?.mitigation_ids || []).map((id) => (
                         <code key={id} className="mit">
                           {id}
                         </code>
@@ -539,7 +529,7 @@ export default function Monitoring() {
                     </div>
                   </li>
                 ))}
-                {(mon?.audit ?? []).length === 0 && <li>No events yet — authenticate to begin.</li>}
+                {audit.length === 0 && <li>No events yet — authenticate to begin.</li>}
               </ul>
             </section>
           </div>

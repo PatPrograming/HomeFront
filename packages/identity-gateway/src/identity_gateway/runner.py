@@ -278,7 +278,6 @@ class AgentRunner:
             run.steps.append(
                 {
                     "type": "topic_route",
-                    "ts": time.time(),
                     "topics": topics,
                     "tools": tool_names,
                 }
@@ -312,12 +311,7 @@ class AgentRunner:
             for block in response.content:
                 if block.type == "fallback":
                     run.steps.append(
-                        {
-                            "type": "model_fallback",
-                            "ts": time.time(),
-                            "from": block.from_.model,
-                            "to": block.to.model,
-                        }
+                        {"type": "model_fallback", "from": block.from_.model, "to": block.to.model}
                     )
 
             stop = response.stop_reason
@@ -366,12 +360,7 @@ class AgentRunner:
         for block in tool_uses:
             tool = offered.get(block.name)
             gateway_name = tool.name if tool else block.name
-            step: dict[str, Any] = {
-                "type": "tool_call",
-                "ts": time.time(),  # epoch seconds, so the UI can show date + time
-                "tool": gateway_name,
-                "input": block.input,
-            }
+            step: dict[str, Any] = {"type": "tool_call", "tool": gateway_name, "input": block.input}
             if tool is None:
                 step.update(decision="deny", error="unknown_tool")
                 content, is_error = f"Unknown tool {block.name}", True

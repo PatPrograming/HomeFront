@@ -56,18 +56,13 @@ export default function Hero({ mission, buttons }: HeroProps) {
               {open && (
                 <ul id="reach-menu" className="reach-menu" role="menu">
                   <li role="none">
-                    <Link role="menuitem" to="/agents/new?kind=social" onClick={() => setOpen(false)}>
+                    <Link role="menuitem" to="/social-platform" onClick={() => setOpen(false)}>
                       Social platform
                     </Link>
                   </li>
                   <li role="none">
-                    <Link role="menuitem" to="/agents/new?kind=email" onClick={() => setOpen(false)}>
+                    <Link role="menuitem" to="/emails" onClick={() => setOpen(false)}>
                       Email
-                    </Link>
-                  </li>
-                  <li role="none">
-                    <Link role="menuitem" to="/agents/new?kind=market_research" onClick={() => setOpen(false)}>
-                      Research
                     </Link>
                   </li>
                 </ul>

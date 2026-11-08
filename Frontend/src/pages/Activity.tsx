@@ -174,13 +174,6 @@ export default function Activity() {
                     <span className={`decision decision-${ev.decision}`}>{ev.decision}</span>
                     <strong>{eventLabel(ev.type)}</strong>
                     {ev.tool && <code>{ev.tool}</code>}
-                    {ev.model && <code title="Model">{ev.model}</code>}
-                    {ev.usage && (
-                      <span className="muted" title="Tokens for the whole run">
-                        {ev.usage.input_tokens.toLocaleString()} in / {ev.usage.output_tokens.toLocaleString()} out
-                        {ev.model_turns !== undefined ? ` · ${ev.model_turns} turn${ev.model_turns === 1 ? "" : "s"}` : ""}
-                      </span>
-                    )}
                     <span className="activity-agent">{agentName(ev.agent_id)}</span>
                     <span className="activity-actor">by {actorLabel(ev.actor)}</span>
                   </div>

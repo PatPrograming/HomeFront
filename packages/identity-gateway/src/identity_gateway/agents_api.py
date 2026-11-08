@@ -13,7 +13,6 @@ resolver below is set there too; until it is, every call is refused (401).
 from __future__ import annotations
 
 import hashlib
-import json
 import sys
 import time
 import urllib.parse
@@ -454,59 +453,6 @@ def create_agent(
     return _agent_view(agent)
 
 
-ROLE_PREVIEW = 160
-
-
-@router.get("/agents/overview")
-def agents_overview(actor: Actor = Depends(get_actor)) -> list[dict[str, Any]]:
-    """Small per-agent summary for the Agents page: role, model, status and
-    activity counts, without instructions, email settings or mailing lists.
-    Declared before /agents/{agent_id} so "overview" isn't read as an agent id."""
-    visible = [a for a in store.list_agents() if actor.can_access(a)]
-    ids = {a.agent_id for a in visible}
-    pending: dict[str, int] = {}
-    for rec in store.approvals.list():
-        if rec.agent_id in ids and rec.status == "pending" and not rec.is_expired():
-            pending[rec.agent_id] = pending.get(rec.agent_id, 0) + 1
-    last_seen: dict[str, float] = {}
-    for ev in store.list_audit(ids, 200):  # newest first: first hit per agent is its latest
-        last_seen.setdefault(ev.get("agent_id"), ev["ts"])
-
-    out = []
-    for agent in visible:
-        agent_runs = runs.for_agent(agent.agent_id)
-        last_run = agent_runs[0] if agent_runs else None
-        out.append(
-            {
-                "agent_id": agent.agent_id,
-                "name": agent.name,
-                "agency": agent.agency,
-                "kind": agent.kind,
-                "role": get_agent_type(agent.kind).label,
-                "purpose": agent.instructions.strip()[:ROLE_PREVIEW],
-                "model": runner.model_for(agent) if runner else agent.model,
-                "model_is_default": agent.model is None,
-                "active": agent.active,
-                "max_steps": agent.max_steps,
-                "tool_grants": sorted(agent.tool_grants),
-                "recipient_count": len(agent.recipients),
-                "pending_approvals": pending.get(agent.agent_id, 0),
-                "run_count": len(agent_runs),
-                "last_run": (
-                    {
-                        "run_id": last_run.run_id,
-                        "status": last_run.status,
-                        "created_at": last_run.created_at,
-                    }
-                    if last_run
-                    else None
-                ),
-                "last_activity_ts": last_seen.get(agent.agent_id),
-            }
-        )
-    return out
-
-
 @router.get("/agents/{agent_id}")
 def get_agent(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
     return _agent_view(_accessible_agent(agent_id, actor))
@@ -931,29 +877,6 @@ def gateway_tool_call(
     return call_tool(agent, tok, tool_name, arguments, run_id=run_id)
 
 
-# Most recent tool outcome per agent (allow, held for approval, or deny), for the
-# Monitoring page's "last tool result". In memory only; the audit log keeps the
-# durable record (without results).
-RESULT_PREVIEW_LIMIT = 4000
-_last_tool_result: dict[str, dict[str, Any]] = {}
-
-
-def _remember_result(agent_id: str, tool_name: str, run_id: str | None, decision: str, payload: Any) -> None:
-    try:
-        text = json.dumps(payload, default=str)
-    except (TypeError, ValueError):
-        text = str(payload)
-    truncated = len(text) > RESULT_PREVIEW_LIMIT
-    _last_tool_result[agent_id] = {
-        "ts": time.time(),
-        "tool": tool_name,
-        "decision": decision,
-        "run_id": run_id,
-        "result": text[:RESULT_PREVIEW_LIMIT] if truncated else payload,
-        "truncated": truncated,
-    }
-
-
 def call_tool(
     agent: AgentRecord,
     tok: Any,
@@ -963,23 +886,6 @@ def call_tool(
     run_id: str | None = None,
 ) -> dict[str, Any]:
     """Authorize, execute and audit one tool call. Raises HTTPException on deny."""
-    try:
-        out = _authorize_and_run(agent, tok, tool_name, arguments, run_id=run_id)
-    except HTTPException as exc:
-        _remember_result(agent.agent_id, tool_name, run_id, "deny", exc.detail)
-        raise
-    _remember_result(agent.agent_id, tool_name, run_id, out.get("decision", "allow"), out.get("result"))
-    return out
-
-
-def _authorize_and_run(
-    agent: AgentRecord,
-    tok: Any,
-    tool_name: str,
-    arguments: dict[str, Any],
-    *,
-    run_id: str | None = None,
-) -> dict[str, Any]:
     tool = get_tool(tool_name)
     if tool is None:
         raise HTTPException(status_code=404, detail=f"Unknown tool {tool_name}")
@@ -1734,7 +1640,6 @@ def start_run(
             "run_id": run.run_id,
             "trace_id": run.run_id,
             "actor": actor.label,
-            "model": run.model,
             "detail": body.task[:200],
             "pipeline": run.pipeline,
             "research_agent_id": run.research_agent_id,
@@ -1776,11 +1681,9 @@ def _audit_run_finished(run: Any, agent: AgentRecord) -> None:
             "trace_id": run.run_id,
             "actor": f"agent:{agent.agent_id}",
             "status": run.status,
-            "model": run.model,
             "model_turns": run.model_turns,
             "pipeline": getattr(run, "pipeline", None),
             "research_run_id": getattr(run, "research_run_id", None),
-            "usage": dict(run.usage),  # input_tokens / output_tokens for the whole run
             "detail": run.error or f"Finished in {run.model_turns} model turn(s)",
         }
     )
@@ -1809,92 +1712,6 @@ def list_reports(
     _accessible_agent(agent_id, actor)
     limit = max(1, min(limit, 200))
     return [r.view() for r in store.reports.list(agent_id, limit)]
-
-
-def _event_summary(ev: dict[str, Any]) -> dict[str, Any]:
-    """The fields the Monitoring and Activity lists show for one audit event."""
-    atlas = ev.get("atlas") or {}
-    return {
-        "id": ev.get("id"),
-        "ts": ev.get("ts"),
-        "type": ev.get("type"),
-        "decision": ev.get("decision"),
-        "actor": ev.get("actor"),
-        "agent_id": ev.get("agent_id"),
-        "tool": ev.get("tool"),
-        "run_id": ev.get("run_id"),
-        "trace_id": ev.get("trace_id"),
-        "detail": ev.get("detail"),
-        "usage": ev.get("usage"),
-        "technique_ids": atlas.get("technique_ids", []),
-        "mitigation_ids": atlas.get("mitigation_ids", []),
-        "narrative": atlas.get("narrative"),
-    }
-
-
-@router.get("/agents/{agent_id}/monitoring")
-def agent_monitoring(
-    agent_id: str, limit: int = 30, actor: Actor = Depends(get_actor)
-) -> dict[str, Any]:
-    """Everything the Monitoring page shows for one agent, in one request:
-    workload identity, recent MCP calls (with time), the last tool result, the
-    ATLAS strip, recent runs and the audit stream. Never includes token values."""
-    from .app import demo_matrix  # imported here: app.py is the standalone gateway entry point
-
-    agent = _accessible_agent(agent_id, actor)
-    limit = max(1, min(limit, 100))
-    now = time.time()
-
-    with store._lock:
-        tokens = list(store.tokens.values())
-    sessions = sorted(
-        (
-            {"session_id": t.session_id, "issued_at": t.issued_at, "expires_at": t.expires_at}
-            for t in tokens
-            if t.agent_id == agent_id
-            and t.expires_at > now
-            and t.token_version == agent.token_version
-        ),
-        key=lambda s: s["issued_at"],
-        reverse=True,
-    )
-
-    ids = {agent_id}
-    pending = [
-        r for r in store.approvals.list() if r.agent_id == agent_id and r.status == "pending"
-    ]
-    return {
-        "identity": {
-            "agent_id": agent.agent_id,
-            "name": agent.name,
-            "agency": agent.agency,
-            "kind": agent.kind,
-            "active": agent.active,
-            "token_version": agent.token_version,
-            "tool_grants": sorted(agent.tool_grants),
-            "live_sessions": sessions[:10],
-            "pending_approvals": len(pending),
-        },
-        "tool_calls": [
-            _event_summary(e) for e in store.list_audit(ids, limit, type_="tool_call")
-        ],
-        "last_tool_result": _last_tool_result.get(agent_id),
-        "recent_runs": [
-            {
-                "run_id": r.run_id,
-                "task": r.task[:200],
-                "status": r.status,
-                "model": r.model,
-                "usage": dict(r.usage),
-                "created_at": r.created_at,
-                "finished_at": r.finished_at,
-            }
-            for r in runs.for_agent(agent_id)[:5]
-        ],
-        "atlas": demo_matrix(),
-        "audit": [_event_summary(e) for e in store.list_audit(ids, limit)],
-        "server_time": now,
-    }
 
 
 @router.get("/audit")

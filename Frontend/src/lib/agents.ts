@@ -160,11 +160,6 @@ export function describeError(e: unknown, types: AgentType[] = []): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export interface TokenUsage {
-  input_tokens: number;
-  output_tokens: number;
-}
-
 export interface AuditEvent {
   id: string;
   ts: number;
@@ -178,10 +173,6 @@ export interface AuditEvent {
   tools?: string[];
   kind?: string;
   status?: string;
-  // Run events: the model used, how many turns it took, and the tokens spent (run_started / run_finished).
-  model?: string;
-  model_turns?: number;
-  usage?: TokenUsage;
   detail?: string;
   fields?: string[];
   tool_grants?: string[];
@@ -317,8 +308,6 @@ export const TERMINAL_RUN_STATUSES: RunStatus[] = ["completed", "max_steps", "re
 
 export interface RunStep {
   type: "tool_call" | "model_fallback" | "pipeline" | string;
-  // Epoch seconds when the step happened (the backend stamps every step).
-  ts?: number;
   tool?: string;
   input?: Record<string, unknown>;
   decision?: "allow" | "deny" | "pending_approval" | string;
@@ -358,7 +347,7 @@ export interface Run {
   error: string | null;
   steps: RunStep[];
   model_turns: number;
-  usage: TokenUsage;
+  usage: { input_tokens: number; output_tokens: number };
   created_at: number;
   started_at: number | null;
   finished_at: number | null;
