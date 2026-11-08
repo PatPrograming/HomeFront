@@ -36,7 +36,7 @@ export default function App() {
           <Route
             path="/account"
             element={
-              <RequireAuth>
+              <RequireAuth role="any">
                 <Account />
               </RequireAuth>
             }

@@ -18,7 +18,7 @@ export default function Login() {
 
   async function cognitoSignIn() {
     try {
-      await signIn(from || "/console");
+      await signIn(from);
     } catch (e) {
       setError(e.message || String(e));
     }

@@ -7,19 +7,35 @@ import { useAuth } from "../lib/AuthProvider.jsx";
 import { useEventFeed } from "../lib/useEventFeed.js";
 import "./Console.css";
 
+const CARD_KEY = "mandate.card"; // the running session's card, so a reload keeps the sid on screen
+const REVOKED = "session revoked / delegator inactive";
+
+// Only the same signed-in user gets their saved card back.
+function loadCard(username) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(CARD_KEY));
+    return saved?.actingFor === username ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
 // Staff view: start the assistant (demo step 1), then watch every ALLOW / DENY it gets (steps 2 and 4).
 export default function Console() {
   const { session } = useAuth();
-  const [card, setCard] = useState(null);
+  const [card, setCard] = useState(() => loadCard(session.username));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const feed = useEventFeed({ limit: 100 });
+  const revoked = Boolean(card) && feed.events.some((e) => e.sid === card.sid && e.reason === REVOKED);
 
   async function start() {
     setBusy(true);
     setError(null);
     try {
-      setCard(await api.startSession());
+      const next = await api.startSession();
+      sessionStorage.setItem(CARD_KEY, JSON.stringify(next));
+      setCard(next);
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -50,7 +66,7 @@ export default function Console() {
         )}
 
         {card ? (
-          <IdentityCard card={card} />
+          <IdentityCard card={card} revoked={revoked} />
         ) : (
           <section className="panel identity-empty">
             <h2>No assistant running</h2>

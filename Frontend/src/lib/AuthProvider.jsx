@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import * as auth from "./auth.js";
 import { MOCK } from "./mode.js";
+import { isAdmin } from "./roles.js";
 
 const AuthContext = createContext(null);
 
@@ -17,8 +18,9 @@ export function AuthProvider({ children }) {
 
   const finishLogin = useCallback(async (search) => {
     const returnTo = await auth.completeLogin(search);
-    setSession(auth.loadSession());
-    return returnTo;
+    const next = auth.loadSession();
+    setSession(next);
+    return returnTo || (isAdmin(next) ? "/admin" : "/console");
   }, []);
 
   const value = useMemo(

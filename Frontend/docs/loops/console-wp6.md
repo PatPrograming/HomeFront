@@ -2,7 +2,7 @@
 
 Status: BUILDING
 Profile: feature
-Round: 0 / 4
+Round: 2 / 4
 Base commit: 839c456
 Branch: claude/console-huy-4ee5f8
 
@@ -57,15 +57,22 @@ and DENY events stream in, signs in as the Chief of Staff, offboards Maya, and s
 
 | # | Task | Role | Files it may touch | Done when | Depends on | Status |
 |---|------|------|--------------------|-----------|------------|--------|
-| 1 | Vitest + PKCE + auth module | lead | package.json, package-lock.json, vite.config.js, src/lib/{pkce,auth}.js, src/lib/pkce.test.js, src/lib/AuthProvider.jsx, src/pages/{Login,AuthCallback}.jsx | C3 | — | pending |
-| 2 | Role gate | lead | src/lib/roles.js, src/lib/roles.test.js, src/components/RequireAuth.jsx | C4 | 1 | pending |
-| 3 | api.js + mock layer + build guard | lead | src/lib/{api,mockApi}.js, src/lib/api.test.js, vite.config.js | C6 C7 C8 | 1 | pending |
-| 4 | Events cursor + feed hook | lead | src/lib/events.js, src/lib/events.test.js, src/lib/useEventFeed.js | C5 | 3 | pending |
-| 5 | Staff + admin views, nav | lead | src/pages/{Console,Admin,Account}.jsx, src/pages/Console.css, src/components/{EventFeed,IdentityCard}.jsx, src/components/Navbar/*, src/App.jsx, src/config.js | Not-checkable click-through | 2 3 4 | pending |
-| 6 | Remove Supabase | lead | src/lib/supabase.js, package.json, package-lock.json, vite.config.js | C1 C2 | 5 | pending |
-| 7 | README | lead | README.md | C9 | 6 | pending |
+| 1 | Vitest + PKCE + auth module | lead | package.json, package-lock.json, vite.config.js, src/lib/{pkce,auth}.js, src/lib/pkce.test.js, src/lib/AuthProvider.jsx, src/pages/{Login,AuthCallback}.jsx | C3 | — | done |
+| 2 | Role gate | lead | src/lib/roles.js, src/lib/roles.test.js, src/components/RequireAuth.jsx | C4 | 1 | done |
+| 3 | api.js + mock layer + build guard | lead | src/lib/{api,mockApi}.js, src/lib/api.test.js, vite.config.js | C6 C7 C8 | 1 | done |
+| 4 | Events cursor + feed hook | lead | src/lib/events.js, src/lib/events.test.js, src/lib/useEventFeed.js | C5 | 3 | done |
+| 5 | Staff + admin views, nav | lead | src/pages/{Console,Admin,Account}.jsx, src/pages/Console.css, src/components/{EventFeed,IdentityCard}.jsx, src/components/Navbar/*, src/App.jsx, src/config.js | Not-checkable click-through | 2 3 4 | done |
+| 6 | Remove Supabase | lead | src/lib/supabase.js, package.json, package-lock.json, vite.config.js | C1 C2 | 5 | done |
+| 7 | README | lead | README.md | C9 | 6 | done |
 
 ## Rounds
+
+### Round 1 — 2026-11-07
+- Built: tasks 1–7, commits dde200f b2fa981 9d0f206 a2a1ced, then 0d3eacf (vitest 3.2.7 after the security review).
+- Outcome checks: 9/9 pass; fixed [C2, C3, C4, C5, C6, C7, C9], regressed [] (scoreboard: console-wp6.rounds/round-1.json).
+- Review: team-reviewer APPROVE, 0 Critical/High; Medium: no fetch timeout (a stalled API freezes the feed while it says "Live"), /account unreachable for a user with no group. Security: `security:comment` (dev-only Vitest/tinypool/esbuild advisories). Trial (full): falsifier FALSIFIED 3b, advocate PARTIAL-strong. Judge not run: the falsified item was reproduced from the code (Admin.jsx guesses "Offboarded" from the newest event; the contract sample's newest maya event is a revoked DENY), so a fix round is certain; the re-trial rules on the fixed state.
+- Gap list for next round: (1) 3b Offboard button hidden on fresh data [falsifier]; (2) fetch timeout [reviewer M1]; (3) /account for users with no group [reviewer M2]; (4) admin navbar overflows 1201–1330 px [falsifier]; (5) identity card keeps counting after revoke [falsifier]; (6) README claims a bundle-grep script that is only a loop check [falsifier + advocate]; cheap Lows: card lost on reload, mock tabs race / duplicate ids, Cognito login lands admins on /console.
+- Decision: next round because the gap list is non-empty and round 1 fixed 7 checks.
 
 ## Decisions
 

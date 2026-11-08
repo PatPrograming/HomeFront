@@ -63,7 +63,7 @@ All of it is in `src/lib/pkce.js` (pure helpers) and `src/lib/auth.js` (about 10
 | `/auth/callback` | anyone | Finishes sign-in |
 | `/console` | `staffer` or `admin` | **Start assistant** (`POST /api/v1/sessions`), the identity card, the live feed |
 | `/admin` | `admin` only | **Offboard** each staffer (`POST /api/v1/staff/{id}/offboard`, with a confirm step) and the full audit log |
-| `/account` | signed in | Your username, email, groups and sign-out |
+| `/account` | anyone signed in, even with no group | `GET /api/v1/me` (username, sub, email, groups, read-only) and sign-out |
 | `/monitoring` | signed in | The old in-memory gateway demo, kept until lane B replaces those routes |
 
 `src/components/RequireAuth.jsx` guards the routes with `gate()` from `src/lib/roles.js`. The Admin link in the
@@ -91,7 +91,7 @@ keep it out of production:
 1. `src/lib/mode.js` turns mock mode on only when `import.meta.env.DEV` is true, which is never the case in
    `vite build`, so the bundler removes the mock code.
 2. `vite.config.js` stops the build with an error if `VITE_MOCK_API=1` is set.
-3. A check greps the production bundle for the mock module's marker.
+3. Outcome check C8 in `docs/loops/console-wp6.md` builds for production and greps the bundle for the mock module's marker (run it by hand before a deploy).
 
 ## Tests
 

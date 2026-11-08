@@ -15,9 +15,11 @@ export function isAdmin(session) {
 }
 
 // What a route guard should do: "login" (no session), "forbidden" (wrong group) or "ok".
-// `role` is optional; without it any signed-in staffer or admin may enter.
+// `role` is optional; without it any signed-in staffer or admin may enter. role="any" lets in anyone
+// signed in, even with no group (the Account page, so they can see why and sign out).
 export function gate(session, role) {
   if (!session) return "login";
+  if (role === "any") return "ok";
   const groups = session.groups ?? [];
   if (role === ADMIN) return groups.includes(ADMIN) ? "ok" : "forbidden";
   return groups.includes(STAFFER) || groups.includes(ADMIN) ? "ok" : "forbidden";

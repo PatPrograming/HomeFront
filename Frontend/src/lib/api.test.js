@@ -41,6 +41,18 @@ describe("api", () => {
     expect(init.headers.Authorization).toBe("Bearer maya-access-token");
   });
 
+  it("gives up on a request that never answers, so polling can recover", async () => {
+    const clock = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(clock.signal);
+    globalThis.fetch = vi.fn(
+      (_url, init) => new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason))),
+    );
+    const pending = api.events().catch((e) => e);
+    clock.abort(new DOMException("timed out", "TimeoutError")); // what the 5 s timer does
+    expect(timeout).toHaveBeenCalledWith(5000);
+    expect((await pending).name).toBe("TimeoutError");
+  });
+
   it("turns an error response into ApiError with the server's detail", async () => {
     respond(403, { detail: "admin only" });
     const err = await api.offboard("maya").catch((e) => e);

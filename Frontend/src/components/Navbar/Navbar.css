@@ -61,7 +61,7 @@
 }
 
 /* Below desktop width the links fold into the menu button. */
-@media (max-width: 1200px) {
+@media (max-width: 1360px) {
   .navbar {
     height: 64px;
   }

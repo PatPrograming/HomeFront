@@ -55,7 +55,8 @@ export function getAccessToken() {
 }
 
 // Step 1: remember a fresh verifier + state, then send the browser to Cognito's sign-in page.
-export async function beginLogin(returnTo = "/console") {
+// `returnTo` is the page the staffer asked for; without one, AuthProvider picks /admin or /console by group.
+export async function beginLogin(returnTo = null) {
   const verifier = randomString();
   const state = randomString(16);
   sessionStorage.setItem(PENDING_KEY, JSON.stringify({ verifier, state, returnTo }));

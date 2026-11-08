@@ -22,7 +22,8 @@ function countdown(ms) {
 }
 
 // The agent's delegated identity, as returned by POST /api/v1/sessions.
-export default function IdentityCard({ card }) {
+// `revoked` is true once the feed shows this session's call denied as revoked (step 4 of the demo).
+export default function IdentityCard({ card, revoked }) {
   const now = useNow();
   const [copied, setCopied] = useState(false);
   const left = expiryMs(card.expiresAt) - now;
@@ -44,8 +45,10 @@ export default function IdentityCard({ card }) {
         <h2 id="identity-title">
           <code>{card.agent}</code> is acting for <strong>{card.actingFor}</strong>
         </h2>
-        <p className={`expiry ${left <= 0 ? "deny-text" : ""}`} aria-live="off">
-          {left > 0 ? (
+        <p className={`expiry ${left <= 0 || revoked ? "deny-text" : ""}`} aria-live="off">
+          {revoked ? (
+            <strong>Mandate revoked: access cut</strong>
+          ) : left > 0 ? (
             <>
               Mandate expires in <strong className="figure">{countdown(left)}</strong>
             </>

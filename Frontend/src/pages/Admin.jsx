@@ -22,7 +22,10 @@ function StafferRow({ staffer, events, result, onOffboard }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const mine = events.filter((e) => e.actingFor === staffer.id);
-  const offboarded = Boolean(result) || mine[0]?.reason === REVOKED;
+  // Only the offboard answer says a staffer is inactive (the API has no "list staff" route yet). A revoked
+  // last call is shown as a fact, not as the staffer's status: it can come from an old, replaced session.
+  const offboarded = Boolean(result);
+  const lastRevoked = mine[0]?.reason === REVOKED;
 
   async function confirm() {
     setBusy(true);
@@ -47,13 +50,12 @@ function StafferRow({ staffer, events, result, onOffboard }) {
         </span>
         <p className="staffer-activity">
           {mine.length ? `${mine.length} agent calls, last at ${new Date(mine[0].ts).toLocaleTimeString([], { hour12: false })}` : "No agent calls yet"}
-          {" · "}
           {offboarded ? (
             <span className="deny-text">
-              Offboarded{result ? `, ${result.revokedSessions} session${result.revokedSessions === 1 ? "" : "s"} revoked` : ""}
+              {" · "}Offboarded, {result.revokedSessions} session{result.revokedSessions === 1 ? "" : "s"} revoked
             </span>
           ) : (
-            <span className="ok-text">Active</span>
+            lastRevoked && <span className="deny-text">{" · "}Last call denied: session revoked</span>
           )}
         </p>
         {error && (
@@ -63,7 +65,7 @@ function StafferRow({ staffer, events, result, onOffboard }) {
         )}
       </div>
       <div className="staffer-actions">
-        {offboarded ? null : confirming ? (
+        {confirming ? (
           <>
             <p className="confirm-text">
               Offboard {staffer.name}? Their assistant&apos;s next call will be denied.
@@ -77,7 +79,7 @@ function StafferRow({ staffer, events, result, onOffboard }) {
           </>
         ) : (
           <button type="button" className="btn-danger-outline" onClick={() => setConfirming(true)}>
-            Offboard
+            {offboarded ? "Offboard again" : "Offboard"}
           </button>
         )}
       </div>

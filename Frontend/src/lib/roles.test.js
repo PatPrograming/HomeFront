@@ -29,6 +29,10 @@ describe("gate", () => {
   it("keeps users with no group out", () => {
     expect(gate(nobody)).toBe("forbidden");
   });
+  it("lets any signed-in user reach role='any' pages (Account), but not a signed-out one", () => {
+    expect(gate(nobody, "any")).toBe("ok");
+    expect(gate(null, "any")).toBe("login");
+  });
   it("lets only admins into admin routes", () => {
     expect(gate(maya, "admin")).toBe("forbidden");
     expect(gate(nobody, "admin")).toBe("forbidden");

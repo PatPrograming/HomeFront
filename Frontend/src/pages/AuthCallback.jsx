@@ -15,7 +15,7 @@ export default function AuthCallback() {
     if (started.current) return;
     started.current = true;
     finishLogin(window.location.search)
-      .then((to) => navigate(to || "/console", { replace: true }))
+      .then((to) => navigate(to, { replace: true }))
       .catch((e) => setError(e.message || String(e)));
   }, [finishLogin, navigate]);
 
