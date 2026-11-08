@@ -278,5 +278,5 @@ def test_apply_creates_a_missing_role_with_path_duration_and_tag(tmp_path):
     assert result.returncode == 0, result.stderr
     made = calls.read_text()
     create = made[made.index("iam create-role"):made.index("iam put-role-policy")]  # its policy JSON spans lines
-    assert create.startswith("iam create-role --role-name homefront-agent --path / --max-session-duration 3600")
+    assert create.startswith("iam create-role --role-name homefront-agent --path / --max-session-duration 3600 ")
     assert create.rstrip().endswith("--tags Key=project,Value=homefront")

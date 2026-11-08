@@ -4,7 +4,7 @@ A conversation is a session. Its metadata is a separate item, `CONVO#<sid>` / `M
 staffer the session acts for, so the session item (a shared contract) is never changed by the UI.
 
 Titles: after the staffer's first message, and again after their third, a small model (Claude
-Haiku 5.5 on Bedrock) names the staffer's main goal in a few words. It sees only the staffer's own
+Haiku 4.5 on Bedrock) names the staffer's main goal in a few words. It sees only the staffer's own
 messages, never the agent's replies or email text. Anything that goes wrong falls back to the first
 words of the first message. A title the staffer typed is never replaced.
 """
@@ -23,9 +23,10 @@ from pydantic import BaseModel
 TITLE_WORDS = 6
 TITLE_CHARS = 40
 REFRESH_AT = (1, 3)  # name it once there is 1 staffer message, rename once there are 3
-# Claude Haiku 5.5 through the us. cross-region inference profile (listed ACTIVE in us-east-1; lead's
-# ruling). Override with HOMEFRONT_TITLE_MODEL_ID; if a call fails the first-words title is used.
-TITLE_MODEL_ID = os.environ.get("HOMEFRONT_TITLE_MODEL_ID", "us.anthropic.claude-haiku-5-5")
+# Claude Haiku 4.5 through the us. cross-region inference profile: the event account's model allowlist
+# denies Haiku 5.5 (lead's ruling). Override with HOMEFRONT_TITLE_MODEL_ID; if a call fails the
+# first-words title is used.
+TITLE_MODEL_ID = os.environ.get("HOMEFRONT_TITLE_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 TITLE_PROMPT = (
     "You name a conversation in a constituent-services office's assistant. Read the staffer's "
     "messages and reply with only a short title (at most 6 words) for their main goal, such as "
@@ -159,7 +160,7 @@ def clean_title(text: str) -> str:
 
 
 def bedrock_title(staffer_messages: list[str], client=None) -> str:
-    """Ask Claude Haiku 5.5 for a title. Only the staffer's own messages are sent."""
+    """Ask Claude Haiku 4.5 for a title. Only the staffer's own messages are sent."""
     if client is None:
         import boto3
 
@@ -168,9 +169,7 @@ def bedrock_title(staffer_messages: list[str], client=None) -> str:
         modelId=TITLE_MODEL_ID,
         system=[{"text": TITLE_PROMPT}],
         messages=[{"role": "user", "content": [{"text": "\n\n".join(staffer_messages)}]}],
-        inferenceConfig={"maxTokens": 30},
-        # Haiku 5.5 thinks by default; off (allowed at its default effort) so the 30 tokens are the title.
-        additionalModelRequestFields={"thinking": {"type": "disabled"}},
+        inferenceConfig={"maxTokens": 30},  # Haiku 4.5 doesn't think unless asked, so all 30 go to the title
     )
     return next(block["text"] for block in response["output"]["message"]["content"] if "text" in block)
 

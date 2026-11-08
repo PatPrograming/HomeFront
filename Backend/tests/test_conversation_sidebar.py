@@ -167,8 +167,8 @@ def test_the_bedrock_title_model_sends_only_the_staffers_messages_to_haiku():
 
     assert title == "Reply to pothole complaints"
     (call,) = calls
-    assert call["modelId"] == conversations.TITLE_MODEL_ID == "us.anthropic.claude-haiku-5-5"
-    assert call["additionalModelRequestFields"] == {"thinking": {"type": "disabled"}}  # all 30 tokens go to the title
+    assert call["modelId"] == conversations.TITLE_MODEL_ID == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    assert "additionalModelRequestFields" not in call  # no thinking request: all 30 tokens go to the title
     assert call["messages"] == [{"role": "user", "content": [{"text": "fix the pothole replies"}]}]
     assert call["inferenceConfig"]["maxTokens"] <= 50
 

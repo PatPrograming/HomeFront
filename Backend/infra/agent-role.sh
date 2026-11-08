@@ -64,9 +64,9 @@ PERMISSIONS=$(cat <<JSON
       "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
       "Resource": [
         "arn:aws:bedrock:${REGION}:${ACCOUNT}:inference-profile/us.anthropic.claude-sonnet-5*",
-        "arn:aws:bedrock:${REGION}:${ACCOUNT}:inference-profile/us.anthropic.claude-haiku-5-5*",
+        "arn:aws:bedrock:${REGION}:${ACCOUNT}:inference-profile/us.anthropic.claude-haiku-4-5*",
         "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5*",
-        "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-5-5*"
+        "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5*"
       ]
     },
     {
