@@ -20,16 +20,16 @@ from mandate_contracts import MandateClaims
 from mandate_contracts.ddb import ChatMessageItem, DraftItem
 
 try:
-    from app.core.cognito import StaffIdentity, require_staff
+    from app.core.cognito import StaffIdentity, require_admin, require_staff
 except ModuleNotFoundError as exc:  # STUB until lane A (WP1) merges Backend/app/core/cognito.py
     if exc.name != "app.core.cognito":
         raise
-    from identity_gateway.auth_stub import StaffIdentity, require_staff
+    from identity_gateway.auth_stub import StaffIdentity, require_admin, require_staff
 
 from app.routers.sessions import SESSION_TTL_SECONDS, _created_epoch  # noqa: E402  (same session clock as the broker)
 from app.services import conversations  # noqa: E402
 from app.services import agent_failures  # noqa: E402
-from app.services.agent_supervisor import AgentStartError, RetryRefused, get_supervisor  # noqa: E402
+from app.services.agent_supervisor import AgentStartError, RetryRefused, credentials_mode, get_supervisor  # noqa: E402
 
 router = APIRouter(tags=["assistant"])
 bearer = HTTPBearer(auto_error=False)
@@ -300,3 +300,9 @@ def grant_for_session(sid: str, body: GrantIn, staff: StaffIdentity = Depends(re
     expires_at = int(_created_epoch(session.created_at)) + SESSION_TTL_SECONDS  # the grant ends with the session
     get_gateway().store.put_grant(sid, body.category, staff.username, datetime.now(timezone.utc).isoformat(), expires_at)
     return {"sid": sid, "category": body.category, "label": LABELS[body.category], "scope": "this session only"}
+
+
+@router.get("/assistant/status")
+def assistant_status(admin: StaffIdentity = Depends(require_admin)) -> dict:
+    """For admins' Technical details: does the console start the agent, and with which AWS credentials."""
+    return {"autostart": get_supervisor() is not None, "agentCredentials": credentials_mode()}

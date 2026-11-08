@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
+import AgentAccess from "../components/AgentAccess";
 import AutonomyPanel from "../components/AutonomyPanel";
 import ChatPanel from "../components/ChatPanel";
 import EventFeed, { FeedSummary } from "../components/EventFeed";
@@ -214,6 +215,7 @@ export default function Console() {
               <h2 id="tech-title">Technical details</h2>
               <p className="muted">Visible to admins only. Staff see the plain-words summary in the chat.</p>
             </div>
+            <AgentAccess />
             {card && <IdentityCard card={card} revoked={revoked} />}
             <section className="panel" aria-labelledby="feed-title">
               <div className="panel-head">

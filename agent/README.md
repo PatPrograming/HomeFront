@@ -132,6 +132,17 @@ sent", whatever the model says.
 - The rules live in `packages/identity-gateway/src/identity_gateway/autonomy.py`; the routes in
   `Backend/app/routers/assistant.py`.
 
+### The agent's AWS credentials
+
+When the console starts the agent, it never hands over the server's AWS credentials if
+`HOMEFRONT_AGENT_ROLE_ARN` is set. The gateway calls `sts:AssumeRole` on that role (session `agent-<sid>`, one
+hour, with a session policy allowing only `bedrock:InvokeModel*` on Claude Sonnet 5 and `bedrock:ApplyGuardrail`
+on the guardrail) and the agent process gets only those temporary credentials. Profile files and instance metadata
+are switched off for it, and the container credential variables (`AWS_CONTAINER_*`) are never passed. If
+AssumeRole fails, the agent doesn't start and the chat says so (fail closed). Without the setting (a laptop), the
+agent shares the server's credentials as before; the gateway logs a warning at startup and admins see a notice in
+Technical details. `bash Backend/infra/agent-role.sh` prints the role (dry run); `--apply` creates it.
+
 ### When the assistant can't answer
 
 Every failure reaches the chat in plain words, never silently; admins also see a short technical detail
