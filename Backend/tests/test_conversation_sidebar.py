@@ -102,6 +102,8 @@ def test_the_title_is_refreshed_after_a_few_more_messages_not_every_message(clie
         ("Title: Reply\x00 to\x1b[31m pothole\ncomplaints", "Reply to [31m pothole complaints"),
         ("one two three four five six seven eight", "one two three four five six"),
         ("Supercalifragilisticexpialidocious " * 3, "Supercalifragilisticexpialidocious"),
+        ("x" * 100, "x" * 40),
+        ("https://example.gov/a/very/long/path/that/keeps/going/and/going", "https://example.gov/a/very/long/path/tha"),
     ],
 )
 def test_model_titles_are_cleaned_and_capped(client, model, answer, expected):
@@ -409,7 +411,7 @@ def test_an_auto_title_written_between_a_pins_read_and_write_survives(client, mo
         meta = real(sid_, staffer)
         reads.append(sid_)
         if len(reads) == 2:  # update_meta's own read: the title arrives right after it
-            conversations.put_title_if_allowed(sid_, "maya", "Auto title", "auto")
+            conversations.put_title_if_allowed(sid_, "maya", "Auto title", "auto", basis=1)
         return meta
 
     monkeypatch.setattr(conversations, "get_meta", read_then_title_lands)
@@ -426,3 +428,25 @@ def test_update_meta_never_stores_an_invalid_record(client):
     with pytest.raises(ValidationError):
         conversations.update_meta(sid, "maya", {"pinned": None})
     assert row(client, sid)["pinned"] is False
+
+
+def test_an_older_title_finishing_late_never_replaces_a_newer_one(client):
+    sid = open_conversation(client)
+    conversations.put_title_if_allowed(sid, "maya", "Newer better title", "auto", basis=3)
+    conversations.put_title_if_allowed(sid, "maya", "Old first title", "auto", basis=1)  # message 1's job, late
+    assert row(client, sid)["title"] == "Newer better title"
+
+
+def test_a_failed_refresh_keeps_the_earlier_model_title(client, model):
+    sid = open_conversation(client, "please go through the inbox and answer what you can")
+    model.error = RuntimeError("Bedrock throttled")
+    say(client, sid, "two")
+    say(client, sid, "three")
+    assert row(client, sid)["title"] == "Reply to pothole complaints"
+
+
+def test_search_matches_words_beyond_the_title(client):
+    sid = open_conversation(client, "Please look at these emails and reply to the zebra crossing complaint")
+    assert "zebra" not in row(client, sid)["title"].lower()
+    login()
+    assert [r["sid"] for r in client.get("/api/v1/sessions", params={"q": "ZEBRA"}).json()["sessions"]] == [sid]

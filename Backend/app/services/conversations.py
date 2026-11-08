@@ -39,6 +39,7 @@ class ConversationMeta(BaseModel):
     acting_for: str
     title: str | None = None
     title_source: Literal["auto", "fallback", "user"] | None = None
+    title_basis: int = 0  # how many of the staffer's messages the title was made from
     pinned: bool = False
     group: str | None = None
     archived: bool = False
@@ -58,7 +59,7 @@ def _set(sid: str, staffer_id: str, fields: dict, condition: str | None = None, 
     """Write only these fields (never the whole item), so writers can't undo each other's changes."""
     names = {f"#{name}": name for name in fields} | {"#owner": "acting_for"}
     if condition:
-        names |= {"#title_source": "title_source", "#deleted": "deleted"}
+        names |= {"#title_source": "title_source", "#deleted": "deleted", "#title_basis": "title_basis"}
     assignments = [f"#{name} = :{name}" for name in fields] + ["#owner = if_not_exists(#owner, :owner)"]
     kwargs = {
         "Key": _key(sid),
@@ -78,15 +79,18 @@ def update_meta(sid: str, staffer_id: str, changes: dict) -> ConversationMeta:
     return get_meta(sid, staffer_id)
 
 
-def put_title_if_allowed(sid: str, staffer_id: str, title: str, source: str) -> None:
-    """The automatic title, unless the staffer renamed or deleted the conversation in the meantime."""
+def put_title_if_allowed(sid: str, staffer_id: str, title: str, source: str, basis: int) -> None:
+    """The automatic title, unless meanwhile the staffer renamed or deleted the conversation, or a title
+    made from more of their messages was written (a slow first call must not undo the newer one)."""
     table = get_gateway().store.table
+    fields = {"title": title, "title_source": source, "title_basis": basis}
     try:
         _set(
-            sid, staffer_id, {"title": title, "title_source": source},
+            sid, staffer_id, fields,
             condition="(attribute_not_exists(#title_source) OR #title_source <> :user) "
-            "AND (attribute_not_exists(#deleted) OR #deleted = :no)",
-            values={":user": "user", ":no": False},
+            "AND (attribute_not_exists(#deleted) OR #deleted = :no) "
+            "AND (attribute_not_exists(#title_basis) OR #title_basis <= :basis)",
+            values={":user": "user", ":no": False, ":basis": basis},
         )
     except table.meta.client.exceptions.ConditionalCheckFailedException:
         return
@@ -171,5 +175,7 @@ def refresh_title(sid: str, staffer_id: str) -> None:
         except Exception:  # Bedrock throttled, no credentials, odd answer: the fallback covers it
             title = ""
     if not title:
+        if meta.title_source == "auto":
+            return  # keep the model's earlier title rather than the first words
         title, source = fallback_title(sid), "fallback"
-    put_title_if_allowed(sid, staffer_id, title, source)
+    put_title_if_allowed(sid, staffer_id, title, source, len(mine))
