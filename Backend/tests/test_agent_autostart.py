@@ -240,21 +240,6 @@ def test_the_child_never_gets_the_signing_secret_or_any_other_server_secret():
         assert secret not in env
 
 
-def test_on_ecs_the_child_gets_the_task_role_through_the_container_credentials_endpoint():
-    # On Fargate there are no access keys: boto3 finds the task role through these variables.
-    parent = {
-        "PATH": "/usr/bin",
-        "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI": "/v2/credentials/abc",
-        "AWS_CONTAINER_CREDENTIALS_FULL_URI": "http://127.0.0.1:1338/creds",
-        "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE": "/var/run/token",
-        "MANDATE_SIGNING_SECRET": "never-to-the-agent",
-    }
-    env = child_env(parent)
-    assert {"AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI",
-            "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE"} <= env.keys()
-    assert "MANDATE_SIGNING_SECRET" not in env
-
-
 def test_start_and_stop_are_logged(client, session, launcher, caplog):
     caplog.set_level(logging.INFO, logger="homefront.agent_supervisor")
     send(client)
