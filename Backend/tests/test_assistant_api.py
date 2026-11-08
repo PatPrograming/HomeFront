@@ -249,3 +249,15 @@ def test_a_grant_ends_when_the_session_does(client, session, gateway, store):
     store.put_session(SID, old)
     client.post(f"/api/v1/sessions/{SID}/grants", json={"category": "case_status"})  # re-grant writes the past end
     assert _send(gateway).result["status"] == "held_for_review"
+
+
+def test_a_granted_category_still_cannot_post_on_the_campaign_account(client, session, gateway):
+    """social_post is grantable, so this is the case where a grant could bypass Cedar if the order were wrong."""
+    as_staff()
+    assert client.post(f"/api/v1/sessions/{SID}/grants", json={"category": "social_post"}).status_code == 200
+    token = agent_headers()["Authorization"].removeprefix("Bearer ")
+    official = gateway.guarded("social_post", {"account": "official", "text": "Town hall Tuesday"}, token)
+    assert official.event.reason == "allowed"  # the grant works where Cedar allows
+    campaign = gateway.guarded("social_post", {"account": "campaign", "text": "Vote for Rep. X"}, token)
+    assert not campaign.allowed and campaign.event.policy_ids == ["forbid-campaign-post"]
+    assert "policy: forbid-campaign-post" in campaign.deny_text()
