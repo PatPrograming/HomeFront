@@ -6,11 +6,13 @@ import { api, ApiError } from "../lib/api.js";
 import {
   describeError,
   kindLabel,
+  sendsEmail,
   typeAllows,
   type Agent,
   type AgentType,
   type Tool,
 } from "../lib/agents";
+import EmailSetup, { NoEmailNote, emailSetupPath } from "./EmailSetup";
 import "./Agents.css";
 import "./Monitoring.css";
 
@@ -369,6 +371,28 @@ export default function Monitoring() {
                 </>
               ) : (
                 <p>Loading agent…</p>
+              )}
+            </section>
+
+            <section className="panel email-panel">
+              <div className="email-panel-head">
+                <h2>Email setup</h2>
+                {agent && sendsEmail(agent) && (
+                  <Link to={emailSetupPath(agent.agent_id)}>Open on My agents</Link>
+                )}
+              </div>
+              {!agent ? (
+                <p>Loading agent…</p>
+              ) : sendsEmail(agent) ? (
+                <EmailSetup
+                  key={agent.agent_id}
+                  agent={agent}
+                  onSaved={(updated) =>
+                    setAgents((list) => list.map((x) => (x.agent_id === updated.agent_id ? updated : x)))
+                  }
+                />
+              ) : (
+                <NoEmailNote agent={agent} types={types} />
               )}
             </section>
 

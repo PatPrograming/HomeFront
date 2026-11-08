@@ -117,7 +117,9 @@
   grid-template-columns: 1.1fr 1.2fr 0.9fr;
   grid-template-areas:
     'identity actions atlas'
+    'identity email atlas'
     'audit audit audit';
+  align-items: start;
   gap: 1rem;
 }
 
@@ -137,6 +139,42 @@
 .monitoring-console .actions {
   grid-area: actions;
   animation-delay: 0.05s;
+}
+
+.monitoring-console .email-panel {
+  grid-area: email;
+  animation-delay: 0.08s;
+}
+
+.monitoring-console .email-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* EmailSetup's grids: undo the console's generic dl/dt rules. */
+.monitoring-console .email-panel dl {
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.monitoring-console .email-panel .mailing-list {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.monitoring-console .email-panel button.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.monitoring-console .email-panel button.btn-primary:hover:not(:disabled) {
+  background: var(--blue-800);
+  border-color: var(--blue-800);
 }
 
 .monitoring-console .atlas {
@@ -469,6 +507,7 @@
     grid-template-areas:
       'identity'
       'actions'
+      'email'
       'atlas'
       'audit';
   }

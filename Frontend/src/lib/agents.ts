@@ -15,8 +15,31 @@ export interface Agent {
   tool_grants: string[];
   // Mailing list: the only addresses email tools can reach.
   recipients: string[];
+  // Missing on APIs older than email settings; read via emailSettingsOf().
+  email_settings?: EmailSettings;
   token_version: number;
   active: boolean;
+}
+
+export interface EmailSettings {
+  from_email: string;
+  from_name: string;
+  reply_to: string;
+  signature: string;
+}
+
+export const EMPTY_EMAIL_SETTINGS: EmailSettings = { from_email: "", from_name: "", reply_to: "", signature: "" };
+
+export const emailSettingsOf = (agent: Agent): EmailSettings => ({
+  ...EMPTY_EMAIL_SETTINGS,
+  ...(agent.email_settings ?? {}),
+});
+
+export interface EmailVerification {
+  from_email: string | null;
+  source: "agent" | "env" | null;
+  verified: boolean | null;
+  reason: string;
 }
 
 export interface AgentType {
@@ -52,7 +75,7 @@ const TOOL_ACTIONS: Record<string, string> = {
 export const toolAction = (tool: string) => TOOL_ACTIONS[tool] || `use ${tool}`;
 
 export const EMAIL_TOOLS = ["email.send", "email.send_list"];
-export const sendsEmail = (agent: Agent) => agent.tool_grants.some((t) => EMAIL_TOOLS.includes(t));
+export const sendsEmail = (agent: Agent) => (agent.tool_grants ?? []).some((t) => EMAIL_TOOLS.includes(t));
 
 export function typeAllows(type: AgentType | undefined, tool: string): boolean {
   if (!type) return false;
@@ -130,6 +153,7 @@ export const EVENT_LABELS: Record<string, string> = {
   grants_replaced: "Tools replaced",
   grant_denied: "Grant blocked",
   recipients_updated: "Mailing list changed",
+  email_settings_updated: "Email setup changed",
   run_started: "Run started",
   run_finished: "Run finished",
   approval_requested: "Approval requested",
@@ -165,4 +189,12 @@ export interface Approval {
   input_schema: { properties?: Record<string, { description?: string }> } | null;
   // email.send_list only: who it goes to if approved now.
   recipients: string[] | null;
+  // Email tools only: the sender and signature the gateway adds when sending.
+  sender?: {
+    from: string | null;
+    from_source: "agent" | "env" | null;
+    reply_to: string | null;
+    signature: string | null;
+    simulated: boolean;
+  } | null;
 }

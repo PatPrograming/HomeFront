@@ -4,6 +4,7 @@ import Layout from "../components/Layout";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/AuthProvider";
 import { describeError, toolAction, type Approval } from "../lib/agents";
+import { emailSetupPath } from "./EmailSetup";
 import "./Agents.css";
 import "./Approvals.css";
 
@@ -85,6 +86,41 @@ function ApprovalCard({ approval, onDone }: { approval: Approval; onDone: () => 
             </span>
           )}
         </p>
+      )}
+
+      {approval.sender && (
+        <dl className="approval-sender">
+          <dt>From</dt>
+          <dd>
+            {approval.sender.simulated ? (
+              <span className="muted">No sender set: this will only be simulated, nothing is delivered</span>
+            ) : (
+              <>
+                {approval.sender.from}
+                {approval.sender.from_source === "env" && <span className="muted"> (server default)</span>}
+              </>
+            )}
+          </dd>
+          {approval.sender.reply_to && (
+            <>
+              <dt>Reply-to</dt>
+              <dd>{approval.sender.reply_to}</dd>
+            </>
+          )}
+          {approval.sender.signature && (
+            <>
+              <dt>Signature</dt>
+              <dd>
+                <pre className="approval-signature">{approval.sender.signature}</pre>
+                <span className="muted">Added below the message automatically.</span>
+              </dd>
+            </>
+          )}
+          <dt />
+          <dd>
+            <Link to={emailSetupPath(approval.agent_id)}>Change sender/recipients</Link>
+          </dd>
+        </dl>
       )}
 
       <div className="approval-fields">

@@ -67,6 +67,15 @@ def _mailing_list_note(agent: AgentRecord) -> str:
             "\n- Your mailing list is empty, so email can't be sent to anyone. Say so "
             "instead of trying."
         )
+    settings = agent.email_settings
+    sender_note = ""
+    if settings.from_name:
+        sender_note += f"\n- Your emails are sent as \"{settings.from_name}\"."
+    if settings.signature:
+        sender_note += (
+            "\n- A signature is added to every email automatically. Don't write your own "
+            "sign-off or signature block."
+        )
     shown = agent.recipients[:PROMPT_RECIPIENT_LIMIT]
     more = len(agent.recipients) - len(shown)
     listed = ", ".join(shown) + (f" and {more} more" if more > 0 else "")
@@ -74,7 +83,7 @@ def _mailing_list_note(agent: AgentRecord) -> str:
         f"\n- Email can only go to your mailing list ({len(agent.recipients)} addresses: "
         f"{listed}). email_send sends to one of them; email_send_list sends one email "
         "to all of them. Any other address is refused."
-    )
+    ) + sender_note
 
 
 def system_prompt(agent: AgentRecord) -> str:

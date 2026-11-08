@@ -25,7 +25,7 @@ for rel in (
 from atlas_enricher import AnnotateRequest, AtlasEnricher  # noqa: E402
 from atlas_enricher.enricher import AnnotateEvent  # noqa: E402
 from atlas_enricher.router import build_router  # noqa: E402
-from mcp_tools.handlers import invoke_tool  # noqa: E402
+from mcp_tools.handlers import invoke_tool, resolve_sender, ses_identity_status  # noqa: E402
 from mcp_tools.registry import get_tool, list_tools, tool_public_view  # noqa: E402
 
 from .agent_types import (
@@ -41,12 +41,16 @@ from .runner import AgentRunner, RunStore, new_run
 from .store import (
     AGENT_ID_PATTERN,
     DEFAULT_MAX_STEPS,
+    MAX_FROM_NAME,
     MAX_RECIPIENTS,
+    MAX_SIGNATURE,
     AgentRecord,
     DuplicateAgentError,
     GatewayStore,
+    InvalidEmailSettingsError,
     InvalidRecipientsError,
     normalize_email,
+    normalize_email_settings,
 )
 
 # Agents live in memory by default; the host app can swap in DynamoDB via
@@ -117,6 +121,16 @@ class CreateAgentRequest(BaseModel):
     recipients: list[str] = Field(default_factory=list, max_length=MAX_RECIPIENTS * 2)
 
 
+class EmailSettingsUpdate(BaseModel):
+    """Replaces the agent's sender settings. Empty strings clear a field; an empty
+    from_email falls back to HOMEFRONT_EMAIL_FROM."""
+
+    from_email: str = Field(default="", max_length=254)
+    from_name: str = Field(default="", max_length=MAX_FROM_NAME * 2)
+    reply_to: str = Field(default="", max_length=254)
+    signature: str = Field(default="", max_length=MAX_SIGNATURE * 2)
+
+
 class RecipientsUpdate(BaseModel):
     """Replaces the whole mailing list. Addresses are trimmed, lower-cased and de-duplicated."""
 
@@ -146,6 +160,7 @@ def _agent_view(agent: AgentRecord) -> dict[str, Any]:
         "owner_id": agent.owner_id,
         "tool_grants": sorted(agent.tool_grants),
         "recipients": list(agent.recipients),
+        "email_settings": agent.email_settings.view(),
         "token_version": agent.token_version,
         "active": agent.active,
     }
@@ -161,6 +176,19 @@ def _recipients_error(exc: InvalidRecipientsError) -> HTTPException:
 # Tools whose audience is limited by the agent's mailing list.
 EMAIL_SEND = "email.send"
 EMAIL_SEND_LIST = "email.send_list"
+EMAIL_TOOLS = (EMAIL_SEND, EMAIL_SEND_LIST)
+
+
+def _sender_preview(agent: AgentRecord) -> dict[str, Any]:
+    """What a reviewer needs to see about who an email comes from."""
+    sender = resolve_sender(agent.email_settings.view())
+    return {
+        "from": sender["from_header"] or None,
+        "from_source": sender["source"],
+        "reply_to": sender["reply_to"] or None,
+        "signature": sender["signature"] or None,
+        "simulated": not sender["from_email"],
+    }
 
 
 def _recipient_problem(agent: AgentRecord, tool_name: str, arguments: dict[str, Any]) -> str | None:
@@ -437,6 +465,48 @@ def replace_recipients(
             }
         )
     return _agent_view(agent)
+
+
+@app.put("/agents/{agent_id}/email-settings")
+def replace_email_settings(
+    agent_id: str, body: EmailSettingsUpdate, actor: Actor = Depends(get_actor)
+) -> dict[str, Any]:
+    before = _accessible_agent(agent_id, actor).email_settings.view()
+    try:
+        settings = normalize_email_settings(**body.model_dump())
+        agent = store.set_email_settings(agent_id, settings)
+    except InvalidEmailSettingsError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_email_settings", "field": exc.field, "message": str(exc)},
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    after = agent.email_settings.view()
+    changed = sorted(k for k in after if after[k] != before.get(k))
+    if changed:
+        store.append_audit(
+            {
+                "type": "email_settings_updated",
+                "decision": "info",
+                "agent_id": agent_id,
+                "actor": actor.label,
+                "fields": changed,
+                "detail": f"Email setup: changed {', '.join(changed)}",
+            }
+        )
+    return _agent_view(agent)
+
+
+@app.get("/agents/{agent_id}/email-settings/verification")
+def email_settings_verification(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    """Is the effective sender verified in SES? verified=null when it can't be checked."""
+    agent = _accessible_agent(agent_id, actor)
+    sender = resolve_sender(agent.email_settings.view())
+    if not sender["from_email"]:
+        return {"from_email": None, "source": None, "verified": None, "reason": "No sender email is set."}
+    status = ses_identity_status(sender["from_email"])
+    return {"from_email": sender["from_email"], "source": sender["source"], **status}
 
 
 @app.post("/auth/token", response_model=AuthResponse)
@@ -889,6 +959,8 @@ def _approval_view(rec: ApprovalRecord, agent: AgentRecord | None) -> dict[str, 
     view["input_schema"] = tool.input_schema if tool else None
     # Who a list send goes to if approved now (the list as it is today).
     view["recipients"] = list(agent.recipients) if agent and rec.tool == EMAIL_SEND_LIST else None
+    # The sender and signature the gateway adds if approved now.
+    view["sender"] = _sender_preview(agent) if agent and rec.tool in EMAIL_TOOLS else None
     return view
 
 
@@ -1070,8 +1142,11 @@ def approve(
 
     tool = get_tool(rec.tool)
     run_args = dict(arguments)
+    if rec.tool in EMAIL_TOOLS:
+        # Sender and audience come from the agent's record, never from the
+        # agent's or reviewer's arguments.
+        run_args["sender"] = agent.email_settings.view()
     if rec.tool == EMAIL_SEND_LIST:
-        # The audience comes from the gateway, never from the agent or reviewer.
         run_args["recipients"] = list(agent.recipients)
     try:
         result = _run_handler(tool, rec.tool, run_args)

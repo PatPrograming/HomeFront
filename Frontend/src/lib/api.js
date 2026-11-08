@@ -73,6 +73,11 @@ export const api = {
   // Replaces the agent's whole mailing list (the only addresses it may email).
   setRecipients: (agentId, emails) =>
     request(`/agents/${encodeURIComponent(agentId)}/recipients`, { method: "PUT", body: { emails } }),
+  // body: { from_email, from_name, reply_to, signature } ("" clears a field)
+  setEmailSettings: (agentId, body) =>
+    request(`/agents/${encodeURIComponent(agentId)}/email-settings`, { method: "PUT", body }),
+  // { from_email, source, verified: true | false | null, reason }
+  emailVerification: (agentId) => request(`/agents/${encodeURIComponent(agentId)}/email-settings/verification`),
   replaceGrants: (agentId, tools) =>
     request(`/agents/${encodeURIComponent(agentId)}/grants`, { method: "PUT", body: { tools } }),
   // filters: { agent_id, trace_id, decision, type } (any subset)

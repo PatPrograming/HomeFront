@@ -5,7 +5,7 @@ import re
 import secrets
 import time
 import uuid
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from threading import Lock
 from typing import Any, Callable, Iterable, Protocol
 
@@ -51,6 +51,60 @@ def normalize_recipients(addresses: Iterable[str]) -> list[str]:
     return sorted(cleaned)
 
 
+MAX_FROM_NAME = 80
+MAX_SIGNATURE = 1000
+
+
+class InvalidEmailSettingsError(ValueError):
+    def __init__(self, field_name: str, message: str) -> None:
+        self.field = field_name
+        super().__init__(message)
+
+
+@dataclass
+class EmailSettings:
+    """Who an agent's email comes from. Empty strings mean "not set"; an unset
+    from_email falls back to HOMEFRONT_EMAIL_FROM at send time."""
+
+    from_email: str = ""
+    from_name: str = ""
+    reply_to: str = ""
+    signature: str = ""
+
+    def view(self) -> dict[str, str]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "EmailSettings":
+        data = data or {}
+        return cls(**{k: str(data.get(k) or "") for k in ("from_email", "from_name", "reply_to", "signature")})
+
+
+def _valid_address(field_name: str, label: str, value: str) -> str:
+    value = normalize_email(value or "")
+    if value and (len(value) > 254 or not _EMAIL_RE.match(value)):
+        raise InvalidEmailSettingsError(field_name, f"{label} isn't a valid email address: {value}")
+    return value
+
+
+def normalize_email_settings(
+    from_email: str = "", from_name: str = "", reply_to: str = "", signature: str = ""
+) -> EmailSettings:
+    """Validated, trimmed settings. Raises InvalidEmailSettingsError naming the field."""
+    name = " ".join((from_name or "").split())  # one line, no header injection
+    if len(name) > MAX_FROM_NAME:
+        raise InvalidEmailSettingsError("from_name", f"Sender name is limited to {MAX_FROM_NAME} characters.")
+    sig = (signature or "").replace("\r\n", "\n").strip()
+    if len(sig) > MAX_SIGNATURE:
+        raise InvalidEmailSettingsError("signature", f"Signature is limited to {MAX_SIGNATURE} characters.")
+    return EmailSettings(
+        from_email=_valid_address("from_email", "Sender email", from_email),
+        from_name=name,
+        reply_to=_valid_address("reply_to", "Reply-to", reply_to),
+        signature=sig,
+    )
+
+
 @dataclass
 class AgentRecord:
     agent_id: str
@@ -68,6 +122,7 @@ class AgentRecord:
     kind: str = "custom"
     # Mailing list (normalized, see normalize_recipients).
     recipients: list[str] = field(default_factory=list)
+    email_settings: EmailSettings = field(default_factory=EmailSettings)
     token_version: int = 1
     active: bool = True
     created_at: float = field(default_factory=time.time)
@@ -106,7 +161,12 @@ class AgentRepository(Protocol):
 
 
 def _copy(agent: AgentRecord) -> AgentRecord:
-    return replace(agent, tool_grants=set(agent.tool_grants), recipients=list(agent.recipients))
+    return replace(
+        agent,
+        tool_grants=set(agent.tool_grants),
+        recipients=list(agent.recipients),
+        email_settings=replace(agent.email_settings),
+    )
 
 
 class MemoryAgentRepository:
@@ -257,6 +317,12 @@ class GatewayStore:
 
         def apply(agent: AgentRecord) -> None:
             agent.recipients = recipients
+
+        return self._mutate(agent_id, apply)
+
+    def set_email_settings(self, agent_id: str, settings: EmailSettings) -> AgentRecord:
+        def apply(agent: AgentRecord) -> None:
+            agent.email_settings = replace(settings)
 
         return self._mutate(agent_id, apply)
 
