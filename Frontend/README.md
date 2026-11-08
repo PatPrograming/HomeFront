@@ -66,7 +66,7 @@ All of it is in `src/lib/pkce.ts` (pure helpers) and `src/lib/auth.ts` (about 10
 | `/social-platform` | anyone | Choose platforms, then enter the message, links and images (front-end only for now) |
 | `/login` | anyone | Sends you to Cognito (or, in mock mode, lets you pick Maya or the Chief of Staff) |
 | `/` with `?code=` | anyone | Finishes sign-in (Cognito returns to the site root; `/auth/callback` works too) |
-| `/console` | `staffer` or `admin` | The chat (first message calls `POST /api/v1/sessions`), the review queue and autonomy (right rail, or the **Review** drawer under 1024 px), a "Working… / Done" disclosure per turn. Admins also see **Technical details**: the identity card and the live feed with Cedar and ATLAS ids |
+| `/console` | `staffer` or `admin` | The chat (first message calls `POST /api/v1/sessions`) with a "Working… / Done" disclosure per turn and a card per draft the turn produced; **Review** on a card (or the **N waiting** badge) opens that one draft in a side panel, a full-screen sheet under 1024 px (recipient read-only). What it may send alone sits in the right rail (**Sending rules** drawer under 1024 px). **Stop** (or Esc) stops waiting for a reply on screen only; **Copy** copies a reply. Admins also see **Technical details**: the identity card and the live feed with Cedar and ATLAS ids |
 | `/admin` | `admin` only | **Offboard** each staffer (`POST /api/v1/staff/{id}/offboard`, with a confirm step) and the full audit log |
 | `/account` | anyone signed in, even with no group | `GET /api/v1/me` (username, sub, email, groups, read-only) and sign-out |
 | `/monitoring` | anyone | Old link; redirects to `/console` (the in-memory gateway demo was removed) |
