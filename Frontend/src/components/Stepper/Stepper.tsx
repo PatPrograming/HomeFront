@@ -1,7 +1,12 @@
 import "./Stepper.css";
 
 // Presentational progress indicator. `current` is the 1-based active step.
-export default function Stepper({ steps, current }) {
+interface StepperProps {
+  steps: string[];
+  current: number;
+}
+
+export default function Stepper({ steps, current }: StepperProps) {
   return (
     <ol className="stepper" aria-label="Progress">
       {steps.map((label, i) => {

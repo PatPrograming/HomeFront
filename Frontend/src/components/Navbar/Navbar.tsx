@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { NavLink, Link } from "react-router-dom";
-import Logo from "../Logo/Logo.jsx";
+import Logo from "../Logo/Logo";
 import { NAV_LINKS } from "../../config.js";
-import { useAuth } from "../../lib/AuthProvider.jsx";
+import { useAuth } from "../../lib/AuthProvider";
 import "./Navbar.css";
 
 export default function Navbar() {

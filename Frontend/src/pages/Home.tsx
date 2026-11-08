@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import Layout from "../components/Layout.jsx";
-import Hero from "../components/Hero/Hero.jsx";
+import Layout from "../components/Layout";
+import Hero from "../components/Hero/Hero";
 import { api } from "../lib/api.js";
 import "./Home.css";
 

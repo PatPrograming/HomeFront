@@ -1,4 +1,4 @@
-import { getIdToken } from "./AuthProvider.jsx";
+import { getIdToken } from "./AuthProvider";
 
 // All backend routes live under /api/v1. In dev, Vite proxies /api to FastAPI (:8080).
 // In production set VITE_API_BASE to the deployed API origin + /api/v1.

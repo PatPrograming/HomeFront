@@ -1,8 +1,13 @@
 import { Link } from "react-router-dom";
-import PlatformIcon from "../PlatformIcons/PlatformIcons.jsx";
+import PlatformIcon from "../PlatformIcons/PlatformIcons";
 import "./Hero.css";
 
-export default function Hero({ mission, buttons }) {
+interface HeroProps {
+  mission: string[];
+  buttons: string[];
+}
+
+export default function Hero({ mission, buttons }: HeroProps) {
   return (
     <section className="hero">
       <div className="container hero-grid">
@@ -37,7 +42,7 @@ export default function Hero({ mission, buttons }) {
           </div>
           <div className="demo-body">
             <div className="demo-chips">
-              {["x", "bluesky", "reddit"].map((p) => (
+              {(["x", "bluesky", "reddit"] as const).map((p) => (
                 <span key={p} className={`demo-chip demo-chip-${p}`}>
                   <PlatformIcon name={p} size={16} />
                 </span>

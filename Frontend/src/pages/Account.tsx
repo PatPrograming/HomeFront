@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import Layout from "../components/Layout.jsx";
+import Layout from "../components/Layout";
 import { api } from "../lib/api.js";
-import { useAuth } from "../lib/AuthProvider.jsx";
+import { useAuth } from "../lib/AuthProvider";
 import "./Auth.css";
 
 // First end-to-end check: browser -> Cognito ID token -> FastAPI /api/v1/me -> DynamoDB.

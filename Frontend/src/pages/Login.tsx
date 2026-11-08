@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import Layout from "../components/Layout.jsx";
-import { useAuth } from "../lib/AuthProvider.jsx";
+import Layout from "../components/Layout";
+import { useAuth } from "../lib/AuthProvider";
 import "./Auth.css";
 
 // Modes: signin, signup, confirm (enter the code Cognito emailed).
@@ -11,25 +11,25 @@ export default function Login() {
   const location = useLocation();
   const redirectTo = location.state?.from || "/account";
 
-  const [mode, setMode] = useState("signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "confirm">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [code, setCode] = useState("");
-  const [error, setError] = useState(null);
-  const [notice, setNotice] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Once the session loads, leave for the page that sent us here.
   if (!loading && user) return <Navigate to={redirectTo} replace />;
 
-  function toConfirm(message) {
+  function toConfirm(message: string) {
     setMode("confirm");
     setCode("");
     setNotice(message);
   }
 
-  async function onSubmit(e) {
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     setError(null);
@@ -60,7 +60,7 @@ export default function Login() {
         }
       }
     } catch (err) {
-      setError(err.message || String(err));
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -72,7 +72,7 @@ export default function Login() {
       await resendCode(email);
       setNotice(`Sent a new code to ${email}.`);
     } catch (err) {
-      setError(err.message || String(err));
+      setError(err instanceof Error ? err.message : String(err));
     }
   }
 

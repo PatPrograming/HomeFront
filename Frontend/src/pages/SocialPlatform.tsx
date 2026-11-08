@@ -1,8 +1,17 @@
-import { useEffect, useRef, useState } from "react";
-import Layout from "../components/Layout.jsx";
-import Stepper from "../components/Stepper/Stepper.jsx";
-import PlatformIcon, { PLATFORMS } from "../components/PlatformIcons/PlatformIcons.jsx";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import Layout from "../components/Layout";
+import Stepper from "../components/Stepper/Stepper";
+import PlatformIcon, { PLATFORMS, type PlatformId } from "../components/PlatformIcons/PlatformIcons";
 import "./SocialPlatform.css";
+
+interface ImageItem {
+  id: string;
+  file: File;
+  url: string;
+}
+
+const brandVars = (color: string) =>
+  ({ "--brand": color, "--glyph-cut": color }) as CSSProperties;
 
 const STEPS = ["Select platforms", "Add content"];
 
@@ -10,36 +19,40 @@ const STEPS = ["Select platforms", "Add content"];
 // links and images. Everything is local UI state for now.
 export default function SocialPlatform() {
   const [step, setStep] = useState(1);
-  const [selected, setSelected] = useState([]);
+  const [selected, setSelected] = useState<PlatformId[]>([]);
   const [message, setMessage] = useState("");
   const [links, setLinks] = useState([""]);
-  const [images, setImages] = useState([]);
-  const fileRef = useRef(null);
+  const [images, setImages] = useState<ImageItem[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
   const imagesRef = useRef(images);
   imagesRef.current = images;
 
   // Release object URLs for any previews still around on unmount.
   useEffect(() => () => imagesRef.current.forEach((i) => URL.revokeObjectURL(i.url)), []);
 
-  const togglePlatform = (id) =>
+  const togglePlatform = (id: PlatformId) =>
     setSelected((cur) => (cur.includes(id) ? cur.filter((p) => p !== id) : [...cur, id]));
 
-  const goTo = (n) => {
+  const goTo = (n: number) => {
     setStep(n);
     window.scrollTo({ top: 0 });
   };
 
-  const setLink = (i, value) => setLinks((cur) => cur.map((l, idx) => (idx === i ? value : l)));
-  const removeLink = (i) =>
+  const setLink = (i: number, value: string) => setLinks((cur) => cur.map((l, idx) => (idx === i ? value : l)));
+  const removeLink = (i: number) =>
     setLinks((cur) => (cur.length === 1 ? [""] : cur.filter((_, idx) => idx !== i)));
 
-  const addImages = (fileList) => {
-    const added = Array.from(fileList)
+  const addImages = (fileList: FileList | null) => {
+    if (!fileList) return;
+    addFiles(Array.from(fileList));
+  };
+  const addFiles = (files: File[]) => {
+    const added = files
       .filter((f) => f.type.startsWith("image/"))
       .map((file) => ({ id: `${file.name}-${file.size}-${crypto.randomUUID()}`, file, url: URL.createObjectURL(file) }));
     setImages((cur) => [...cur, ...added]);
   };
-  const removeImage = (id) =>
+  const removeImage = (id: string) =>
     setImages((cur) => {
       const gone = cur.find((i) => i.id === id);
       if (gone) URL.revokeObjectURL(gone.url);
@@ -70,7 +83,7 @@ export default function SocialPlatform() {
                   <label
                     key={p.id}
                     className={`platform${on ? " is-on" : ""}`}
-                    style={{ "--brand": p.color, "--glyph-cut": p.color }}
+                    style={brandVars(p.color)}
                   >
                     <input
                       type="checkbox"
@@ -238,7 +251,7 @@ export default function SocialPlatform() {
               <h2>Publishing to</h2>
               <ul>
                 {chosen.map((p) => (
-                  <li key={p.id} style={{ "--brand": p.color, "--glyph-cut": p.color }}>
+                  <li key={p.id} style={brandVars(p.color)}>
                     <span className="summary-icon">
                       <PlatformIcon name={p.id} size={16} />
                     </span>

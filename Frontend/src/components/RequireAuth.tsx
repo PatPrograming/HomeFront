@@ -1,8 +1,9 @@
+import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "../lib/AuthProvider.jsx";
+import { useAuth } from "../lib/AuthProvider";
 
 // Wrap any route that needs a signed-in user.
-export default function RequireAuth({ children }) {
+export default function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 

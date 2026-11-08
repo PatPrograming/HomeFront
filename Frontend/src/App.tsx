@@ -1,11 +1,11 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { AuthProvider } from "./lib/AuthProvider.jsx";
-import RequireAuth from "./components/RequireAuth.jsx";
-import Home from "./pages/Home.jsx";
-import Login from "./pages/Login.jsx";
-import Account from "./pages/Account.jsx";
-import Monitoring from "./pages/Monitoring.jsx";
-import SocialPlatform from "./pages/SocialPlatform.jsx";
+import { AuthProvider } from "./lib/AuthProvider";
+import RequireAuth from "./components/RequireAuth";
+import Home from "./pages/Home";
+import Login from "./pages/Login";
+import Account from "./pages/Account";
+import Monitoring from "./pages/Monitoring";
+import SocialPlatform from "./pages/SocialPlatform";
 
 export default function App() {
   return (

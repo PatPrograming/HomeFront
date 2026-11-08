@@ -37,7 +37,9 @@ const glyphs = {
   ),
 };
 
-export default function PlatformIcon({ name, size = 28 }) {
+export type PlatformId = keyof typeof glyphs;
+
+export default function PlatformIcon({ name, size = 28 }: { name: PlatformId; size?: number }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -52,7 +54,7 @@ export default function PlatformIcon({ name, size = 28 }) {
   );
 }
 
-export const PLATFORMS = [
+export const PLATFORMS: { id: PlatformId; name: string; note: string; color: string }[] = [
   { id: "x", name: "X", note: "Posts and replies", color: "#000000" },
   { id: "bluesky", name: "Bluesky", note: "Posts and replies", color: "#1185fe" },
   { id: "reddit", name: "Reddit", note: "Posts and comments", color: "#ff4500" },
