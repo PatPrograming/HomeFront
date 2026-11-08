@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 // ConnectPrompt links to /account; render the link as a plain anchor so no Router is needed.
+// The chat only renders the prompt here; the connect flow itself is tested in ConnectPrompt.test.tsx.
+vi.mock("../lib/connections", () => ({ beginConnect: vi.fn() }));
 vi.mock("react-router-dom", () => ({
   Link: ({ to, children }: { to: string; children: unknown }) => <a href={to}>{children as never}</a>,
 }));

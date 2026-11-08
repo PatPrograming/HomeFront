@@ -220,3 +220,32 @@ describe("<ConnectPrompt>", () => {
     expect(h.links().map((a) => a.props.href)).toContain("/account");
   });
 });
+
+describe("parseNeedsConnection hardening", () => {
+  it("returns null unless status is exactly needs_connection", () => {
+    expect(parseNeedsConnection({ provider: "gmail", label: "Gmail", status: "sent" })).toBeNull();
+    expect(parseNeedsConnection({ provider: "gmail", label: "Gmail" })).toBeNull();
+    expect(parseNeedsConnection(JSON.stringify({ provider: "gmail", label: "Gmail", status: "ok" }))).toBeNull();
+  });
+
+  it("only accepts provider gmail or x", () => {
+    expect(parseNeedsConnection({ ...result, provider: "linkedin", label: "LinkedIn" })).toBeNull();
+    expect(parseNeedsConnection({ ...result, provider: "evil", label: "Evil" })).toBeNull();
+    expect(parseNeedsConnection({ ...result, provider: "x", label: "X" })?.provider).toBe("x");
+  });
+
+  it("takes the label from a fixed map, never from the input", () => {
+    expect(parseNeedsConnection({ ...result, label: "Gmail (evil)" })?.label).toBe("Gmail");
+    expect(parseNeedsConnection({ ...result, provider: "x", label: "X (evil)" })?.label).toBe("X");
+  });
+});
+
+describe("<ConnectPrompt> label", () => {
+  it("shows Connect X for provider x even if the given label says otherwise", async () => {
+    setUrl("");
+    const { createElement } = await import("react");
+    h.mount(createElement(ConnectPrompt, { provider: "x", label: "X (evil)" }));
+    expect(h.buttons("Connect X")).toHaveLength(1);
+    expect(h.text()).not.toContain("evil");
+  });
+});

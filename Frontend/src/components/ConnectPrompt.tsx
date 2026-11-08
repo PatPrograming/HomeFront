@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { beginConnect } from "../lib/connections";
 import "../pages/Account.css";
 
 export interface NeedsConnection {
@@ -39,10 +40,7 @@ export default function ConnectPrompt({ provider, note }: { provider: string; la
 
   const connect = () => {
     setError(null);
-    // Loaded on click, so the chat can show this prompt without loading the API client up front.
-    import("../lib/connections")
-      .then(({ beginConnect }) => beginConnect(provider))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    beginConnect(provider).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   };
 
   return (
