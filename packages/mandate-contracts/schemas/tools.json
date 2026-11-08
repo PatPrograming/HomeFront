@@ -88,6 +88,19 @@
         "body": {
           "title": "Body",
           "type": "string"
+        },
+        "in_reply_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID of the inbox email this replies to, e.g. 'email-7'.",
+          "title": "In Reply To"
         }
       },
       "required": [

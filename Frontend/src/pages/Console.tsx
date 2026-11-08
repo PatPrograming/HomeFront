@@ -1,11 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
+import AutonomyPanel from "../components/AutonomyPanel";
+import ChatPanel from "../components/ChatPanel";
 import EventFeed, { FeedSummary } from "../components/EventFeed";
 import IdentityCard from "../components/IdentityCard";
+import ReviewQueue from "../components/ReviewQueue";
 import { api, type SessionCard } from "../lib/api";
 import { useSession } from "../lib/AuthProvider";
 import { sessionEvents } from "../lib/events";
+import { useChat } from "../lib/useChat";
 import { useEventFeed } from "../lib/useEventFeed";
+import { useReview } from "../lib/useReview";
 import { useSessionRevoked } from "../lib/useSessionRevoked";
 import "./Console.css";
 
@@ -22,7 +27,8 @@ function loadCard(username: string): SessionCard | null {
   }
 }
 
-// Staff view: start the assistant (demo step 1), then watch every ALLOW / DENY this session gets (steps 2 and 4).
+// Staff view: start the assistant (demo step 1), chat with it, review what the gateway held for you, decide what
+// it may send alone, and watch every ALLOW / DENY this session gets (steps 2 and 4).
 export default function Console() {
   const session = useSession();
   const [card, setCard] = useState<SessionCard | null>(() => loadCard(session.username));
@@ -31,6 +37,14 @@ export default function Console() {
   const feed = useEventFeed({ limit: 100 });
   const events = sessionEvents(feed.events, card?.sid ?? null); // the admin Audit log shows every session
   const revoked = useSessionRevoked(card?.sid ?? null) || events.some((e) => e.reason === REVOKED);
+  const chat = useChat(card?.sid ?? null);
+  const review = useReview();
+  const reloadReview = review.reload;
+
+  // A new chat message usually means the agent just drafted something: show it without waiting for the next poll.
+  useEffect(() => {
+    reloadReview();
+  }, [chat.messages.length, reloadReview]);
 
   async function start() {
     setBusy(true);
@@ -68,14 +82,22 @@ export default function Console() {
           </p>
         )}
 
-        {card ? (
-          <IdentityCard card={card} revoked={revoked} />
-        ) : (
-          <section className="panel identity-empty">
-            <h2>No assistant running</h2>
-            <p>Start the assistant to get its identity card and the session id to hand to the agent.</p>
-          </section>
-        )}
+        <div className="assistant-grid">
+          {card ? (
+            <ChatPanel chat={chat} sid={card.sid} disabled={revoked} />
+          ) : (
+            <section className="panel identity-empty">
+              <h2>No assistant running</h2>
+              <p>Start the assistant to chat with it. You get its identity card and the session id to hand to the agent.</p>
+            </section>
+          )}
+          <div className="assistant-side">
+            <ReviewQueue drafts={review.drafts} onDone={review.reload} />
+            <AutonomyPanel categories={review.categories} onChange={review.reload} />
+          </div>
+        </div>
+
+        {card && <IdentityCard card={card} revoked={revoked} />}
 
         <section className="panel" aria-labelledby="feed-title">
           <div className="panel-head">

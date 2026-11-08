@@ -4,6 +4,7 @@
     2. session active AND staffer active?  -> no: DENY  (this is how Offboard is instant)
     3. build the facts from the token and DynamoDB (never from tool input)
     4. ask Verified Permissions (Cedar)    -> DENY: stop
+       an outbound call the staffer has not let the agent make alone -> held as a draft, not run
     5. run the tool
     6. scan untrusted output (flag only, the original text is passed on)
     7. write a decision event
@@ -16,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -26,8 +28,10 @@ from atlas_enricher.enricher import TOOL_RESIDUAL_RISK, AnnotateEvent
 from mcp_tools.handlers import invoke_tool
 
 from mandate_contracts import TOOLS, DecisionEvent, GuardrailFlag, MandateClaims, Reason, cedar
+from mandate_contracts.ddb import DraftItem
 
 from .authz import Authorizer, AuthzRequest
+from .autonomy import LOCKED, NEW_CONVERSATION, SOCIAL_CATEGORY
 from .storage import MandateStore
 from .tokens import InvalidToken, verify_mandate_token
 
@@ -42,12 +46,17 @@ LEGACY_TOOLS = {
     "email_send": "email.send",
     "social_post": "social.post",
 }
+OUTBOUND_TOOLS = ("email_send", "social_post")  # held for review unless the staffer allowed the category
 # One address, nothing else: "a@b.gov, c@evil.com" is not one address.
 SINGLE_ADDRESS = re.compile(r"^[^@\s,;<>]+@([^@\s,;<>]+)$")
 
 
 def no_scan(text: str) -> GuardrailFlag:
     return GuardrailFlag()
+
+
+class DraftAlreadyDecided(Exception):
+    """The draft was already sent or rejected."""
 
 
 @dataclass
@@ -129,6 +138,17 @@ class Gateway:
             if not decision.allowed:
                 return self._record(claims, tool, resource, "DENY", "denied by policy", decision.policy_ids)
 
+            # 4b. Earned autonomy. Cedar says the agent *may* send this; the staffer decides whether it
+            #     may send it without review. Until then the gateway keeps a draft and sends nothing.
+            if tool in OUTBOUND_TOOLS:
+                category = self._outbound_category(tool, params)
+                # A locked category is held even if its stored level says "auto".
+                if category in LOCKED or self.store.get_autonomy(claims.act, category).level != "auto":
+                    held = self._hold(claims, tool, category, params)
+                    return self._record(
+                        claims, tool, resource, "ALLOW", "held for staff review", decision.policy_ids, result=held
+                    )
+
             # 5. Run the tool.
             result = self._run(tool, params, case)
 
@@ -141,7 +161,92 @@ class Gateway:
             log.exception("guarded(%s) failed; denying", tool)
             return self._record(claims, tool, resource, "DENY", "denied by policy")
 
+    def send_draft(self, draft_id: str, draft: DraftItem, text: dict[str, str]) -> Outcome:
+        """The staffer approved a held draft, maybe with new wording. Check it again, then send it.
+
+        The staffer is the one sending, so the check is the staffer's own standing (active, and
+        Cedar's rules for the recipient or account), not the agent session's. Raises
+        DraftAlreadyDecided when another approval or a rejection got there first.
+        """
+        tool = draft.tool
+        params = TOOLS[tool].input_model.model_validate({**draft.args, **text})
+        resource = _resource_label(tool, params)
+        now = int(time.time())
+        # Who the event is about: the agent that drafted it, acting for the staffer who approved it.
+        claims = MandateClaims(
+            sub=draft.agent, act=draft.acting_for, office=draft.office, mode="official", sid=draft.sid, iat=now, exp=now
+        )
+        staffer = self.store.get_staffer(draft.acting_for)
+        if staffer is None or not staffer.active:
+            return self._record(claims, tool, resource, "DENY", "session revoked / delegator inactive")
+        decision = self.authorizer.is_authorized(
+            AuthzRequest(
+                agent_id=draft.agent,
+                office=draft.office,
+                mode="official",
+                tool=tool,
+                resource=cedar.tool_entity(tool),
+                context=cedar.build_context(
+                    delegatorActive=True,
+                    recipientKnown=tool == "email_send" and self._recipient_known(params.to, draft.office),
+                    account=params.account if tool == "social_post" else "",
+                ),
+            )
+        )
+        if not decision.allowed:
+            return self._record(claims, tool, resource, "DENY", "denied by policy", decision.policy_ids)
+
+        sent = draft.model_copy(
+            update={
+                "status": "sent",
+                "decided_at": datetime.now(timezone.utc).isoformat(),
+                "edited": any(draft.args.get(k) != v for k, v in text.items()),
+            }
+        )
+        # Marked sent before it runs, so a double click can never send it twice.
+        if not self.store.decide_draft(draft_id, sent):
+            raise DraftAlreadyDecided(draft_id)
+        try:
+            result = self._run(tool, params, None)
+        except Exception:
+            log.exception("sending draft %s failed; it stays in the review queue", draft_id)
+            self.store.put_draft(draft_id, draft)
+            return self._record(claims, tool, resource, "DENY", "denied by policy")
+        return self._record(claims, tool, resource, "ALLOW", "approved by staff", decision.policy_ids, result=result)
+
     # --- helpers ----------------------------------------------------------
+
+    def _outbound_category(self, tool: str, params: Any) -> str:
+        """From DynamoDB, never from the agent: the kind of the email this replies to."""
+        if tool == "social_post":
+            return SOCIAL_CATEGORY
+        email = self.store.get_email(params.in_reply_to) if params.in_reply_to else None
+        if email is None or email.from_.strip().lower() != params.to.strip().lower():
+            return NEW_CONVERSATION
+        return email.kind
+
+    def _hold(self, claims: MandateClaims, tool: str, category: str, params: Any) -> dict[str, Any]:
+        draft_id = str(uuid.uuid4())
+        self.store.put_draft(
+            draft_id,
+            DraftItem(
+                status="pending",
+                sid=claims.sid,
+                agent=claims.sub,
+                acting_for=claims.act,
+                office=claims.office,
+                tool=tool,
+                category=category,
+                args=params.model_dump(exclude_none=True),
+                created_at=datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        return {
+            "status": "held_for_review",
+            "draftId": draft_id,
+            "category": category,
+            "note": f"NOT sent. Saved as a draft for {claims.act} to review in the console.",
+        }
 
     def _recipient_known(self, to: str, office: str) -> bool:
         """One address that is a .gov address or a constituent of this office's cases."""

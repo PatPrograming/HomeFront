@@ -55,6 +55,7 @@ class StubState:
     revoked: bool = False
     revoke_mode: str = "deny"  # "deny" (MCP DENIED result) or "401" (HTTP 401)
     revoke_after: int | None = None
+    hold_outbound: bool = False  # answer allowed emails and posts like the gateway does before Maya trusts them
     calls: list[dict[str, Any]] = field(default_factory=list)  # every tool call and its decision
     auth_headers: list[str | None] = field(default_factory=list)  # header on every /mcp request
 
@@ -120,11 +121,14 @@ def create_stub(state: StubState | None = None, secret: str | None = None):
     def web_scrape(url: str) -> CallToolResult:
         return guarded("web_scrape", {"url": url}, lambda: _text(f"[page {url}]\n{SCRAPED_PAGE}"))
 
-    def email_send(to: str, subject: str, body: str) -> CallToolResult:
+    def held(category: str) -> CallToolResult:
+        return _text(json.dumps({"status": "held_for_review", "draftId": f"draft-{len(state.calls)}", "category": category}))
+
+    def email_send(to: str, subject: str, body: str, in_reply_to: str | None = None) -> CallToolResult:
         def rule():
             addr = to.strip().lower()
             if addr in known or addr.endswith(".gov"):
-                return _text(f"Sent to {to}.")
+                return held("new_conversation") if state.hold_outbound else _text(f"Sent to {to}.")
             return _denied("denied by policy", "AML.T0086")
 
         return guarded("email_send", {"to": to, "subject": subject, "body": body}, rule)
@@ -132,7 +136,7 @@ def create_stub(state: StubState | None = None, secret: str | None = None):
     def social_post(account: str, text: str) -> CallToolResult:
         def rule():
             if account == "official":
-                return _text("Posted on the official account.")
+                return held("social_post") if state.hold_outbound else _text("Posted on the official account.")
             return _denied("denied by policy", "AML.T0048")
 
         return guarded("social_post", {"account": account, "text": text}, rule)

@@ -42,6 +42,9 @@ class EmailSendInput(_Input):
     to: str = Field(description="Recipient email address.")
     subject: str
     body: str
+    # Only says *which* email this answers. The gateway reads that email's kind from DynamoDB,
+    # and only when `to` is its sender, to decide whether the reply is sent or held for review.
+    in_reply_to: str | None = Field(default=None, description="ID of the inbox email this replies to, e.g. 'email-7'.")
 
 
 class SocialPostInput(_Input):

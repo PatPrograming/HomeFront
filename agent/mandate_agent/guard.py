@@ -3,6 +3,9 @@
 - DENIED: the call is recorded as "denied, not done", the model is told plainly that the
   action did not happen, and any repeat of the same action is cancelled before it reaches
   the gateway (no retry loop).
+- Held for review: an email or post the staffer has not let the agent send alone comes back as a
+  draft in the staffer's review queue. It is recorded as "waiting for review, not sent", the model
+  is told so, and the same action is not drafted twice.
 - Revoked or 401: the run stops. "session revoked / delegator inactive" or "invalid token"
   in a denial, or HTTP 401 on any request, ends the agent loop after the current tools.
 - At the end, `report()` prints what really happened from the gateway's answers, so the
@@ -27,10 +30,22 @@ CONNECTION_LOST_RESULT = f"Tool execution failed: {CONNECTION_LOST}"  # Strands'
 
 UNAUTHORIZED = "the gateway rejected the mandate token (HTTP 401)"
 ALLOW, DENY, REJECTED, ERROR = "allow", "deny", "rejected", "error"
+HELD_STATUS = "held_for_review"  # mandate_contracts' gateway result for a draft kept for review
+OUTBOUND_TOOLS = ("email_send", "social_post")
 
 
 def result_text(result: dict[str, Any]) -> str:
     return " ".join(c.get("text", "") for c in result.get("content", []))
+
+
+def is_held(tool: str, text: str) -> bool:
+    """Only an outbound tool's own result can say "held": inbox text could contain the same words."""
+    if tool not in OUTBOUND_TOOLS:
+        return False
+    try:
+        return json.loads(text).get("status") == HELD_STATUS
+    except (ValueError, AttributeError):
+        return False
 
 
 def read_verdict(result: dict[str, Any], unauthorized: bool) -> tuple[str, str | None]:
@@ -71,10 +86,12 @@ class MandateGuard(HookProvider):
     done: list[ToolOutcome] = field(default_factory=list)
     denied: list[ToolOutcome] = field(default_factory=list)
     blocked_retries: list[ToolOutcome] = field(default_factory=list)
+    held: list[ToolOutcome] = field(default_factory=list)
     stop_reason: str | None = None
     unauthorized: bool = False  # set by BearerAuth when the gateway answers HTTP 401
     log: Callable[[str], None] = lambda line: None  # live one-line trace of each call, for the demo
     _denied_actions: set[str] = field(default_factory=set)
+    _held_actions: set[str] = field(default_factory=set)
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
         registry.add_callback(BeforeToolCallEvent, self.before_tool_call)
@@ -104,6 +121,8 @@ class MandateGuard(HookProvider):
                 f"Not sent: {name} was already DENIED by the gateway for this action. "
                 "It will not be retried. Tell the staffer it was denied."
             )
+        elif self.action_key(name, tool_input) in self._held_actions:
+            event.cancel_tool = f"Not sent: a draft of this {name} is already waiting in the staffer's review queue."
 
     def after_tool_call(self, event: AfterToolCallEvent) -> None:
         if event.cancel_message:  # cancelled by before_tool_call; never reached the gateway
@@ -130,6 +149,18 @@ class MandateGuard(HookProvider):
                     }
                 ],
             }
+        elif verdict == ALLOW and is_held(name, text):
+            self.held.append(outcome)
+            self._held_actions.add(self.action_key(name, tool_input))
+            event.result = {
+                **event.result,
+                "content": [
+                    {
+                        "text": f"{text}\nThis was NOT sent. It is a draft waiting in the staffer's review "
+                        "queue. Say it is waiting for review; do not say it was sent."
+                    }
+                ],
+            }
         elif verdict == ALLOW:
             self.done.append(outcome)
 
@@ -143,10 +174,19 @@ class MandateGuard(HookProvider):
             return None
         return "Not done (denied by the gateway): " + "; ".join(o.describe() for o in self.denied)
 
+    def held_note(self) -> str | None:
+        """One line naming every draft left for the staffer, printed after the model's own answer."""
+        if not self.held:
+            return None
+        return "Waiting for your review (not sent): " + "; ".join(o.describe() for o in self.held)
+
     def report(self) -> str:
         lines = ["", "--- What actually happened (from the gateway's answers, not the model) ---"]
         lines.append("Done:" if self.done else "Done: nothing")
         lines += [f"  ALLOW  {o.describe()}" for o in self.done]
+        if self.held:
+            lines.append("Held for the staffer's review, NOT sent:")
+            lines += [f"  HELD   {o.describe()}" for o in self.held]
         lines.append("Denied, NOT done:" if self.denied else "Denied, NOT done: nothing")
         lines += [f"  DENY   {o.describe()}  ->  {o.text.splitlines()[0]}" for o in self.denied]
         if self.blocked_retries:

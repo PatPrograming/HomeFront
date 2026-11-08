@@ -18,6 +18,8 @@ Reason = Literal[
     "denied by policy",
     "session revoked / delegator inactive",
     "invalid token",
+    "held for staff review",  # Cedar allowed it, but the staffer has not let the agent send this kind alone
+    "approved by staff",  # a held draft the staffer approved, so the gateway sent it
 ]
 
 

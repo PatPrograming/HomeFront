@@ -7,7 +7,8 @@ import json
 import pytest
 from mcp_tools import handlers
 
-ARGS = {"subject": "Hi", "body": "Update"}
+# A reply to a case-status email, a category maya lets the agent send alone (`trusted_replies`).
+ARGS = {"subject": "Hi", "body": "Update", "in_reply_to": "email-trusted"}
 
 
 class FakeSes:
@@ -29,7 +30,7 @@ def ses(monkeypatch):
     return fake
 
 
-def test_without_a_sender_configured_the_send_is_simulated(gateway, make_token, world, ses, monkeypatch):
+def test_without_a_sender_configured_the_send_is_simulated(trusted_replies, gateway, make_token, world, ses, monkeypatch):
     monkeypatch.delenv("HOMEFRONT_EMAIL_FROM", raising=False)
     out = gateway.guarded("email_send", {"to": world.known_email, **ARGS}, make_token())
     assert out.allowed is True
@@ -37,7 +38,7 @@ def test_without_a_sender_configured_the_send_is_simulated(gateway, make_token, 
     assert ses.sent == []
 
 
-def test_with_a_sender_an_allowed_send_goes_through_ses(gateway, make_token, world, ses, monkeypatch):
+def test_with_a_sender_an_allowed_send_goes_through_ses(trusted_replies, gateway, make_token, world, ses, monkeypatch):
     monkeypatch.setenv("HOMEFRONT_EMAIL_FROM", "agency@example.gov")
     out = gateway.guarded("email_send", {"to": world.known_email, **ARGS}, make_token())
     assert out.allowed is True
@@ -53,7 +54,7 @@ def test_a_denied_send_never_reaches_ses(gateway, make_token, ses, monkeypatch):
     assert ses.sent == []
 
 
-def test_an_ses_failure_is_a_deny_not_a_fake_success(gateway, make_token, world, monkeypatch):
+def test_an_ses_failure_is_a_deny_not_a_fake_success(trusted_replies, gateway, make_token, world, monkeypatch):
     monkeypatch.setenv("HOMEFRONT_EMAIL_FROM", "agency@example.gov")
     monkeypatch.setattr(handlers, "_ses_client", lambda: FakeSes(fail=True))
     out = gateway.guarded("email_send", {"to": world.known_email, **ARGS}, make_token())

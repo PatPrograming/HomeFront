@@ -19,7 +19,9 @@ export type Reason =
   | "allowed"
   | "denied by policy"
   | "session revoked / delegator inactive"
-  | "invalid token";
+  | "invalid token"
+  | "held for staff review"
+  | "approved by staff";
 
 export interface GuardrailFlag {
   flagged: boolean;

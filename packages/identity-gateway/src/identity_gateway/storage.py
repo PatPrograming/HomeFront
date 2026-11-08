@@ -15,11 +15,17 @@ from boto3.dynamodb.conditions import Attr, Key
 from mandate_contracts import DecisionEvent
 from mandate_contracts.ddb import (
     TABLE_NAME,
+    AutonomyItem,
     CaseItem,
+    ChatMessageItem,
+    DraftItem,
     EmailItem,
     SessionItem,
     StafferItem,
+    autonomy_key,
     case_key,
+    chat_key,
+    draft_key,
     email_key,
     event_key,
     session_key,
@@ -136,6 +142,60 @@ class MandateStore:
         """Addresses on file for this office's cases. Decides Cedar's `recipientKnown`."""
         cases = self._scan("CASE#", Attr("office").eq(office))
         return {item["constituentEmail"].strip().lower() for item in cases if item.get("constituentEmail")}
+
+    # --- drafts held for review and earned autonomy ------------------------
+
+    def get_draft(self, draft_id: str) -> DraftItem | None:
+        item = self._get(draft_key(draft_id))
+        return DraftItem.model_validate(item) if item else None
+
+    def put_draft(self, draft_id: str, item: DraftItem) -> None:
+        self._put(draft_key(draft_id), item)
+
+    def decide_draft(self, draft_id: str, item: DraftItem) -> bool:
+        """Write the decided draft only if it is still pending, so a draft is sent at most once."""
+        try:
+            self.table.put_item(
+                Item={**draft_key(draft_id), **item.model_dump(mode="json", by_alias=True)},
+                ConditionExpression=Attr("status").eq("pending"),
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+            return False
+        return True
+
+    def pending_drafts_for(self, staffer_id: str) -> list[tuple[str, DraftItem]]:
+        """(draft id, draft) pairs waiting for this staffer, oldest first."""
+        items = self._scan("DRAFT#", Attr("actingFor").eq(staffer_id) & Attr("status").eq("pending"))
+        drafts = [(item["pk"].removeprefix("DRAFT#"), DraftItem.model_validate(item)) for item in items]
+        return sorted(drafts, key=lambda pair: pair[1].created_at)
+
+    def get_autonomy(self, staffer_id: str, category: str) -> AutonomyItem:
+        item = self._get(autonomy_key(staffer_id, category))
+        return AutonomyItem.model_validate(item) if item else AutonomyItem()
+
+    def put_autonomy(self, staffer_id: str, category: str, item: AutonomyItem) -> None:
+        self._put(autonomy_key(staffer_id, category), item)
+
+    # --- console chat ------------------------------------------------------
+
+    def put_chat_message(self, sid: str, message: ChatMessageItem) -> None:
+        self._put(chat_key(sid, message.ts, message.id), message)
+
+    def chat_since(self, sid: str, after: str | None) -> tuple[list[ChatMessageItem], str | None]:
+        """Messages after the cursor (a sort key `<ts>#<id>`), oldest first, and the new cursor."""
+        condition = Key("pk").eq(f"CHAT#{sid}")
+        if after:
+            condition = condition & Key("sk").gt(after)
+        kwargs: dict[str, Any] = {"KeyConditionExpression": condition, "ConsistentRead": True}
+        items: list[dict[str, Any]] = []
+        while True:
+            page = self.table.query(**kwargs)
+            items.extend(page.get("Items", []))
+            if "LastEvaluatedKey" not in page:
+                break
+            kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
+        cursor = items[-1]["sk"] if items else after
+        return [ChatMessageItem.model_validate(item) for item in items], cursor
 
     # --- decision events ---------------------------------------------------
 

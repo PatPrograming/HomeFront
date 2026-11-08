@@ -129,6 +129,25 @@ def store(table, world):
     return s
 
 
+@pytest.fixture
+def trusted_replies(store, world):
+    """Maya let the agent send case-status replies and official posts alone.
+
+    Seeds `email-trusted`, a case-status email from the known constituent; reply with
+    `in_reply_to=world.trusted_email_id` to get a send that is not held for review.
+    """
+    from mandate_contracts.ddb import AutonomyItem, EmailItem
+
+    world.trusted_email_id = "email-trusted"
+    store.put_email(
+        world.trusted_email_id,
+        EmailItem(from_=world.known_email, subject="Any news on my case?", body="Checking in.", kind="case_status"),
+    )
+    store.put_autonomy("maya", "case_status", AutonomyItem(level="auto"))
+    store.put_autonomy("maya", "social_post", AutonomyItem(level="auto"))
+    return world
+
+
 class RecordingAuthorizer:
     """Wraps another authorizer and keeps every AuthzRequest it was asked about."""
 

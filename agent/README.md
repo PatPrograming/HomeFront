@@ -81,6 +81,13 @@ cp agent/.env.example agent/.env    # then paste COGNITO_AGENT_CLIENT_SECRET int
 agent/.venv/bin/python agent/agent.py --sid <session id>
 ```
 
+Chat mode: Maya talks to the agent in the console instead of it working the inbox once. Start
+it after Maya presses "Start assistant"; it answers the console chat until the session is revoked:
+
+```bash
+agent/.venv/bin/python agent/agent.py --sid <session id> --chat
+```
+
 Staged compromised agent (same identity and gateway, scripted attack, no LLM; about 80 s, so
 there is time to offboard Maya mid-run):
 
@@ -95,6 +102,22 @@ Settings: copy `agent/.env.example` to `agent/.env` (git-ignored) and paste the 
 `COGNITO_AGENT_CLIENT_ID`, `COGNITO_AGENT_CLIENT_SECRET`. For Haiku 4.5, set `BEDROCK_MODEL_ID` to its `us.` inference profile id (check it with
 `aws bedrock list-inference-profiles`). The stub accepts any bearer token, unless `MANDATE_DEV_SECRET`
 is set; then it checks the token like the gateway.
+
+## Earned autonomy (chat console)
+
+The gateway, not the agent, decides whether an email or post goes out. After Cedar allows an
+`email_send` or `social_post`, the gateway checks what Maya allowed for that category. If she has
+not set it to "sends alone", the call is saved as a draft in her review queue and the agent gets
+`{"status": "held_for_review"}`. `guard.py` reports those drafts as "waiting for your review, not
+sent", whatever the model says.
+
+- A reply's category is the `kind` of the inbox email it answers (`data/emails.json`), read from
+  DynamoDB, and only when `to` is that email's sender. Anything else is a "new conversation".
+- `sensitive`, `staff_memo`, `suspicious` and new conversations are locked: always reviewed.
+- After 3 drafts in a category are approved unchanged (5 for posts, at least 90% unchanged), the
+  console offers to let the agent send that category alone. Maya accepts or says "not now".
+- The rules live in `packages/identity-gateway/src/identity_gateway/autonomy.py`; the routes in
+  `Backend/app/routers/assistant.py`.
 
 ## Guardrail (WP5)
 
@@ -115,6 +138,10 @@ one request split across two emails) are expected misses: the detector sees one 
 The gateway still denies the tool calls they ask for.
 
 ## Email categories
+
+Each email also has a `kind` (`case_status`, `info_request`, `scheduling`, `newsletter`,
+`sensitive`, `staff_memo`, `suspicious`): the inbox triage label the earned-autonomy rules use.
+`category` below is the guardrail test label.
 
 `angry_benign`, `pii_benign` (fake SSNs in the never-issued 9xx range, 555-01xx phone numbers) and
 `non_english_benign` (Vietnamese, Spanish) should not be flagged. `obvious_attack`,

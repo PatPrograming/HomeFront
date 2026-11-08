@@ -20,7 +20,7 @@ KNOWN_ARGS = {
     "case_read": {"case_id": "case-1"},
     "datagov_search": {"query": "housing"},
     "web_scrape": {"url": "https://example.gov"},
-    "email_send": {"to": "jane.doe@example.com", "subject": "Hi", "body": "Update"},
+    "email_send": {"to": "jane.doe@example.com", "subject": "Hi", "body": "Update", "in_reply_to": "email-trusted"},
     "social_post": {"account": "official", "text": "Town hall Tuesday"},
 }
 
@@ -85,7 +85,7 @@ def test_inbox_read_returns_the_email_item(gateway, make_token, world):
 
 
 def test_allowed_email_send_runs_the_mcp_tools_handler_and_is_simulated(
-    gateway, make_token, handler_spy, world
+    trusted_replies, gateway, make_token, handler_spy, world
 ):
     out = gateway.guarded("email_send", KNOWN_ARGS["email_send"], make_token())
     assert out.allowed is True
@@ -94,7 +94,7 @@ def test_allowed_email_send_runs_the_mcp_tools_handler_and_is_simulated(
 
 
 @pytest.mark.parametrize("tool", ["datagov_search", "web_scrape", "social_post"])
-def test_other_allowed_tools_go_through_mcp_tools(gateway, make_token, handler_spy, tool):
+def test_other_allowed_tools_go_through_mcp_tools(trusted_replies, gateway, make_token, handler_spy, tool):
     out = gateway.guarded(tool, KNOWN_ARGS[tool], make_token())
     assert out.allowed is True and out.result
     assert handler_spy.calls
@@ -367,7 +367,7 @@ def test_authorizer_error_is_a_deny(store, secret, make_token, world, events_of,
     assert e.decision == "DENY"
 
 
-def test_tool_handler_error_is_a_deny(gateway, make_token, handler_spy):
+def test_tool_handler_error_is_a_deny(trusted_replies, gateway, make_token, handler_spy):
     handler_spy.boom = True
     out = gateway.guarded("email_send", KNOWN_ARGS["email_send"], make_token())
     assert handler_spy.calls, "the handler was supposed to run and fail"

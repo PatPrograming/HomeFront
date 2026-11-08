@@ -5,10 +5,12 @@
 //   GET  /sessions/{sid}       → { sid, status, actingFor, office, expiresAt }; own sessions, or any for an admin
 //   GET  /events?since=<key>   → contract sample events + the generated ones, same cursor rules
 //   POST /staff/{id}/offboard  → admin only; the agent's next call becomes a DENY and the run stops
+//   chat, review queue and autonomy routes → mockAssistant.ts
 // State lives in localStorage so a Maya tab and a Chief of Staff tab see the same fake world.
 import { TOOL_NAMES, type DecisionEvent } from "../../../packages/mandate-contracts/ts/index";
 import sampleEvents from "../../../packages/mandate-contracts/samples/events.json";
 import { eventKey, nextCursor } from "./events";
+import { assistantRoute, emptyAssistantState, mergeAssistantState, MockError, type AssistantState } from "./mockAssistant";
 import { decodeJwt } from "./pkce";
 import { groupsFromAccessToken } from "./roles";
 
@@ -35,6 +37,7 @@ interface MockState {
   events: DecisionEvent[];
   sessions: Record<string, MockSession>;
   offboarded: Record<string, number>;
+  assistant: AssistantState;
 }
 
 console.info("MANDATE_MOCK_API_MODULE loaded: fake API, no backend is called.");
@@ -53,7 +56,8 @@ const SCRIPT: Step[] = [
   { tool: "inbox_read", resource: "email-3", ...allow("read-tools") },
   { tool: "case_read", resource: "case-7", ...allow("case-read-same-office") },
   { tool: "datagov_search", resource: "pothole repair schedule", ...allow("read-tools") },
-  { tool: "email_send", resource: "resident.lee@example.com", ...allow("email-send-known-recipient") },
+  // Held, not sent: Maya has not let the agent send replies alone yet (earned autonomy).
+  { tool: "email_send", resource: "resident.lee@example.com", ...allow("email-send-known-recipient"), reason: "held for staff review" },
   {
     tool: "inbox_read",
     resource: "email-13",
@@ -72,11 +76,11 @@ const SCRIPT: Step[] = [
 function load(): MockState {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? "null") as MockState | null;
-    if (saved) return saved;
+    if (saved) return { ...saved, assistant: saved.assistant ?? emptyAssistantState() }; // saved before the chat existed
   } catch {
     // fall through to a fresh world
   }
-  return { events: [...samples], sessions: {}, offboarded: {} };
+  return { events: [...samples], sessions: {}, offboarded: {}, assistant: emptyAssistantState() };
 }
 
 // Two tabs (Maya and the Chief of Staff) write here every second, so merge with what the other tab saved
@@ -91,22 +95,12 @@ function save(state: MockState): void {
     sessions[sid] = !other || s.step > other.step || (s.stopped && !other.stopped) ? s : other;
   }
   const offboarded = { ...latest.offboarded, ...state.offboarded };
-  localStorage.setItem(STORE_KEY, JSON.stringify({ events: [...events.values()], sessions, offboarded }));
+  const assistant = mergeAssistantState(latest.assistant, state.assistant);
+  localStorage.setItem(STORE_KEY, JSON.stringify({ events: [...events.values()], sessions, offboarded, assistant }));
 }
 
 export function resetMock(): void {
   localStorage.removeItem(STORE_KEY);
-}
-
-class MockError extends Error {
-  status: number;
-  data: { detail: string };
-
-  constructor(status: number, detail: string) {
-    super(detail);
-    this.status = status;
-    this.data = { detail };
-  }
 }
 
 function caller(token: string | null): { username: string; groups: string[] } {
@@ -143,7 +137,7 @@ function advance(state: MockState, now: number): void {
   }
 }
 
-export async function mockRequest(method: string, path: string, _body: unknown, token: string | null): Promise<unknown> {
+export async function mockRequest(method: string, path: string, body: unknown, token: string | null): Promise<unknown> {
   await new Promise((r) => setTimeout(r, 120)); // feel like a network call
   const url = new URL(path, "http://mock");
   const state = load();
@@ -187,7 +181,11 @@ export async function mockRequest(method: string, path: string, _body: unknown, 
     const revoked = Object.values(state.sessions).filter((s) => s.actingFor === id && !s.stopped);
     result = { staffer: id, active: false, revokedSessions: revoked.length };
   } else {
-    throw new MockError(404, `mock API has no ${method} ${url.pathname}`);
+    const revoked = (s: { sid: string; actingFor: string }) => Boolean(state.offboarded[s.actingFor] || state.sessions[s.sid]?.stopped);
+    result = assistantRoute(state.assistant, state.events, state.sessions, revoked, {
+      method, pathname: url.pathname, search: url.searchParams, body, user: user.username, now,
+    });
+    if (result === undefined) throw new MockError(404, `mock API has no ${method} ${url.pathname}`);
   }
 
   save(state);

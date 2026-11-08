@@ -45,12 +45,52 @@ export interface OffboardResult {
   revokedSessions: number;
 }
 
+/** One message in the console chat. */
+export interface ChatMessage {
+  id: string;
+  ts: string;
+  role: "user" | "assistant";
+  text: string;
+}
+
+/** GET /sessions/{sid}/messages?after=<cursor> */
+export interface ChatPage {
+  messages: ChatMessage[];
+  next: string | null;
+}
+
+/** An email or post the gateway held for the staffer to review (GET /drafts). */
+export interface Draft {
+  id: string;
+  status: "pending" | "sent" | "rejected";
+  tool: "email_send" | "social_post";
+  category: string;
+  categoryLabel: string;
+  args: Record<string, string>;
+  createdAt: string;
+}
+
+/** What the staffer may change before approving: the text, never the recipient or account. */
+export type DraftEdits = { subject?: string; body?: string; text?: string };
+
+/** One kind of outbound message and whether the agent may send it alone (GET /autonomy). */
+export interface AutonomyCategory {
+  category: string;
+  label: string;
+  level: "review" | "auto";
+  locked: boolean;
+  approvedUnchanged: number;
+  edited: number;
+  rejected: number;
+  suggestAuto: boolean;
+}
+
 export interface HomeContent {
   mission: string[];
   buttons: string[];
 }
 
-type Method = "GET" | "POST";
+type Method = "GET" | "POST" | "PUT";
 
 interface RequestOptions {
   auth?: boolean;
@@ -119,6 +159,22 @@ export const api = {
   events: (cursor?: string | null) => request<EventPage>(eventsPath(cursor)),
   offboard: (stafferId: string) =>
     request<OffboardResult>(`/staff/${encodeURIComponent(stafferId)}/offboard`, { method: "POST", body: {} }),
+
+  // Chat console: talk to the agent, review what it held, decide what it may send alone
+  messages: (sid: string, after?: string | null) =>
+    request<ChatPage>(`/sessions/${encodeURIComponent(sid)}/messages${after ? `?after=${encodeURIComponent(after)}` : ""}`),
+  sendMessage: (sid: string, text: string) =>
+    request<ChatMessage>(`/sessions/${encodeURIComponent(sid)}/messages`, { method: "POST", body: { text } }),
+  drafts: () => request<{ drafts: Draft[] }>("/drafts"),
+  approveDraft: (id: string, edits: DraftEdits) =>
+    request<{ id: string; status: "sent"; edited: boolean }>(`/drafts/${encodeURIComponent(id)}/approve`, { method: "POST", body: edits }),
+  rejectDraft: (id: string) =>
+    request<{ id: string; status: "rejected" }>(`/drafts/${encodeURIComponent(id)}/reject`, { method: "POST", body: {} }),
+  autonomy: () => request<{ categories: AutonomyCategory[] }>("/autonomy"),
+  setAutonomy: (category: string, level: AutonomyCategory["level"]) =>
+    request<AutonomyCategory>(`/autonomy/${encodeURIComponent(category)}`, { method: "PUT", body: { level } }),
+  snoozeAutonomy: (category: string) =>
+    request<AutonomyCategory>(`/autonomy/${encodeURIComponent(category)}/snooze`, { method: "POST", body: {} }),
 
   // Public home-page copy (no token)
   home: () => request<HomeContent>("/home", { auth: false }),

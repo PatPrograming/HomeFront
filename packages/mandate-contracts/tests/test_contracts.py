@@ -108,7 +108,7 @@ def test_cedar_entities():
 
 def test_ddb_items():
     email = EmailItem.model_validate({"from": "a@b.gov", "subject": "s", "body": "b"})
-    assert email.model_dump(by_alias=True) == {"from": "a@b.gov", "subject": "s", "body": "b"}
+    assert email.model_dump(by_alias=True) == {"from": "a@b.gov", "subject": "s", "body": "b", "kind": "other"}
     with pytest.raises(ValueError):
         SessionItem(status="paused", agent="a", acting_for="m", office="rep-x", mode="official", created_at="t")
     session = SessionItem(status="active", agent="a", acting_for="m", office="rep-x", mode="official", created_at="t")
