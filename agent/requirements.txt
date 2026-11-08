@@ -1,0 +1,10 @@
+# Agent, stub server, guardrail eval and their tests. Install into agent/.venv:
+#   /usr/local/bin/python3.12 -m venv agent/.venv && agent/.venv/bin/pip install -r agent/requirements.txt
+strands-agents==1.64.0
+mcp==1.30.0  # stay on 1.x: mcp 2.x renamed FastMCP, which the stub and the gateway use
+boto3==1.43.126
+httpx==0.28.1
+pydantic==2.14.3
+PyJWT==2.15.1
+uvicorn==0.54.0
+pytest==9.2.0
