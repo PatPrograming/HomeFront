@@ -3,8 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionCard } from "../lib/api";
 import IdentityLine from "./IdentityLine";
 
-<<<<<<< HEAD
-const card: SessionCard = {
+const roleCard: SessionCard = {
   sid: "sid-123",
   agent: "agent-1",
   actingFor: "maya",
@@ -18,17 +17,19 @@ const card: SessionCard = {
 
 describe("IdentityLine", () => {
   it("shows the staffer and their office role in plain words", () => {
-    const html = renderToStaticMarkup(<IdentityLine card={card} revoked={false} />);
+    const html = renderToStaticMarkup(<IdentityLine card={roleCard} revoked={false} />);
     expect(html).toContain("Maya · Caseworker");
     expect(html).not.toContain("caseworker"); // the raw role id stays out of the staff view
   });
 
   it("leaves the role out when the server sent none (older broker)", () => {
-    const { roleLabel: _label, role: _role, ...old } = card;
+    const { roleLabel: _label, role: _role, ...old } = roleCard;
     const html = renderToStaticMarkup(<IdentityLine card={old} revoked={false} />);
     expect(html).not.toContain("identity-role");
     expect(html).toContain("acts for you");
-=======
+  });
+});
+
 const card: SessionCard = { sid: "s", agent: "agent-1", actingFor: "maya", office: "rep-x", mode: "official", allowedTools: [], expiresAt: "2026-11-08T05:15:00Z" };
 
 describe("IdentityLine (staff)", () => {
@@ -42,6 +43,5 @@ describe("IdentityLine (staff)", () => {
 
   it("Revoked replaces it for everyone", () => {
     expect(renderToStaticMarkup(<IdentityLine card={card} revoked task="x" />)).toContain("Revoked");
->>>>>>> claude/chat-ux-huy-60b162
   });
 });
