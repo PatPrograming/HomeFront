@@ -10,7 +10,7 @@ interface HeroProps {
 }
 
 export default function Hero({ mission, buttons }: HeroProps) {
-  const { user } = useAuth();
+  const { session } = useAuth();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -69,7 +69,7 @@ export default function Hero({ mission, buttons }: HeroProps) {
                 </ul>
               )}
             </div>
-            {user ? (
+            {session ? (
               <Link className="btn btn-outline" to="/agents">
                 {secondaryLabel}
               </Link>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
-import { api } from "../lib/api.js";
+import { agentsApi as api } from "../lib/agentsApi";
 import { describeError, kindLabel, sendsEmail, type Agent, type AgentType } from "../lib/agents";
 import EmailSetup, { NoEmailNote } from "./EmailSetup";
 import RunTask from "./RunTask";

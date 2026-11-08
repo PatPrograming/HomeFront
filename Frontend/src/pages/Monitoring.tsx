@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import StorageStatus from "../components/StorageStatus/StorageStatus";
-import { api, ApiError } from "../lib/api.js";
+import { ApiError } from "../lib/api";
+import { agentsApi as api } from "../lib/agentsApi";
 import {
   describeError,
   kindLabel,
@@ -10,6 +11,7 @@ import {
   typeAllows,
   type Agent,
   type AgentType,
+  type AuditEvent,
   type Tool,
 } from "../lib/agents";
 import EmailSetup, { NoEmailNote, emailSetupPath } from "./EmailSetup";
@@ -28,15 +30,6 @@ interface Matrix {
   atlas_version: string;
   techniques?: AtlasEntry[];
   mitigations?: AtlasEntry[];
-}
-
-interface AuditEvent {
-  id: string | number;
-  decision: string;
-  type: string;
-  tool?: string;
-  ts: number;
-  atlas?: { narrative?: string; technique_ids?: string[]; mitigation_ids?: string[] };
 }
 
 interface Flash {
@@ -168,10 +161,16 @@ export default function Monitoring() {
       });
       await refresh();
     } catch (e) {
-      const detail = e instanceof ApiError ? e.data?.detail : null;
+      const detail = e instanceof ApiError ? (e.data as { detail?: unknown } | null)?.detail : null;
       const atlas =
         detail && typeof detail === "object"
-          ? detail
+          ? (detail as {
+              error?: string;
+              message?: string;
+              technique_ids?: string[];
+              mitigation_ids?: string[];
+              atlas?: { narrative?: string; technique_ids?: string[]; mitigation_ids?: string[] };
+            })
           : null;
       setLastResult(detail ?? { error: errText(e) });
       setFlash({

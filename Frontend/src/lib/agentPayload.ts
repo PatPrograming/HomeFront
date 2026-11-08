@@ -1,5 +1,5 @@
 // Builds the JSON documents the forms POST to the backend for the AI agent.
-import { api } from "./api.js";
+import { api } from "./api";
 
 export interface SocialPayload {
   type: "social_post";
@@ -97,7 +97,17 @@ export function buildEmailPayload(input: {
   };
 }
 
-/** POSTs the JSON to the backend (route defined in api.js; the backend will hand it to the agent). */
-export function sendToAgent(payload: SocialPayload | EmailPayload) {
-  return api.submitAgentRequest(payload);
+export const NOT_CONNECTED =
+  "Not connected yet: the server can't receive these settings (the /agent-requests route isn't built). Nothing was sent.";
+
+/** POSTs the JSON to the backend, which will hand it to the agent. The route doesn't exist yet: a 404/405
+ * becomes a clear "not connected yet" error instead of a bare "HTTP 404". */
+export async function sendToAgent(payload: SocialPayload | EmailPayload) {
+  try {
+    return await api.submitAgentRequest(payload);
+  } catch (err) {
+    const status = (err as { status?: number } | null)?.status;
+    if (status === 404 || status === 405) throw new Error(NOT_CONNECTED);
+    throw err;
+  }
 }

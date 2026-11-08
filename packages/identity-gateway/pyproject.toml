@@ -12,10 +12,6 @@ dependencies = [
   "mcp-tools",
 ]
 
-[project.optional-dependencies]
-# DynamoAgentRepository (identity_gateway.dynamo_repo)
-dynamodb = ["boto3>=1.43"]
-
 [tool.uv.sources]
 atlas-enricher = { path = "../atlas-enricher", editable = true }
 mcp-tools = { path = "../mcp-tools", editable = true }

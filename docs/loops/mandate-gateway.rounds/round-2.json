@@ -1,0 +1,116 @@
+{
+  "round": 2,
+  "at": "2026-11-08T00:39:24.088Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/gateway-huy-23ae16",
+  "passed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "C6",
+    "C7",
+    "C8"
+  ],
+  "failed": [],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Full suite from LANES.md plus gateway tests",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests packages/identity-gateway/tests",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 45600,
+      "note": "",
+      "stdoutTail": "test_gw_mcp.py::test_revoking_mid_task_denies_the_next_mcp_call_on_the_same_connection\ntest_gw_mcp.py::test_inactive_delegator_over_mcp_is_denied_and_untrusted_content_is_not_returned\n  /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/contextlib.py:105: DeprecationWarning: Use `streamable_http_client` instead.\n    self.gen = func(*args, **kwds)\n\ntest_gw_tokens.py::test_rejects_other_hmac_algorithms_even_with_the_right_secret[HS384]\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/gateway-huy-23ae16/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 38 bytes long, which is below the minimum recommended length of 48 bytes for SHA384. See RFC 7518 Section 3.2.\n    return self._jws.encode(\n\ntest_gw_tokens.py::test_rejects_other_hmac_algorithms_even_with_the_right_secret[HS512]\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/gateway-huy-23ae16/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 38 bytes long, which is below the minimum recommended length of 64 bytes for SHA512. See RFC 7518 Section 3.2.\n    return self._jws.encode(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n232 passed, 8 warnings in 43.59s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Brief §10 edge cases, one test per row",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q packages/identity-gateway/tests/test_gw_edge_cases.py",
+      "passWhen": "stdout matches /\\b(1[0-9]|[2-9][0-9]) passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 3277,
+      "note": "",
+      "stdoutTail": "................                                                         [100%]\n16 passed in 2.34s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "In-process MCP client lists 7 tools and gets DENY for records_bulk_export",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q packages/identity-gateway/tests/test_gw_mcp.py",
+      "passWhen": "stdout matches /[1-9][0-9]* passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 6101,
+      "note": "",
+      "stdoutTail": "............                                                             [100%]\n=============================== warnings summary ===============================\ntests/test_gw_mcp.py::test_tools_list_returns_exactly_the_seven_contract_tools_with_their_schemas\ntests/test_gw_mcp.py::test_bulk_export_over_mcp_is_denied_with_iserror_and_atlas_text\ntests/test_gw_mcp.py::test_allowed_call_over_mcp_is_not_an_error_and_returns_the_case\ntests/test_gw_mcp.py::test_other_offices_case_over_mcp_is_denied\ntests/test_gw_mcp.py::test_revoking_mid_task_denies_the_next_mcp_call_on_the_same_connection\ntests/test_gw_mcp.py::test_inactive_delegator_over_mcp_is_denied_and_untrusted_content_is_not_returned\n  /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/contextlib.py:105: DeprecationWarning: Use `streamable_http_client` instead.\n    self.gen = func(*args, **kwds)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n12 passed, 6 warnings in 5.24s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Broker, admin and events API",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q Backend/tests/test_gateway_api.py",
+      "passWhen": "stdout matches /[1-9][0-9]* passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 6810,
+      "note": "",
+      "stdoutTail": "....................................                                     [100%]\n36 passed in 5.83s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C5",
+      "check": "setup.sh parses and dry-runs both resources",
+      "command": "bash -n Backend/infra/setup.sh && env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null bash Backend/infra/setup.sh --dry-run 2>&1",
+      "passWhen": "stdout contains create-policy-store",
+      "pass": true,
+      "exit": 0,
+      "ms": 811,
+      "note": "",
+      "stdoutTail": "created: email-send-known-recipient (<id-of-email-send-known-recipient>)\n+ aws verifiedpermissions create-policy --policy-store-id <new-policy-store-id> --definition {\"static\": {\"description\": \"forbid-bulk-export\", \"statement\": \"forbid(principal, action == Mandate::Action::\\\"records_bulk_export\\\", resource);\\n\"}} --query policyId --output text --region us-east-1\ncreated: forbid-bulk-export (<id-of-forbid-bulk-export>)\n+ aws verifiedpermissions create-policy --policy-store-id <new-policy-store-id> --definition {\"static\": {\"description\": \"forbid-campaign-post\", \"statement\": \"forbid(principal, action == Mandate::Action::\\\"social_post\\\", resource)\\n  when { principal.mode == \\\"official\\\" && context.account == \\\"campaign\\\" };\\n\"}} --query policyId --output text --region us-east-1\ncreated: forbid-campaign-post (<id-of-forbid-campaign-post>)\n+ aws verifiedpermissions create-policy --policy-store-id <new-policy-store-id> --definition {\"static\": {\"description\": \"read-tools\", \"statement\": \"permit(principal, action in [Mandate::Action::\\\"inbox_read\\\", Mandate::Action::\\\"datagov_search\\\",\\n                             Mandate::Action::\\\"web_scrape\\\"], resource)\\n  when { context.delegatorActive };\\n\"}} --query policyId --output text --region us-east-1\ncreated: read-tools (<id-of-read-tools>)\n+ aws verifiedpermissions create-policy --policy-store-id <new-policy-store-id> --definition {\"static\": {\"description\": \"social-post-official\", \"statement\": \"permit(principal, action == Mandate::Action::\\\"social_post\\\", resource)\\n  when { context.delegatorActive && context.account == \\\"official\\\" };\\n\"}} --query policyId --output text --region us-east-1\ncreated: social-post-official (<id-of-social-post-official>)\n== 4. /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/gateway-huy-23ae16/Backend/infra/.env.aws\nwould write:\nAWS_REGION=us-east-1\nMANDATE_TABLE=mandate\nAVP_POLICY_STORE_ID=<new-policy-store-id>\nAVP_POLICY_NAMES='{\"<id-of-case-read-same-office>\": \"case-read-same-office\", \"<id-of-email-send-known-recipient>\": \"email-send-known-recipient\", \"<id-of-forbid-bulk-export>\": \"forbid-bulk-export\", \"<id-of-forbid-campaign-post>\": \"forbid-campaign-post\", \"<id-of-read-tools>\": \"read-tools\", \"<id-of-social-post-official>\": \"social-post-official\"}'",
+      "stderrTail": ""
+    },
+    {
+      "id": "C6",
+      "check": "tests.sh parses and dry-runs six IsAuthorized cases",
+      "command": "bash -n Backend/policy/tests.sh && env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null bash Backend/policy/tests.sh --dry-run | grep -c is-authorized",
+      "passWhen": "stdout matches /^6\\s*$/",
+      "pass": true,
+      "exit": 0,
+      "ms": 979,
+      "note": "",
+      "stdoutTail": "6",
+      "stderrTail": ""
+    },
+    {
+      "id": "C7",
+      "check": "The open token endpoint and 0.0.0.0 binds are gone",
+      "command": "! grep -rnE '\"/auth/token\"|0\\.0\\.0\\.0' Backend/app packages/identity-gateway/src scripts/run-gateway.sh",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 15,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": ""
+    },
+    {
+      "id": "C8",
+      "check": "seed.py dry-run loads staffers",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python Backend/infra/seed.py --dry-run",
+      "passWhen": "stdout contains STAFFER#chiefofstaff",
+      "pass": true,
+      "exit": 0,
+      "ms": 186,
+      "note": "",
+      "stdoutTail": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/gateway-huy-23ae16/agent/data/cases.json not found; using the built-in fixture\n/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/gateway-huy-23ae16/agent/data/emails.json not found; using the built-in fixture\nPUT STAFFER#maya {\"active\":true,\"office\":\"rep-x\",\"role\":\"staffer\"}\nPUT STAFFER#chiefofstaff {\"active\":true,\"office\":\"rep-x\",\"role\":\"admin\"}\nPUT CASE#case-1 {\"office\":\"rep-x\",\"constituent\":\"Ana Lopez\",\"constituentEmail\":\"ana.lopez@example.com\",\"topic\":\"Pothole on Elm St\",\"status\":\"open\",\"notes\":\"\"}\nPUT CASE#case-2 {\"office\":\"rep-x\",\"constituent\":\"Minh Nguyen\",\"constituentEmail\":\"minh.nguyen@example.com\",\"topic\":\"Passport delay\",\"status\":\"open\",\"notes\":\"\"}\nPUT CASE#case-21 {\"office\":\"rep-y\",\"constituent\":\"Sam Carter\",\"constituentEmail\":\"sam.carter@example.com\",\"topic\":\"Veterans benefits\",\"status\":\"open\",\"notes\":\"\"}\nPUT EMAIL#email-1 {\"from\":\"ana.lopez@example.com\",\"subject\":\"Pothole still there\",\"body\":\"Hi, the pothole on Elm St (c\nPUT EMAIL#email-2 {\"from\":\"it-support@rep-x-office.example.com\",\"subject\":\"Routine records sync\",\"body\":\"Staff memo: a",
+      "stderrTail": ""
+    }
+  ]
+}

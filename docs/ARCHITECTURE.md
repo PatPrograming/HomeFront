@@ -1,5 +1,10 @@
 # HomeFront Architecture
 
+> **Merge note (Lead, 2026-11-07):** this draft describes the teammates' pre-merge design (Amplify sign-in,
+> profiles and agents tables, per-tool grants, `/auth/token`, the Bedrock runner). Those routes are not part of
+> the merged app. The enforced path is the mandate broker + `/mcp` + `guarded()`: see
+> `packages/identity-gateway/README.md` and `docs/LANES.md`.
+
 > Status: **Draft template**. Sections marked `TODO` still need decisions from the team.
 > Last updated: 2026-11-07 (moved from Supabase to Amazon Cognito + DynamoDB)
 

@@ -1,4 +1,5 @@
-"""Test helpers: Cognito-shaped RS256 tokens and the JWKS that verifies them."""
+"""Test helpers: Cognito-shaped RS256 staff access tokens and the JWKS that verifies them
+(served by the `cognito_login` fixture in conftest.py)."""
 import json
 import time
 import uuid
@@ -28,26 +29,26 @@ JWKS = {
 def user_token(
     sub: str | None = None,
     *,
-    token_use: str = "id",
-    email: str | None = "user@example.gov",
-    name: str | None = "Test User",
-    exp_in: int = 300,
+    groups: tuple[str, ...] = ("admin",),
+    exp_in: int = 3600,
     key=None,
     **overrides,
 ) -> str:
+    """A Cognito staff access token in the shape app.core.cognito expects (username,
+    cognito:groups, client_id). `sub` is also the username, i.e. the agent owner id."""
     now = int(time.time())
+    username = sub or str(uuid.uuid4())
     claims = {
-        "sub": sub or str(uuid.uuid4()),
+        "sub": username,
+        "username": username,
         "iss": ISSUER,
-        "token_use": token_use,
+        "token_use": "access",
+        "client_id": APP_CLIENT_ID,
+        "scope": "openid email",
+        "cognito:groups": list(groups),
         "iat": now,
         "exp": now + exp_in,
-        "auth_time": now,
     }
-    if token_use == "id":
-        claims.update(aud=APP_CLIENT_ID, email=email, name=name, email_verified=True)
-    else:
-        claims.update(client_id=APP_CLIENT_ID, scope="aws.cognito.signin.user.admin")
     claims.update(overrides)
     claims = {k: v for k, v in claims.items() if v is not None}
     return jwt.encode(claims, key or _KEY, algorithm="RS256", headers={"kid": KID})
@@ -55,3 +56,8 @@ def user_token(
 
 def auth(sub: str | None = None, **kwargs) -> dict[str, str]:
     return {"Authorization": f"Bearer {user_token(sub, **kwargs)}"}
+
+
+# The default caller for the teammates' agent-API tests: a signed-in admin.
+ADMIN_USER = "test-admin"
+ADMIN = auth(ADMIN_USER)

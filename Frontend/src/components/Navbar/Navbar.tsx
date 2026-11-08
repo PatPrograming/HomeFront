@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { NavLink, Link } from "react-router-dom";
 import Logo from "../Logo/Logo";
-import { NAV_LINKS } from "../../config.js";
+import { ADMIN_LINK, NAV_LINKS } from "../../config";
 import { useAuth } from "../../lib/AuthProvider";
+import { isAdmin } from "../../lib/roles";
 import "./Navbar.css";
 
 export default function Navbar() {
-  const { user } = useAuth();
+  const { session } = useAuth();
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
+  const links = isAdmin(session) ? [...NAV_LINKS, ADMIN_LINK] : NAV_LINKS;
 
   return (
     <header className="navbar">
@@ -16,8 +18,9 @@ export default function Navbar() {
         <Logo />
 
         <button
+          type="button"
           className="hamburger"
-          aria-label="Menu"
+          aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
           aria-controls="main-nav"
           onClick={() => setOpen((v) => !v)}
@@ -28,12 +31,12 @@ export default function Navbar() {
         </button>
 
         <nav id="main-nav" className={`nav-links${open ? " is-open" : ""}`} aria-label="Main">
-          {NAV_LINKS.map((l) => (
+          {links.map((l) => (
             <NavLink key={l.href} to={l.href} end={l.href === "/"} onClick={close}>
               {l.label}
             </NavLink>
           ))}
-          {!user && (
+          {!session && (
             <Link to="/login" className="nav-cta" onClick={close}>
               Sign in
             </Link>

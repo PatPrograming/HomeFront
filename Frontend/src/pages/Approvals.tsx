@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Layout from "../components/Layout";
-import { api } from "../lib/api.js";
+import { agentsApi as api } from "../lib/agentsApi";
 import { useAuth } from "../lib/AuthProvider";
 import { describeError, toolAction, type Approval } from "../lib/agents";
 import { emailSetupPath } from "./EmailSetup";
@@ -226,7 +226,7 @@ function HistoryRow({ approval, you }: { approval: Approval; you?: string }) {
 }
 
 export default function Approvals() {
-  const { user } = useAuth();
+  const { session: user } = useAuth();
   const [all, setAll] = useState<Approval[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -287,7 +287,7 @@ export default function Approvals() {
                   <h2 className="section-title">History</h2>
                   <ul className="history-list">
                     {history.map((a) => (
-                      <HistoryRow key={a.approval_id} approval={a} you={user?.id} />
+                      <HistoryRow key={a.approval_id} approval={a} you={user?.username} />
                     ))}
                   </ul>
                 </>

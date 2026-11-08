@@ -1,0 +1,130 @@
+{
+  "round": 0,
+  "at": "2026-11-08T00:10:45.294Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/cognito-huy-5d029b",
+  "passed": [
+    "C2"
+  ],
+  "failed": [
+    "C1",
+    "C3",
+    "C4",
+    "C5",
+    "C6",
+    "C7",
+    "C8",
+    "C9"
+  ],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "New Cognito tests pass",
+      "command": "PYTHONPATH=Backend:packages/mandate-contracts/src .venv/bin/python -m pytest -q Backend/tests/test_cognito.py",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 4,
+      "ms": 484,
+      "note": "",
+      "stdoutTail": "no tests ran in 0.00s",
+      "stderrTail": "ERROR: file or directory not found: Backend/tests/test_cognito.py"
+    },
+    {
+      "id": "C2",
+      "check": "Full suite green",
+      "command": "PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 1124,
+      "note": "",
+      "stdoutTail": ".........................                                                [100%]\n=============================== warnings summary ===============================\n.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/cognito-huy-5d029b/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n25 passed, 1 warning in 0.60s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "/me works for a Cognito user",
+      "command": "PYTHONPATH=Backend:packages/mandate-contracts/src .venv/bin/python -m pytest -q Backend/tests/test_cognito.py -k me_",
+      "passWhen": "stdout matches /\\d+ passed/",
+      "pass": false,
+      "exit": 4,
+      "ms": 336,
+      "note": "",
+      "stdoutTail": "no tests ran in 0.00s",
+      "stderrTail": "ERROR: file or directory not found: Backend/tests/test_cognito.py"
+    },
+    {
+      "id": "C4",
+      "check": "Script parses",
+      "command": "bash -n Backend/infra/cognito.sh",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 127,
+      "ms": 5,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": "bash: Backend/infra/cognito.sh: No such file or directory"
+    },
+    {
+      "id": "C5",
+      "check": "Dry run builds agent client before staff client, in us-east-1",
+      "command": "PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run 2>&1",
+      "passWhen": "stdout matches /create-user-pool [\\s\\S]*--region us-east-1[\\s\\S]*create-user-pool-domain[\\s\\S]*create-resource-server[\\s\\S]*mandate\\/tools[\\s\\S]*create-user-pool-client[\\s\\S]*mandate-agent[\\s\\S]*client_credentials[\\s\\S]*create-user-pool-client[\\s\\S]*staff-web[\\s\\S]*http:\\/\\/localhost:5173\\//",
+      "pass": false,
+      "exit": 127,
+      "ms": 5,
+      "note": "",
+      "stdoutTail": "bash: Backend/infra/cognito.sh: No such file or directory",
+      "stderrTail": ""
+    },
+    {
+      "id": "C6",
+      "check": "Dry run creates groups and users",
+      "command": "PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run 2>&1",
+      "passWhen": "stdout matches /create-group[\\s\\S]*staffer[\\s\\S]*create-group[\\s\\S]*admin[\\s\\S]*admin-create-user[\\s\\S]*maya[\\s\\S]*admin-add-user-to-group[\\s\\S]*admin-create-user[\\s\\S]*chiefofstaff[\\s\\S]*admin-add-user-to-group/",
+      "pass": false,
+      "exit": 127,
+      "ms": 4,
+      "note": "",
+      "stdoutTail": "bash: Backend/infra/cognito.sh: No such file or directory",
+      "stderrTail": ""
+    },
+    {
+      "id": "C7",
+      "check": "Dry run never touches AWS (no aws CLI on PATH) and exits 0",
+      "command": "PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 127,
+      "ms": 5,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": "bash: Backend/infra/cognito.sh: No such file or directory"
+    },
+    {
+      "id": "C8",
+      "check": "Dry run prints the env names the app needs",
+      "command": "PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run 2>&1",
+      "passWhen": "stdout matches /COGNITO_USER_POOL_ID[\\s\\S]*COGNITO_STAFF_CLIENT_ID[\\s\\S]*COGNITO_AGENT_CLIENT_ID[\\s\\S]*COGNITO_DOMAIN/",
+      "pass": false,
+      "exit": 127,
+      "ms": 3,
+      "note": "",
+      "stdoutTail": "bash: Backend/infra/cognito.sh: No such file or directory",
+      "stderrTail": ""
+    },
+    {
+      "id": "C9",
+      "check": "README explains revocation",
+      "command": "grep -iE \"revoc|revok\" Backend/infra/README.md | grep -i dynamo",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 5,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": "grep: Backend/infra/README.md: No such file or directory"
+    }
+  ]
+}
