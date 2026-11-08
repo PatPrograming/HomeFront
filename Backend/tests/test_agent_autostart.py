@@ -188,11 +188,14 @@ def test_an_agent_that_cannot_start_is_a_clear_error_not_a_hang(client, session,
 # --- off by default ---------------------------------------------------------------------
 
 
-def test_disabled_starts_nothing(client, session, monkeypatch):
-    monkeypatch.setenv("HOMEFRONT_AUTOSTART_AGENT", "0")
+@pytest.mark.parametrize(("flag", "launches"), [("0", 0), ("1", 1)])  # "1" proves the counter can see a launch
+def test_disabled_starts_nothing(client, session, monkeypatch, flag, launches):
+    calls = []
+    monkeypatch.setattr(agent_supervisor, "launch", lambda sid: calls.append(sid) or FakeProc(1))
+    monkeypatch.setenv("HOMEFRONT_AUTOSTART_AGENT", flag)
     monkeypatch.setattr(agent_supervisor, "_configured", False)  # read the flag again, as a fresh server would
     r = send(client)
-    assert r.status_code == 200 and agent_supervisor.get_supervisor() is None  # no supervisor, so nothing can launch
+    assert r.status_code == 200 and len(calls) == launches
 
 
 @pytest.mark.parametrize(("value", "enabled"), [(None, False), ("", False), ("0", False), ("1", True), ("true", True)])
@@ -256,3 +259,20 @@ def test_stopping_the_real_app_stops_its_agents(gateway, session, launcher):
         assert not launcher.started[0][1].terminated
     app.dependency_overrides.clear()
     assert launcher.started[0][1].terminated
+
+
+def test_start_and_stop_reach_the_servers_terminal(capfd):
+    """No caplog: the lines must be printed with the server's own logging setup."""
+    fake = FakeLauncher()
+    agent_supervisor.set_supervisor(AgentSupervisor(fake))
+
+    async def run():
+        async with agent_supervisor.supervision(sweep_seconds=3600):
+            agent_supervisor.get_supervisor().ensure_running("sid-log", "maya", ends_at=9e9)
+
+    try:
+        asyncio.run(run())
+    finally:
+        agent_supervisor.set_supervisor(None)
+    err = capfd.readouterr().err
+    assert "agent started sid=sid-log" in err and "agent stopped sid=sid-log" in err and "server shutdown" in err

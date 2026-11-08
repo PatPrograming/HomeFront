@@ -22,6 +22,7 @@ import contextlib
 import logging
 import os
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -88,8 +89,8 @@ def launch(sid: str) -> Proc:
 
 
 class AgentSupervisor:
-    def __init__(self, launcher: Callable[[str], Proc] = launch, max_starts: int = MAX_STARTS_PER_SESSION):
-        self._launch = launcher
+    def __init__(self, launcher: Callable[[str], Proc] | None = None, max_starts: int = MAX_STARTS_PER_SESSION):
+        self._launch = launcher or launch
         self._max_starts = max_starts
         self._running: dict[str, _Running] = {}
         self._starts: dict[str, int] = {}
@@ -201,6 +202,31 @@ def sweep_once() -> None:
         supervisor.sweep(_session_is_live)
 
 
+class _Stderr(logging.StreamHandler):
+    """Writes to whatever sys.stderr is now, so a redirected stderr still gets the lines."""
+
+    @property
+    def stream(self):
+        return sys.stderr
+
+    @stream.setter
+    def stream(self, _):
+        pass
+
+
+def log_to_terminal() -> None:
+    """Show the start and stop lines in the gateway's terminal.
+
+    Nothing else in the server configures logging (uvicorn only sets up its own loggers), so
+    without this the INFO lines would be dropped. Safe to call more than once.
+    """
+    log.setLevel(logging.INFO)
+    if not any(isinstance(h, _Stderr) for h in log.handlers):
+        handler = _Stderr()
+        handler.setFormatter(logging.Formatter("%(asctime)s homefront: %(message)s"))
+        log.addHandler(handler)
+
+
 @contextlib.asynccontextmanager
 async def supervision(sweep_seconds: float = SWEEP_SECONDS):
     """For the app's lifespan: sweep while the server runs, stop every agent when it shuts down."""
@@ -213,6 +239,7 @@ async def supervision(sweep_seconds: float = SWEEP_SECONDS):
             except Exception:  # a DynamoDB hiccup must not end the sweeping
                 log.exception("agent sweep failed")
 
+    log_to_terminal()
     task = asyncio.create_task(sweeper())
     try:
         yield

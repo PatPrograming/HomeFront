@@ -94,8 +94,8 @@ Or let the console start it: set `HOMEFRONT_AUTOSTART_AGENT=1` in the root `.env
 gateway. Maya's first message then starts exactly that command as a child process of the gateway
 (`Backend/app/services/agent_supervisor.py`), with the same identity steps: its own Cognito secret
 from `agent/.env`, the broker, a mandate token on every call. The backend never reads that secret or
-sees a mandate token, and the child gets only AWS credentials, region and `PATH` from the gateway,
-never `MANDATE_SIGNING_SECRET`. One process per session; it is stopped when the session is revoked,
+sees a mandate token, and the child gets only an allowlist from the gateway (AWS credentials and
+region, `PATH`, `HOME`, the CA bundle, the gateway URLs), never `MANDATE_SIGNING_SECRET`. One process per session; it is stopped when the session is revoked,
 Maya is offboarded, the session's hour ends, or the gateway shuts down; a session gets at most 3
 starts. If it can't start, Maya's message is refused with the reason (HTTP 503), so the chat never
 waits on an agent that isn't there. Starts and stops are logged in the gateway's terminal.
