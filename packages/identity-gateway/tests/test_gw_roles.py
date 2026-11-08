@@ -243,3 +243,109 @@ def test_policy_script_has_an_allow_and_a_deny_for_every_role():
         by_role.setdefault(role, set()).add(expected)
     for role in ROLES:
         assert by_role[role] == {"ALLOW", "DENY"}, role
+
+
+# ---- least privilege: the agent never gets more than its staffer's role ----------
+# Table-driven from ROLE_TOOLS, TOOLS and the autonomy categories, so a new role, tool or
+# category is covered without editing this test.
+
+from identity_gateway.autonomy import CATEGORIES  # noqa: E402
+from mandate_contracts.ddb import AutonomyItem  # noqa: E402
+
+CALLS = [  # (tool, args) for every tool, with the inputs that pass the starter conditions
+    ("inbox_read", {"email_id": "email-1"}),
+    ("case_read", {"case_id": "case-1"}),
+    ("datagov_search", {"query": "potholes"}),
+    ("web_scrape", {"url": "https://example.gov"}),
+    ("email_send", {"to": "a@b.gov", "subject": "s", "body": "b"}),
+    ("social_post", {"account": "official", "text": "Town hall"}),
+    ("records_bulk_export", {"query": "all"}),
+]
+OUT_OF_BOUNDS = [  # inputs every role is refused, whatever it may otherwise do
+    ("case_read", {"case_id": "case-2"}),  # another office's case
+    ("email_send", {"to": "stranger@example.com", "subject": "s", "body": "b"}),  # unknown recipient
+    ("social_post", {"account": "campaign", "text": "Vote"}),  # campaign account
+    ("records_bulk_export", {"query": "all"}),
+]
+
+
+def test_calls_cover_every_tool():
+    assert sorted(t for t, _ in CALLS) == sorted(TOOLS)
+
+
+def _grant_everything(store, world, staffer_id="maya"):
+    """The most the staffer could ever hand the agent: every category set to "auto" and granted."""
+    for category in CATEGORIES:
+        store.put_autonomy(staffer_id, category, AutonomyItem(level="auto"))
+        store.put_grant(world.sid, category, staffer_id, "2026-11-08T00:00:00Z", 2**31)
+
+
+@pytest.mark.parametrize("granted", [False, True], ids=["no-grants", "every-grant"])
+@pytest.mark.parametrize("role", [*ROLES, None])
+def test_the_agent_never_gets_a_tool_its_staffers_role_lacks(
+    cedar_gateway, store, make_token, world, handler_spy, role, granted, trusted_replies
+):
+    store.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer", office_role=role))
+    if granted:
+        _grant_everything(store, world)
+    token = make_token()
+    for tool, args in CALLS:
+        out = cedar_gateway.guarded(tool, args, token)
+        may = tool in ROLE_TOOLS.get(role or "", ())
+        # ALLOW covers both "ran" and "held for review": a held draft is still something the agent did.
+        assert out.allowed is may, (role, tool, out.event.reason, out.event.policy_ids)
+        if not may:
+            assert out.result is None
+    for tool, args in OUT_OF_BOUNDS:
+        assert cedar_gateway.guarded(tool, args, token).allowed is False, (role, tool, args)
+    ran = {name.replace(".", "_") for name in handler_spy.calls}  # handlers use dotted names
+    assert ran <= set(ROLE_TOOLS.get(role or "", ())), ran
+
+
+def test_a_grant_or_auto_outside_the_role_is_ignored_by_the_gateway(cedar_gateway, store, make_token, world, handler_spy):
+    # maya is a Caseworker: no posting. Even with posts set to "auto" and granted, Cedar denies first.
+    _grant_everything(store, world)
+    out = cedar_gateway.guarded("social_post", {"account": "official", "text": "hi"}, make_token())
+    assert out.allowed is False and out.event.policy_ids == ["role-social-post"]
+    assert handler_spy.calls == [] and store.get_autonomy("maya", "social_post").level == "auto"
+
+
+def test_forbids_win_over_every_grant_for_the_chief_of_staff(cedar_gateway, store, make_token, world, handler_spy):
+    _grant_everything(store, world, "chiefofstaff")
+    token = make_token(act="chiefofstaff", sid=world.chief_sid)
+    campaign = cedar_gateway.guarded("social_post", {"account": "campaign", "text": "Vote"}, token)
+    bulk = cedar_gateway.guarded("records_bulk_export", {"query": "all"}, token)
+    assert campaign.event.policy_ids == ["forbid-campaign-post"] and bulk.event.policy_ids == ["forbid-bulk-export"]
+    assert not campaign.allowed and not bulk.allowed and handler_spy.calls == []
+
+
+# ---- the agent's identity cannot be swapped -------------------------------------
+
+
+def test_a_mandate_for_one_staffer_cannot_use_another_staffers_session(cedar_gateway, make_token, world, handler_spy):
+    # maya (Caseworker) signs a token naming the Chief of Staff's session, to borrow the chief's posting role.
+    token = make_token(act="maya", sid=world.chief_sid)
+    out = cedar_gateway.guarded("social_post", {"account": "official", "text": "hi"}, token)
+    assert out.allowed is False and out.event.reason == "session revoked / delegator inactive"
+    assert handler_spy.calls == []
+
+
+def test_a_mandate_claiming_another_staffer_on_your_session_is_denied(cedar_gateway, make_token, world):
+    token = make_token(act="chiefofstaff", sid=world.sid)  # maya's session, the chief's name
+    out = cedar_gateway.guarded("social_post", {"account": "official", "text": "hi"}, token)
+    assert out.allowed is False and out.event.reason == "session revoked / delegator inactive"
+
+
+def test_a_replayed_mandate_after_offboarding_is_denied(cedar_gateway, store, make_token):
+    token = make_token()
+    assert cedar_gateway.guarded("datagov_search", {"query": "x"}, token).allowed is True
+    store.set_staffer_active("maya", False)
+    store.revoke_sessions_for("maya")
+    out = cedar_gateway.guarded("datagov_search", {"query": "x"}, token)  # same, still unexpired token
+    assert out.allowed is False and out.event.reason == "session revoked / delegator inactive"
+
+
+def test_role_and_office_in_tool_input_are_ignored(cedar_gateway, make_token, world):
+    args = {"case_id": "case-2", "office": "rep-y", "role": "chief_of_staff", "officeRole": "chief_of_staff"}
+    out = cedar_gateway.guarded("case_read", args, make_token())  # case-2 is in rep-y; maya is rep-x
+    assert out.allowed is False and out.result is None

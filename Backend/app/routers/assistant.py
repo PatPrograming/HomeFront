@@ -13,11 +13,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
-from identity_gateway.autonomy import CATEGORIES, LABELS, LOCKED, reviews, view
+from identity_gateway.autonomy import CATEGORIES, LABELS, LOCKED, SOCIAL_CATEGORY, reviews, view
 from identity_gateway.gateway import DraftAlreadyDecided, get_gateway
 from identity_gateway.tokens import InvalidToken, verify_mandate_token
 from mandate_contracts import MandateClaims
 from mandate_contracts.ddb import ChatMessageItem, DraftItem
+from mandate_contracts.roles import ROLE_TOOLS, role_reason
 
 try:
     from app.core.cognito import StaffIdentity, require_staff
@@ -203,6 +204,19 @@ def _known_category(category: str) -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown category")
 
 
+def _within_role(category: str, staff: StaffIdentity) -> None:
+    """Letting the agent send a category alone is only for a tool the staffer's own role may use.
+
+    Cedar denies that tool before any grant or "auto" is read, so this is not the guarantee; it stops
+    the API from recording a permission the staffer does not have. The role is read from DynamoDB.
+    """
+    staffer = get_gateway().store.get_staffer(staff.username)
+    role = staffer.office_role if staffer else None
+    tool = "social_post" if category == SOCIAL_CATEGORY else "email_send"
+    if tool not in ROLE_TOOLS.get(role or "", ()):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, f"Not part of your role: {role_reason(role, tool)}")
+
+
 @router.get("/autonomy")
 def list_autonomy(staff: StaffIdentity = Depends(require_staff)) -> dict:
     return {"categories": [view(c, _autonomy(staff, c)).as_json() for c in CATEGORIES]}
@@ -213,6 +227,8 @@ def set_autonomy(category: str, body: AutonomyIn, staff: StaffIdentity = Depends
     _known_category(category)
     if body.level == "auto" and category in LOCKED:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This category always needs your review")
+    if body.level == "auto":
+        _within_role(category, staff)
     item = _autonomy(staff, category).model_copy(update={"level": body.level})
     get_gateway().store.put_autonomy(staff.username, category, item)
     return view(category, item).as_json()
@@ -251,6 +267,7 @@ def grant_for_session(sid: str, body: GrantIn, staff: StaffIdentity = Depends(re
     _known_category(body.category)
     if body.category in LOCKED:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This category always needs your review")
+    _within_role(body.category, staff)
     session = get_gateway().store.get_session(sid)
     expires_at = int(_created_epoch(session.created_at)) + SESSION_TTL_SECONDS  # the grant ends with the session
     get_gateway().store.put_grant(sid, body.category, staff.username, datetime.now(timezone.utc).isoformat(), expires_at)

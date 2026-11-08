@@ -108,6 +108,29 @@ definitions. Those tiers are least-privilege choices made for the demo.
   https://ethics.house.gov/manual/general-prohibition-against-using-official-resources-for-campaign-or-political-purposes
 - Senate Ethics Committee, Campaign Activity: https://ethics.senate.gov/public/index.cfm/campaign-activity
 
+## Least privilege: what we guarantee
+
+The assistant acts for one staffer and can never do more than that staffer's role allows, in any session or task.
+Each guarantee below has a test that fails if it breaks. All tests run offline. The gateway tests use the real Cedar
+engine (cedarpy) on the same policy files that go into Verified Permissions.
+
+| # | Guarantee | Proved by |
+|---|---|---|
+| 1 | **The agent never gets more than its staffer's role.** This holds for every role, including no role, and for every tool. The test also sets every category to "auto" and grants every category for the session. The agent is allowed exactly the role's tools. Other offices' cases, unknown recipients, campaign posts and bulk export are refused for every role. | `test_the_agent_never_gets_a_tool_its_staffers_role_lacks` (`packages/identity-gateway/tests/test_gw_roles.py`), built from `ROLE_TOOLS`, `TOOLS` and the autonomy categories, so new roles, tools and categories are covered automatically |
+| 2 | **Each role's permissions are exactly its row in the table above.** Cedar decides, and the Python test double agrees with Cedar everywhere. | `test_real_cedar_allows_exactly_the_roles_tool_list`, `test_starter_policy_authorizer_matches_real_cedar` |
+| 3 | **A missing or unknown role gets nothing.** | `test_an_unknown_or_empty_role_is_denied_everything`, `test_an_agent_entity_with_no_role_attribute_is_denied_everything`, `test_a_staffer_with_no_role_on_file_is_denied` |
+| 4 | **The bulk-export and campaign-post bans bind everyone, even with every grant.** | `test_forbids_still_win_for_the_chief_of_staff`, `test_forbids_win_over_every_grant_for_the_chief_of_staff` |
+| 5 | **A session grant or "auto" setting can't exceed the role.** The API refuses one for a category whose tool the role lacks, and the gateway ignores any that exists anyway, because Cedar decides first. | `test_a_session_grant_outside_the_role_is_refused`, `test_auto_outside_the_role_is_refused` (`Backend/tests/test_least_privilege.py`), `test_a_grant_or_auto_outside_the_role_is_ignored_by_the_gateway` |
+| 6 | **Grants belong to one console session.** A second session for the same staffer does not inherit them, and offboarding deletes them. | `test_grants_are_per_session_and_die_with_offboarding`, `test_a_grant_lets_the_agent_send_that_category_for_this_session_only`, `test_offboarding_wipes_grants_and_the_next_call_is_denied` |
+| 7 | **Role, office and category come only from server data.** A client-sent role, office or category is rejected or ignored on sessions, chat messages (staffer and agent), grants, autonomy, draft approval and MCP tool input. | `test_client_sent_role_or_office_changes_nothing_on_any_route`, `test_a_role_sent_by_the_client_is_ignored`, `test_a_category_cannot_be_chosen_by_the_agent`, `test_the_role_comes_from_dynamodb_not_from_tool_input`, `test_role_and_office_in_tool_input_are_ignored` |
+| 8 | **A role change or offboarding applies on the next call,** including to a draft approved later. | `test_a_role_change_in_dynamodb_applies_on_the_next_call`, `test_a_draft_approved_after_a_role_change_is_checked_against_the_new_role`, `test_a_replayed_mandate_after_offboarding_is_denied` |
+| 9 | **The agent's identity can't be swapped.** A mandate for one staffer can't use another staffer's session, and can't claim another staffer on its own session. | `test_a_mandate_for_one_staffer_cannot_use_another_staffers_session`, `test_a_mandate_claiming_another_staffer_on_your_session_is_denied` |
+
+What is per staffer rather than per session: the "auto" setting from earned autonomy is a standing choice the
+staffer makes in the console. It applies to their later sessions too, by design. It still only skips the review
+queue for a call Cedar has already allowed for the staffer's role (guarantees 1 and 5), and the API refuses it for
+a category outside the role.
+
 ## Turn it on in AWS
 
 The role policies go into the shared policy store only on request, and only when every staffer already has a role.

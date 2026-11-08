@@ -74,6 +74,9 @@ def test_ts_types_match_python():
     from mandate_contracts.roles import ROLE_TOOLS
 
     assert re.findall(r'"(\w+)"', re.search(r"ROLES = \[(.*?)\]", ts, re.S).group(1)) == list(ROLE_TOOLS)
+    ts_role_tools = re.search(r"ROLE_TOOLS: .*? = \{(.*?)\};", ts, re.S).group(1)
+    parsed = {m[0]: tuple(re.findall(r'"(\w+)"', m[1])) for m in re.findall(r"(\w+): \[(.*?)\]", ts_role_tools)}
+    assert parsed == ROLE_TOOLS
     ts_reason = re.search(r"type Reason =(.*?);", ts, re.S).group(1)
     assert re.findall(r'"([^"]+)"', ts_reason) == list(get_args(Reason))
 

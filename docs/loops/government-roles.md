@@ -1,8 +1,8 @@
 # Loop: government-roles
 
-Status: REVIEWING
+Status: DONE
 Profile: feature (authorization: full trial)
-Round: 1 / 4
+Round: 2 / 4
 Base commit: 1bb5d38 (Test-Users-Huy merged with origin/main 9c44fee)
 Branch: claude/roles-huy-631b8e
 
@@ -56,3 +56,20 @@ Huy checks these against real AWS (steps are in the report):
   - The Legislative Aide gets no case files.
 
 ## Rounds
+### Round 1 — 2026-11-08
+- Built: commit 1e6d744.
+- Outcome checks: C1–C8 pass. C5 printed 16.
+- Trial (full): the falsifier said INCONCLUSIVE, because only real AWS steps were unchecked, and falsified nothing. The advocate said PARTIAL for the same reason. The judge ruled **ACCEPT**.
+- Judge's notes:
+  - The demo passwords are guessable by design. The test and the README spell out the scheme, so after the demo run `--apply --reset-passwords` without `--demo-passwords`.
+  - Mock mode mapped every non-admin to Caseworker. Fixed in round 2.
+- Decision: DONE for the original request. The lead's least-privilege follow-up went into round 2.
+
+### Round 2 — 2026-11-08 (lead follow-up)
+- Request, Huy's words via the lead: "Check to ensure that the agents created by these users can only gain at most the access of the user and for each task prompted in the console that."
+- Found: the API accepted a session grant or "auto" setting for a category outside the staffer's role. The gateway still denied the call, because Cedar decides first, but the API recorded a permission the staffer lacks. Fixed with `_within_role` in `assistant.py`. The 6 new tests fail on 1e6d744 and pass now.
+- Added:
+  - An exhaustive agent ≤ staffer test (role × tool × grants), plus identity-swap, replay and client-field tests.
+  - The `ROLES.md` "Least privilege: what we guarantee" section.
+  - Mock-mode roles per demo account, taken from TS `ROLE_TOOLS`. A contract test checks it against Python.
+- Checks: 765 passed and 3 skipped (backend/packages), 62 agent, 10 guardrail, 76 console, tsc and build clean.
