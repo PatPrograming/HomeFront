@@ -4,7 +4,7 @@
 #
 #   1. DynamoDB table `mandate` (pk/sk strings, on-demand)
 #   2. Verified Permissions policy store (validation off)
-#   3. Every Cedar policy in packages/mandate-contracts/policies/*.cedar (6 starter + 6 office-role forbids; re-runs add only new ones)
+#   3. Every Cedar policy in packages/mandate-contracts/policies/*.cedar (starter policies, office-role forbids, new tool permits; re-runs add only new ones)
 #   4. Backend/infra/.env.aws (untracked): store id + map of AVP policy id -> readable name
 #
 # Usage: bash Backend/infra/setup.sh            # dry run: prints the AWS commands, calls nothing
@@ -13,8 +13,10 @@
 #            also adds the office-role forbids (policies/role-*.cedar, docs/ROLES.md). It first reads
 #            every STAFFER item and stops, adding nothing, if any staffer has no valid officeRole:
 #            the role forbids deny every tool to such a staffer. Write the roles with
-#            test-users.sh --apply first. Without the flag, role policies already in the store are
-#            kept and still named in .env.aws; none are added.
+#            test-users.sh --apply first. The new tool permits (NEEDS_ROLE_POLICIES) are added only with
+#            the flag too: alone they would give every role, interns included, those tools.
+#            Without the flag, role policies already in the store are kept and still named in
+#            .env.aws; none are added.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -26,6 +28,8 @@ ENV_FILE="${MANDATE_ENV_FILE:-$ROOT/Backend/infra/.env.aws}"
 # Dry run unless --apply is passed, so a stray run can never create anything.
 DRY_RUN=1
 WITH_ROLES=0
+# Permits that grant a tool to every role; only safe next to the role-*.cedar forbids that narrow them.
+NEEDS_ROLE_POLICIES=" research-tools email-send-list-office social-reply-official report-save "
 for arg in "$@"; do
   case "$arg" in
     --apply) DRY_RUN=0 ;;
@@ -123,7 +127,7 @@ for file in "$POLICY_DIR"/*.cedar; do
     --query "policies[?definition.static.description=='$name'].policyId | [0]" --output text)"
   if [[ -n "$policy_id" && "$policy_id" != "None" ]]; then
     echo "exists: $name ($policy_id)"
-  elif [[ $name == role-* && $WITH_ROLES == 0 ]]; then
+  elif [[ ( $name == role-* || $NEEDS_ROLE_POLICIES == *" $name "* ) && $WITH_ROLES == 0 ]]; then
     echo "skipped: $name (pass --with-role-policies to add the office-role policies)"
     continue
   else
