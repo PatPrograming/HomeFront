@@ -8,10 +8,13 @@ import RunTask from "./RunTask";
 import PlatformIcon, { PLATFORMS } from "../components/PlatformIcons/PlatformIcons";
 import "./Agents.css";
 
-// The social platforms a social media agent is for, in the card's top right corner.
-function PlatformBadges({ platforms }: { platforms?: string[] }) {
-  const shown = PLATFORMS.filter((p) => platforms?.includes(p.id));
-  if (shown.length === 0) return null;
+// Every social media agent shows its platforms in a row in the card's top right corner. Agents
+// with no saved platforms (made through the API, or before platforms were stored) can post to
+// all supported ones, so they show them all.
+function PlatformBadges({ agent }: { agent: Agent }) {
+  if (agent.kind !== "social") return null;
+  const saved = PLATFORMS.filter((p) => agent.platforms?.includes(p.id));
+  const shown = saved.length > 0 ? saved : PLATFORMS;
   return (
     <ul className="platform-badges" aria-label={`Platforms: ${shown.map((p) => p.name).join(", ")}`}>
       {shown.map((p) => (
@@ -130,7 +133,7 @@ export default function Agents() {
                     {a.owner_id === null && <span className="demo-badge">Shared demo</span>}
                     {!a.active && <span className="demo-badge">Inactive</span>}
                   </div>
-                  <PlatformBadges platforms={a.platforms} />
+                  <PlatformBadges agent={a} />
                   <h2>{a.name}</h2>
                   <p className="muted">{a.agency}</p>
                   <div className="type-tools">
