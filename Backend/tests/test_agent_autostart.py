@@ -78,20 +78,20 @@ def send(client, text="Check my email"):
 
 def test_the_first_message_starts_exactly_one_agent(client, session, launcher):
     r = send(client)
-    assert r.status_code == 200 and r.json()["agent"] == "started"
+    assert r.status_code == 200
     assert [sid for sid, _ in launcher.started] == [SID]
 
 
 def test_a_second_message_does_not_start_another(client, session, launcher):
     send(client)
     r = send(client, "And the newsletter?")
-    assert r.status_code == 200 and r.json()["agent"] == "running"
+    assert r.status_code == 200
     assert len(launcher.started) == 1
 
 
-def test_the_message_is_still_a_chat_message(client, session, launcher):
+def test_the_browser_gets_the_same_chat_message_as_before(client, session, launcher):
     body = send(client).json()
-    assert body["role"] == "user" and body["text"] == "Check my email"
+    assert set(body) == {"id", "ts", "role", "text"} and body["text"] == "Check my email"
 
 
 # --- stopping ---------------------------------------------------------------------
@@ -157,7 +157,7 @@ def test_a_crashed_agent_is_restarted_by_the_next_message(client, session, launc
     send(client)
     launcher.started[0][1].crash()
     r = send(client, "Are you there?")
-    assert r.status_code == 200 and r.json()["agent"] == "started"
+    assert r.status_code == 200
     assert len(launcher.started) == 2
 
 
@@ -188,11 +188,11 @@ def test_an_agent_that_cannot_start_is_a_clear_error_not_a_hang(client, session,
 # --- off by default ---------------------------------------------------------------------
 
 
-def test_disabled_starts_nothing_and_says_manual(client, session, monkeypatch):
-    monkeypatch.delenv("HOMEFRONT_AUTOSTART_AGENT", raising=False)
-    agent_supervisor.set_supervisor(None)
+def test_disabled_starts_nothing(client, session, monkeypatch):
+    monkeypatch.setenv("HOMEFRONT_AUTOSTART_AGENT", "0")
+    monkeypatch.setattr(agent_supervisor, "_configured", False)  # read the flag again, as a fresh server would
     r = send(client)
-    assert r.status_code == 200 and r.json()["agent"] == "manual"
+    assert r.status_code == 200 and agent_supervisor.get_supervisor() is None  # no supervisor, so nothing can launch
 
 
 @pytest.mark.parametrize(("value", "enabled"), [(None, False), ("", False), ("0", False), ("1", True), ("true", True)])

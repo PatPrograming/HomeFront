@@ -115,19 +115,19 @@ def read_messages(sid: str, after: str | None = None, staff: StaffIdentity = Dep
     return _chat_page(sid, after)
 
 
-def _ensure_agent(sid: str, staff: StaffIdentity) -> str:
-    """Start the session's chat agent when auto-start is on; "manual" when it is off.
+def _ensure_agent(sid: str, staff: StaffIdentity) -> None:
+    """Start the session's chat agent when auto-start is on (HOMEFRONT_AUTOSTART_AGENT=1).
 
     Runs before the message is stored, so a message the agent can never answer is refused
     (503 with the reason) instead of waiting forever for a reply.
     """
     supervisor = get_supervisor()
     if supervisor is None:
-        return "manual"
+        return
     session = get_gateway().store.get_session(sid)
     ends_at = _created_epoch(session.created_at) + SESSION_TTL_SECONDS
     try:
-        return supervisor.ensure_running(sid, staff.username, ends_at)
+        supervisor.ensure_running(sid, staff.username, ends_at)
     except AgentStartError as error:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"The assistant could not start: {error}") from None
 
@@ -135,8 +135,8 @@ def _ensure_agent(sid: str, staff: StaffIdentity) -> str:
 @router.post("/sessions/{sid}/messages")
 def send_message(sid: str, body: MessageIn, staff: StaffIdentity = Depends(require_staff)) -> dict:
     _own_active_session(sid, staff)
-    agent = _ensure_agent(sid, staff)
-    return {**_post(sid, "user", body.text), "agent": agent}
+    _ensure_agent(sid, staff)
+    return _post(sid, "user", body.text)
 
 
 # --- chat: agent side -----------------------------------------------------------

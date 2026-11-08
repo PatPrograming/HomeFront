@@ -1,5 +1,5 @@
 import { expiryMs } from "../components/IdentityCard";
-import type { AgentStatus, ChatMessage, SessionCard } from "./api";
+import type { ChatMessage, SessionCard } from "./api";
 
 // The chat replaces "Start a session": the staffer's first message starts one through the broker
 // (POST /sessions, same rules as before: their Cognito login, an active staffer; the agent later
@@ -7,7 +7,7 @@ import type { AgentStatus, ChatMessage, SessionCard } from "./api";
 // way. A revoked one is not: the console keeps showing Revoked and the chat stays closed.
 export interface ChatDeps {
   startSession: () => Promise<SessionCard>;
-  sendMessage: (sid: string, text: string) => Promise<ChatMessage & { agent?: AgentStatus }>;
+  sendMessage: (sid: string, text: string) => Promise<ChatMessage>;
 }
 
 export function needsNewSession(card: SessionCard | null, now: number): boolean {
@@ -19,7 +19,7 @@ export async function sendInSession(
   text: string,
   now: number,
   deps: ChatDeps,
-): Promise<{ card: SessionCard; message: ChatMessage & { agent?: AgentStatus } }> {
+): Promise<{ card: SessionCard; message: ChatMessage }> {
   const live = needsNewSession(card, now) ? await deps.startSession() : card!;
   const message = await deps.sendMessage(live.sid, text);
   return { card: live, message };

@@ -54,9 +54,6 @@ export interface ChatMessage {
   text: string;
 }
 
-/** What the backend did about the chat agent for this message: started it, found it running, or left it to be started by hand. */
-export type AgentStatus = "started" | "running" | "manual";
-
 /** GET /sessions/{sid}/messages?after=<cursor> */
 export interface ChatPage {
   messages: ChatMessage[];
@@ -169,7 +166,7 @@ export const api = {
   messages: (sid: string, after?: string | null) =>
     request<ChatPage>(`/sessions/${encodeURIComponent(sid)}/messages${after ? `?after=${encodeURIComponent(after)}` : ""}`),
   sendMessage: (sid: string, text: string) =>
-    request<ChatMessage & { agent?: AgentStatus }>(`/sessions/${encodeURIComponent(sid)}/messages`, { method: "POST", body: { text } }),
+    request<ChatMessage>(`/sessions/${encodeURIComponent(sid)}/messages`, { method: "POST", body: { text } }),
   drafts: () => request<{ drafts: Draft[] }>("/drafts"),
   // Let the agent send this category alone for one session (staffer's own login; chat text never grants)
   grant: (sid: string, category: string) =>

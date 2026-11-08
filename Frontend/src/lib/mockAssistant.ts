@@ -257,7 +257,7 @@ export function assistantRoute(
       if (revoked(session)) throw new MockError(403, "Session revoked or staffer inactive");
       const message: ChatMessage = { id: crypto.randomUUID(), ts: new Date(now).toISOString(), role: "user", text: (body as { text: string }).text };
       (state.chats[session.sid] ??= []).push(message);
-      return { ...message, agent: "running" }; // the mock's assistant is always running
+      return message;
     }
     if (!revoked(session)) answerDue(state, events, session, now);
     const after = search.get("after");
