@@ -16,7 +16,7 @@ from __future__ import annotations
 import types
 
 import pytest
-from mandate_contracts.ddb import AutonomyItem, EmailItem, StafferItem
+from mandate_contracts.ddb import AutonomyItem, CaseItem, EmailItem, StafferItem
 from mcp_tools import handlers
 
 NEEDS = "needs connection"
@@ -182,7 +182,7 @@ def test_holding_a_draft_needs_no_connection_and_posts_no_chat_message(
     out = gw_.guarded(tool, args, make_token())
     assert out.allowed and out.event.reason == HELD and out.result["status"] == "held_for_review"
     drafts = store.pending_drafts_for("maya")
-    assert [d.tool for d in drafts] == [tool]
+    assert [d.tool for _, d in drafts] == [tool]
     assert conn.required == []  # the connection was not even asked about
     assert _chat(store, world.sid) == []
     assert conn.gmail == [] and conn.x == [] and ses.sent == [] and handler_spy.calls == []
@@ -492,6 +492,80 @@ def test_a_provider_error_on_a_direct_send_is_a_deny(gw_, store, make_token, wor
     conn.send_error = ProviderError("x said 429")
     out = gw_.guarded("social_post", POST_ARGS, make_token())
     assert out.allowed is False and out.event.reason == "denied by policy" and out.result is None
+
+
+# ---- a list send that fails part-way must never send anyone a second copy ---------------------------
+
+
+def _three_recipient_list(store, make_token, world, gw_):
+    """The chief's held list email, with three DynamoDB recipients (sorted: amy, jane.doe, zed)."""
+    for case_id, email in (("case-amy", "amy@example.com"), ("case-zed", "zed@example.com")):
+        store.put_case(
+            case_id, CaseItem(office="rep-x", constituent=email, constituent_email=email, topic="t", status="open")
+        )
+    token = make_token(act="chiefofstaff", sid=world.chief_sid)
+    return gw_.guarded("email_send_list", {"subject": "News", "body": "Hello"}, token)
+
+
+def _fail_on_call(conn, n):
+    """Make the Gmail double raise ProviderError on its nth call (1-based); earlier calls are recorded."""
+    calls = []
+
+    def send_gmail(staffer_id, to, subject, body, in_reply_to=None):
+        calls.append(to)
+        if len(calls) == n:
+            raise ProviderError("gmail said 500")
+        conn.gmail.append((staffer_id, to, subject, body, in_reply_to))
+        return {"status": "sent", "provider": "gmail"}
+
+    conn.send_gmail = send_gmail
+    return calls
+
+
+def test_a_list_send_failing_on_the_second_recipient_is_a_partial_failure_and_the_draft_stays_sent(
+    gw_, store, make_token, world, conn
+):
+    """Without partial-failure handling the error would put the draft back to pending, and a retry would
+    email the first recipient again."""
+    held = _three_recipient_list(store, make_token, world, gw_)
+    _fail_on_call(conn, 2)
+    draft_id, out = _approve(gw_, store, held)
+    assert out.result == {
+        "status": "partial_failure",
+        "provider": "gmail",
+        "sent": 1,
+        "failed": ["jane.doe@example.com", "zed@example.com"],
+    }
+    assert [c[1] for c in conn.gmail] == ["amy@example.com"]
+    assert store.get_draft(draft_id).status == "sent"
+    assert store.pending_drafts_for("chiefofstaff") == []
+
+
+def test_approving_a_partially_sent_list_again_is_refused_so_nobody_gets_a_second_copy(
+    gw_, store, make_token, world, conn
+):
+    from identity_gateway.gateway import DraftAlreadyDecided
+
+    held = _three_recipient_list(store, make_token, world, gw_)
+    _fail_on_call(conn, 2)
+    draft_id, _ = _approve(gw_, store, held)
+    conn.send_gmail = lambda *a, **k: pytest.fail("a second approval must not send anything")
+    with pytest.raises(DraftAlreadyDecided):
+        gw_.send_draft(draft_id, store.get_draft(draft_id), {})
+    assert [c[1] for c in conn.gmail] == ["amy@example.com"]
+
+
+def test_a_list_send_failing_on_the_first_recipient_returns_the_draft_to_pending_with_nothing_sent(
+    gw_, store, make_token, world, conn
+):
+    """Nobody has the email yet, so a retry is safe and the draft must stay reviewable."""
+    held = _three_recipient_list(store, make_token, world, gw_)
+    calls = _fail_on_call(conn, 1)
+    draft_id, out = _approve(gw_, store, held)
+    assert out.allowed is False and out.result is None
+    assert calls == ["amy@example.com"] and conn.gmail == []
+    assert store.get_draft(draft_id).status == "pending"
+    assert [i for i, _ in store.pending_drafts_for("chiefofstaff")] == [draft_id]
 
 
 # ---- connected sends post no connect message ------------------------------------------------------
