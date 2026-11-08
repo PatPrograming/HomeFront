@@ -66,7 +66,7 @@ All of it is in `src/lib/pkce.js` (pure helpers) and `src/lib/auth.js` (about 10
 | `/console` | `staffer` or `admin` | **Start assistant** (`POST /api/v1/sessions`), the identity card, the live feed |
 | `/admin` | `admin` only | **Offboard** each staffer (`POST /api/v1/staff/{id}/offboard`, with a confirm step) and the full audit log |
 | `/account` | anyone signed in, even with no group | `GET /api/v1/me` (username, sub, email, groups, read-only) and sign-out |
-| `/monitoring` | signed in | The old in-memory gateway demo, kept until lane B replaces those routes |
+| `/monitoring` | anyone | Old link; redirects to `/console` (the in-memory gateway demo was removed) |
 
 `src/components/RequireAuth.jsx` guards the routes with `gate()` from `src/lib/roles.js`. The Admin link in the
 navbar only appears for admins, and a staffer who types `/admin` gets "Not allowed".

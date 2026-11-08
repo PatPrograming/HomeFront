@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider } from "./lib/AuthProvider.jsx";
 import RequireAuth from "./components/RequireAuth.jsx";
 import Home from "./pages/Home.jsx";
@@ -7,7 +7,6 @@ import AuthCallback from "./pages/AuthCallback.jsx";
 import Account from "./pages/Account.jsx";
 import Console from "./pages/Console.jsx";
 import Admin from "./pages/Admin.jsx";
-import Monitoring from "./pages/Monitoring.jsx";
 
 // Cognito sends the browser back to the site root with ?code=…&state=… (or ?error=…), because the
 // staff-web client's callback URL is the root. Finish the sign-in there; otherwise show the home page.
@@ -48,15 +47,8 @@ export default function App() {
               </RequireAuth>
             }
           />
-          {/* Old in-memory gateway demo, kept until lane B replaces those routes. */}
-          <Route
-            path="/monitoring"
-            element={
-              <RequireAuth>
-                <Monitoring />
-              </RequireAuth>
-            }
-          />
+          {/* The old in-memory gateway demo lived here; its API routes are gone, so send old links to the console. */}
+          <Route path="/monitoring" element={<Navigate to="/console" replace />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </BrowserRouter>

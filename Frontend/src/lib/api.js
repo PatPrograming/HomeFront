@@ -67,26 +67,4 @@ export const api = {
 
   // Public home-page copy (no token)
   home: () => request("/home", { auth: false }),
-
-  // Legacy in-memory gateway, used only by the old /monitoring page
-  tools: () => request("/tools", { auth: false }),
-  matrix: () => request("/demo/matrix", { auth: false }),
-  agents: () => request("/agents"),
-  audit: (limit = 80) => request(`/audit?limit=${limit}`),
-  revokeTool: (agentId, tool) =>
-    request(`/agents/${agentId}/grants/${encodeURIComponent(tool)}/revoke`, { method: "POST" }),
-  grantTool: (agentId, tool) =>
-    request(`/agents/${agentId}/grants/${encodeURIComponent(tool)}`, { method: "POST" }),
-  mintAgentToken: (agentId, ttlSeconds = 3600) =>
-    request("/auth/token", {
-      method: "POST",
-      body: { agent_id: agentId, ttl_seconds: ttlSeconds },
-    }),
-  callTool: (agentToken, tool, arguments_ = {}) =>
-    request("/mcp/call", {
-      auth: false,
-      method: "POST",
-      headers: { Authorization: `Bearer ${agentToken}` },
-      body: { tool, arguments: arguments_ },
-    }),
 };

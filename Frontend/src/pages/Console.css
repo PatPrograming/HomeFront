@@ -1,4 +1,4 @@
-/* Staff console, admin view and sign-in. Same palette and faces as Monitoring.css; colour is used on
+/* Staff console, admin view and sign-in. Paper-and-ink palette from the earlier Monitoring page; colour is used on
    decisions only (green ALLOW, red DENY, amber guardrail flag). */
 .mandate-console {
   --ink: #0f1c18;
