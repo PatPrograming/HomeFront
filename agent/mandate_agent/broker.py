@@ -61,7 +61,10 @@ def fetch_agent_client_token(http: httpx.Client | None = None) -> str:
             f"COGNITO_AGENT_CLIENT_ID and COGNITO_AGENT_CLIENT_SECRET in {ENV_FILE_HINT}.",
             kind="credentials_refused",
         )
-    return response.json()["access_token"]
+    try:
+        return response.json()["access_token"]
+    except (ValueError, KeyError) as error:
+        raise BrokerError("Cognito sent an unexpected answer (no access_token).", kind="unreachable") from error
 
 
 def fetch_mandate_token(api_url: str, sid: str, http: httpx.Client | None = None) -> str:
@@ -81,4 +84,7 @@ def fetch_mandate_token(api_url: str, sid: str, http: httpx.Client | None = None
         raise BrokerError(
             f"The broker refused a mandate for session {sid} (HTTP {response.status_code}).", response.status_code
         )
-    return response.json()["mandateToken"]
+    try:
+        return response.json()["mandateToken"]
+    except (ValueError, KeyError) as error:
+        raise BrokerError(f"The broker at {api_url} sent an unexpected answer (no mandateToken).", kind="unreachable") from error

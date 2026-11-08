@@ -19,7 +19,7 @@ log = logging.getLogger("homefront.agent_supervisor")
 
 # Mirrors agent/mandate_agent/chat.py and runner.py (a test keeps them equal).
 EXIT_CODES = {"EXIT_OK": 0, "EXIT_STOPPED": 3, "EXIT_NOT_SET_UP": 4, "EXIT_UNREACHABLE": 5, "EXIT_FAILED": 6,
-              "EXIT_IDENTITY_REFUSED": 7}
+              "EXIT_IDENTITY_REFUSED": 7, "EXIT_UNEXPLAINED": 8}
 SAID_ALREADY = {0, 3, 6}  # finished, session over, or the agent posted the reason itself
 
 NOT_SET_UP = "The assistant isn't set up on this computer (agent secret missing). Ask your admin."
@@ -27,7 +27,9 @@ IDENTITY_REFUSED = "The assistant couldn't sign in: its credentials were refused
 UNREACHABLE = ("The assistant couldn't reach its sign-in service, so it can't answer right now. "
                "Send your message again in a minute, or ask your admin.")
 CRASHED = "The assistant stopped unexpectedly. Send your message again to restart it."
-STAFF_WORDS = {4: NOT_SET_UP, 7: IDENTITY_REFUSED, 5: UNREACHABLE}
+UNEXPLAINED = ("The assistant stopped because of a problem on the server and couldn't say why. "
+               "Send your message again, or ask your admin.")
+STAFF_WORDS = {4: NOT_SET_UP, 7: IDENTITY_REFUSED, 5: UNREACHABLE, 8: UNEXPLAINED}
 BLOCKING = {4: NOT_SET_UP, 7: IDENTITY_REFUSED}  # restarting can't help until an admin fixes agent/.env
 
 FIX = {
@@ -36,6 +38,7 @@ FIX = {
     7: "Cognito refused COGNITO_AGENT_CLIENT_ID / COGNITO_AGENT_CLIENT_SECRET in agent/.env: copy the "
        "agent client's current secret, then press Try again in the chat",
     5: "the agent could not reach Cognito or the broker: check the network and that the gateway is running",
+    8: "the agent failed before it could report why: its own output above names the error",
 }
 
 

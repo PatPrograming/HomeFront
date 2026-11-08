@@ -16,6 +16,7 @@ from mandate_agent.chat import (
     EXIT_FAILED,
     EXIT_IDENTITY_REFUSED,
     EXIT_NOT_SET_UP,
+    EXIT_UNEXPLAINED,
     EXIT_UNREACHABLE,
     ChatClosed,
     explain,
@@ -194,4 +195,55 @@ def test_if_even_posting_fails_the_agent_still_exits_cleanly(monkeypatch):
         raise httpx.ConnectError("gateway down")
 
     code, lines = run(DeadChannel([[msg("hi")]]), lambda: TOKEN, turn=turn, monkeypatch=monkeypatch)
-    assert code == EXIT_FAILED and any("can't reach the HomeFront gateway" in line for line in lines)
+    assert code == EXIT_UNEXPLAINED and any("can't reach the HomeFront gateway" in line for line in lines)
+
+
+# --- found by the trial ---------------------------------------------------------------------
+
+
+def test_a_failure_before_any_token_is_never_reported_as_already_explained():
+    def get_token():
+        raise KeyError("access_token")  # e.g. an odd answer from Cognito, before the agent could post
+
+    code, _ = run(Channel([]), get_token)
+    assert code == EXIT_UNEXPLAINED
+
+
+def test_a_failure_whose_chat_post_also_failed_is_not_reported_as_explained(monkeypatch):
+    class DeadChannel(Channel):
+        def post(self, token, text, detail=None):
+            raise httpx.ConnectError("gateway down")
+
+    def turn(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    code, _ = run(DeadChannel([[msg("hi")]]), lambda: TOKEN, turn=turn, monkeypatch=monkeypatch)
+    assert code == EXIT_UNEXPLAINED
+
+
+@pytest.mark.parametrize("body", [{}, "not json"])
+def test_an_odd_answer_from_cognito_or_the_broker_is_a_broker_error(cognito_env, body):
+    def handler(request):
+        if request.url.path == "/oauth2/token" and body == {}:
+            return httpx.Response(200, json={})
+        if request.url.path == "/oauth2/token":
+            return httpx.Response(200, json={"access_token": "cc"})
+        return httpx.Response(200, text=body)
+
+    with pytest.raises(BrokerError) as raised:
+        fetch_mandate_token("http://127.0.0.1:1", "sid-1", http=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert raised.value.kind == "unreachable"
+
+
+def test_the_gateway_being_down_as_the_mcp_client_reports_it_is_named():
+    class MCPClientInitializationError(Exception):
+        pass
+
+    try:
+        try:
+            raise ExceptionGroup("unhandled errors in a TaskGroup", [ConnectionRefusedError()])
+        except ExceptionGroup as group:
+            raise MCPClientInitializationError("the client initialization failed") from group
+    except MCPClientInitializationError as error:
+        text, detail = explain(error)
+    assert "can't reach the HomeFront gateway" in text and detail == "MCPClientInitializationError"

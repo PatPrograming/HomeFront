@@ -23,8 +23,9 @@ TOKEN_REFRESH_SECONDS = 10 * 60  # mandate tokens last 15 minutes; get a new one
 # Exit codes the console's supervisor reads (3, EXIT_STOPPED, means the session is over).
 EXIT_NOT_SET_UP = 4  # no usable agent identity: a Cognito setting is missing
 EXIT_UNREACHABLE = 5  # Cognito or the broker could not be reached, before any reply was possible
-EXIT_FAILED = 6  # a turn failed; the agent has already said why in the chat (when it could)
+EXIT_FAILED = 6  # a turn failed and the agent said why in the chat
 EXIT_IDENTITY_REFUSED = 7  # Cognito refused the agent's client id or secret
+EXIT_UNEXPLAINED = 8  # it failed and could not post why (no token yet, or the post failed): the server says it
 
 # The staffer's words for each cause. Never the exception's own text: it can carry keys or tracebacks.
 CREDENTIALS_EXPIRED = (
@@ -94,6 +95,8 @@ def explain(error: BaseException) -> tuple[str, str]:
             return MODEL_BUSY, f"{name}: {code}" if code else name
         if isinstance(e, (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError)) or name in {
             "EndpointConnectionError", "ConnectTimeoutError", "ReadTimeoutError"}:
+            return GATEWAY_DOWN, name
+        if name == "MCPClientInitializationError":  # what the MCP client raises when the gateway is down
             return GATEWAY_DOWN, name
         if isinstance(e, httpx.HTTPStatusError) and e.response.status_code >= 500:
             return GATEWAY_DOWN, f"{name}: HTTP {e.response.status_code}"
@@ -165,9 +168,11 @@ def serve_chat(
     except Exception as error:  # Bedrock, AWS credentials, the gateway: say so instead of dying silently
         text, detail = explain(error)
         out(f"{text} [{detail}]")
-        if token is not None:
-            try:
-                channel.post(token, text, detail)
-            except Exception as post_error:  # the gateway itself may be what failed
-                out(f"Could not post that to the chat either ({type(post_error).__name__}).")
+        if token is None:
+            return EXIT_UNEXPLAINED
+        try:
+            channel.post(token, text, detail)
+        except Exception as post_error:  # the gateway itself may be what failed
+            out(f"Could not post that to the chat either ({type(post_error).__name__}).")
+            return EXIT_UNEXPLAINED
         return EXIT_FAILED

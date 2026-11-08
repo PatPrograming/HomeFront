@@ -225,3 +225,29 @@ def test_try_again_without_auto_start_says_so(client):
     login()
     r = client.post(f"/api/v1/sessions/{sid}/agent/retry")
     assert r.status_code == 409 and "auto-start" in r.json()["detail"]
+
+
+# --- found by the trial: the server's own supervisor must explain exits too --------------------
+
+
+def test_the_supervisor_the_server_builds_explains_exits_in_the_chat(client, monkeypatch):
+    monkeypatch.setenv("HOMEFRONT_AUTOSTART_AGENT", "1")
+    built = agent_supervisor.from_env()
+    fake = FakeLauncher()
+    built._launch = fake  # the real launcher would start a process
+    agent_supervisor.set_supervisor(built)
+    try:
+        sid = open_conversation(client, "check my email")
+        fake.started[0][1].crash(4)
+        agent_supervisor.sweep_once()
+    finally:
+        agent_supervisor.set_supervisor(None)
+    assert any("agent secret missing" in m["text"] for m in chat(client, sid) if m["role"] == "assistant")
+
+
+def test_an_unexplained_failure_is_explained_by_the_server(client, launcher):
+    sid = open_conversation(client, "check my email")
+    launcher.started[0][1].crash(8)
+    agent_supervisor.sweep_once()
+    replies = [m["text"] for m in chat(client, sid) if m["role"] == "assistant"]
+    assert len(replies) == 1 and "couldn't say why" in replies[0]
