@@ -1,0 +1,129 @@
+{
+  "round": 2,
+  "at": "2026-11-08T12:21:04.955Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/connections",
+  "passed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "C6",
+    "C7",
+    "C8",
+    "C9"
+  ],
+  "failed": [],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Full Python suite: no failure outside the 66 already failing on origin/main",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q -rf Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests packages/identity-gateway/tests 2>&1 | grep '^FAILED' | sed 's/ - .*//' | sort -u | comm -23 - docs/loops/connected-accounts.rounds/baseline-failures.txt | sed 's/^/NEW /'; test -f Backend/tests/test_connections.py && echo SUITE_RAN",
+      "passWhen": "stdout matches /^SUITE_RAN\\s*$/",
+      "pass": true,
+      "exit": 0,
+      "ms": 203088,
+      "note": "",
+      "stdoutTail": "SUITE_RAN",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Connections API + OAuth security tests (isolation, state forged/missing/replayed/other user, no token leaks, disconnect, offboarding, agent can't connect)",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q Backend/tests/test_connections.py",
+      "passWhen": "stdout matches /\\b([2-9][0-9]) passed(?!.*failed)/",
+      "pass": true,
+      "exit": 0,
+      "ms": 14567,
+      "note": "",
+      "stdoutTail": "..............................................                           [100%]\n=============================== warnings summary ===============================\n../../../.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n46 passed, 1 warning in 13.66s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Gateway helper: require_connection, KMS context binding, refresh, senders, needs_connection through a guarded()-shaped harness",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q packages/identity-gateway/tests/test_gw_connections.py",
+      "passWhen": "stdout matches /\\b([1-9][0-9]) passed(?!.*failed)/",
+      "pass": true,
+      "exit": 0,
+      "ms": 20592,
+      "note": "",
+      "stdoutTail": "........................................................................ [ 73%]\n..........................                                               [100%]\n98 passed in 19.83s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "/me returns the email from Cognito userInfo when the access token lacks it",
+      "command": "env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src .venv/bin/python -m pytest -q Backend/tests/test_me_email.py",
+      "passWhen": "stdout matches /[1-9][0-9]* passed(?!.*failed)/",
+      "pass": true,
+      "exit": 0,
+      "ms": 1522,
+      "note": "",
+      "stdoutTail": ".....                                                                    [100%]\n=============================== warnings summary ===============================\n../../../.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n5 passed, 1 warning in 0.80s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C5",
+      "check": "Frontend typecheck and all vitest suites",
+      "command": "cd Frontend && npx tsc --noEmit && npx vitest run 2>&1 | tail -5",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 7467,
+      "note": "",
+      "stdoutTail": "Test Files  20 passed (20)\n      Tests  104 passed (104)\n   Start at  04:20:55\n   Duration  5.86s (transform 1.12s, setup 0ms, collect 3.40s, tests 6.50s, environment 4ms, prepare 2.81s)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C6",
+      "check": "Account page + ConnectPrompt tests (connected / not connected / not set up / connect / disconnect / callback / chat prompt)",
+      "command": "cd Frontend && npx vitest run src/pages/Account.test.tsx src/components/ConnectPrompt.test.tsx src/pages/ConnectCallback.test.tsx 2>&1 | tail -5",
+      "passWhen": "stdout matches /Tests\\s+([1-9][0-9]) passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 1459,
+      "note": "",
+      "stdoutTail": "Test Files  3 passed (3)\n      Tests  23 passed (23)\n   Start at  04:21:02\n   Duration  715ms (transform 258ms, setup 0ms, collect 463ms, tests 283ms, environment 2ms, prepare 385ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C7",
+      "check": "Production build",
+      "command": "cd Frontend && npm run -s build 2>&1 | tail -3",
+      "passWhen": "stdout contains built in",
+      "pass": true,
+      "exit": 0,
+      "ms": 1986,
+      "note": "",
+      "stdoutTail": "dist/assets/index-DQWBxYRz.css               65.98 kB │ gzip:  13.15 kB\ndist/assets/index-BrORVEVS.js               333.07 kB │ gzip: 103.47 kB\n✓ built in 1.16s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C8",
+      "check": "KMS setup script dry-runs and is idempotent-shaped",
+      "command": "bash -n Backend/infra/connections.sh && env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null bash Backend/infra/connections.sh 2>&1",
+      "passWhen": "stdout contains kms create-key",
+      "pass": true,
+      "exit": 0,
+      "ms": 29,
+      "note": "",
+      "stdoutTail": "Least-privilege policy: every call must send exactly the staffer and provider encryption context.\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\"kms:Encrypt\", \"kms:Decrypt\"],\n      \"Resource\": \"arn:aws:kms:us-east-1:<ACCOUNT_ID>:key/<KEY_ID>\",\n      \"Condition\": {\n        \"Null\": { \"kms:EncryptionContextKeys\": \"false\" },\n        \"ForAllValues:StringEquals\": { \"kms:EncryptionContextKeys\": [\"staffer\", \"provider\"] }\n      }\n    }\n  ]\n}",
+      "stderrTail": ""
+    },
+    {
+      "id": "C9",
+      "check": "The connected-accounts frontend files never handle provider tokens, secrets or ciphertext",
+      "command": "test -f Frontend/src/lib/connections.ts && test -f Frontend/src/components/ConnectPrompt.tsx && ! grep -nE 'access_token|refresh_token|client_secret|ciphertext' Frontend/src/lib/connections.ts Frontend/src/pages/Account.tsx Frontend/src/components/ConnectPrompt.tsx Frontend/src/pages/ConnectCallback.tsx",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 19,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": ""
+    }
+  ]
+}

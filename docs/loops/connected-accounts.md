@@ -2,7 +2,7 @@
 
 Status: BUILDING
 Profile: feature (trial depth: full, because this handles OAuth and provider tokens)
-Round: 2 / 4
+Round: 3 / 4
 Base commit: 23fa467
 Branch: Connected-Accounts-Huy (worktree `.claude/worktrees/connections`)
 
@@ -185,6 +185,15 @@ has none; cached per `sub`; any failure means `email: null`.
 - Gap list for next round: G1–G9 from review + M4 (tests in round 2, task 6); G10 requirement 3 end-to-end — needs lead ruling on the chat message field and the ChatPanel/ReviewQueue mount (asked 2026-11-08).
 - Decision: next round because 7 checks were fixed this round and gaps remain.
 
+
+### Round 2 — 2026-11-08
+- Built: tasks 6–7 plus the chat/review mount, commits 9f7ab83 8987162 088649c 8d88b5f 2a9b3bd 22861b4
+- Outcome checks: 9/9 pass; fixed [], regressed [] (scoreboard: round-2.json)
+- Review: round-1 G1–G10 confirmed fixed; CHANGES REQUESTED for R1 (X refresh race, delete-before-save order) and R2 (missing_permission shown as "link expired") plus Lows R3–R8.
+- Trial (full): falsifier INCONCLUSIVE — requirements 1, 2 CONFIRMED (mock UI at 375px), 6/6 mutation probes killed, nothing FALSIFIED; requirement 3 this branch's half CONFIRMED, end to end UNVERIFIED (producer is Lane H). Advocate PARTIAL (probes blocked by guard). Judge not run yet: waiting for the merged end-to-end evidence.
+- Merge probe (Lane H b240500 + 22861b4, throwaway detached worktree): 46 tests that pass on Lane H alone fail because the gate ran before the hold. Lead ruled option 1 (gate only at send; email Gmail → office SES → needs_connection). Lane H renamed its test file (0bd611c) and implements option 1.
+- Gap list for round 3: R1–R8 (task 8 tests, task 9 fixes); G11 re-run the merge probe after Lane H's option-1 commit, full suite + an end-to-end needs_connection test through the real modules, then the judge.
+- Decision: next round — gaps remain and round 2 fixed G1–G10.
 
 ## Decisions
 
