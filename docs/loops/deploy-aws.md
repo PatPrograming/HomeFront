@@ -1,6 +1,6 @@
 # Loop: deploy-aws
 
-Status: BUILDING
+Status: STUCK (blocked on Lane E: agent role + AssumeRole in the supervisor)
 Profile: feature (infrastructure; lead-written plan, no app logic to test first)
 Round: 1 / 4
 Base commit: 3d7d0e1
@@ -60,6 +60,13 @@ The repo holds CloudFormation templates and dry-run-by-default scripts that, whe
 | 5 | Runbook | lead | `deploy/aws/README.md` | trial | 1-4 | pending |
 
 ## Rounds
+
+### Round 1-3 — 2026-11-08
+- Built: tasks 1-5, then the lead's split-identity requirement and Haiku-titles ruling. Commits b4d4a4f, f649ea6, 153e5c5 (revert of 6243691), 2966b0f, 4fb5388, then the trial fixes.
+- Outcome checks: 5/5 pass (round 3 scoreboard). C3 first failed on a pass-rule typo (backticks), not on the code.
+- Trial (lite): falsifier FALSIFIED on one item, the lead's identity split. Nothing creates `homefront-agent` or calls AssumeRole yet; both are Lane E's assigned work. Everything else was CONFIRMED or is UNVERIFIED pending a real deploy. Fixed from its risks: external /mcp Host check (forward the viewer Host), SES per-agent senders (dropped the FromAddress condition), teardown's silent secret-delete failure.
+- Judge skipped: the one FALSIFIED item is a cross-lane dependency this lane may not build; the falsifier's evidence was re-checked by hand (`ls Backend/infra` has no agent-role.sh).
+- Decision: STUCK, not DONE. Done when Lane E merges `HOMEFRONT_AGENT_ROLE_ARN` handling and `Backend/infra/agent-role.sh`; re-run the trial then.
 
 ## Decisions
 
