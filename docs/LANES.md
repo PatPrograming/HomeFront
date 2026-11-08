@@ -124,3 +124,8 @@ endpoint exists, `agent/stub_server.py` (FastMCP, same 7 tools, `http://127.0.0.
 7. Don't add features beyond your WPs in brief §9. Scope cuts first.
 8. When a converge loop ends, report: what passes (with the check output), what is not checked by command and
    needs Huy (real AWS runs, live demo), and the exact files changed.
+9. **Log every important decision** (library/tool/AWS choice, interface change, out-of-row edit, scope cut,
+   security trade-off, skill/agent/check chosen and why) by appending one entry to
+   `/Users/tranquanghuy/Projects/aws-a10-hack-2026/docs/DECISION_LOG.md` (format in its header), right away and
+   at least once per converge round. Append only. Cross-lane judgement calls: Status "needs lead" and message the
+   lead session `local_9db058b7-0856-43ff-b18c-b27bacef8c1d`.
