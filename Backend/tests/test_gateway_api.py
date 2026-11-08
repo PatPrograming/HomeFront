@@ -180,7 +180,12 @@ def test_session_office_comes_from_the_staffer_item_not_the_token(client):
 def test_session_role_and_allowed_tools_come_from_the_staffer_item(client, store):
     body = new_session(client)
     assert body["role"] == "caseworker" and body["roleLabel"] == "Caseworker"
-    assert body["allowedTools"] == ["inbox_read", "case_read", "datagov_search", "web_scrape", "email_send"]
+    from mandate_contracts.roles import ROLE_TOOLS
+
+    expected = {n for n, spec in TOOLS.items() if not spec.always_denied and n in ROLE_TOOLS["caseworker"]}
+    assert set(body["allowedTools"]) == expected and len(body["allowedTools"]) == len(expected)
+    assert {"inbox_read", "case_read", "datagov_search", "web_scrape", "email_send"} <= expected
+    assert "social_post" not in expected and "email_send_list" not in expected  # not a caseworker tool
     chief = new_session(client, CHIEF)
     assert chief["role"] == "chief_of_staff" and "social_post" in chief["allowedTools"]
     assert "records_bulk_export" not in chief["allowedTools"]

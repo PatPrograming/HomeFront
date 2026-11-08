@@ -27,6 +27,8 @@ SETTINGS = {
 
 def _agent(recipients=(TO,)):
     body = {"agent_id": f"agent-es-{uuid.uuid4().hex[:8]}", "name": "Comms", "agency": "City", "kind": "email"}
+    # omitted grants = email.send only; the list tool must be granted explicitly
+    body["tool_grants"] = ["email.send", "email.send_list"]
     r = client.post("/api/v1/agents", json={**body, "recipients": list(recipients)})
     assert r.status_code == 201, r.text
     return r.json()

@@ -88,6 +88,7 @@ def _agent(recipients=LIST, sender=SENDER):
             "agency": "City",
             "kind": "email",
             "recipients": recipients,
+            "tool_grants": ["email.send", "email.send_list"],  # omitted grants = email.send only
         },
     )
     assert r.status_code == 201, r.text

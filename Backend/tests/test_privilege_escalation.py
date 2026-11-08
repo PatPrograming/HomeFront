@@ -391,7 +391,7 @@ def test_the_server_agrees_with_the_picker_for_every_tool_when_called_directly(t
 
 def _social_agent(owner="admin-comms"):
     """A social agent owned by an admin-group communications director (an admin can mint workload tokens)."""
-    aid = create_ok(owner, kind="social", name="Social")["agent_id"]
+    aid = create_ok(owner, kind="social", name="Social", tool_grants=["social.post", "social.reply"])["agent_id"]
     return aid, mint(owner, aid)
 
 
@@ -524,16 +524,17 @@ def test_an_ownerless_agent_with_no_run_and_no_acting_staffer_is_denied(producti
 # ---- workload tokens ----------------------------------------------------------------------------------------------
 
 
-def test_a_workload_token_is_401_token_revoked_after_a_grant_revoke():
-    """Without the token_version bump on revoke, a token issued before the revoke would keep the revoked power."""
+def test_a_reused_workload_token_is_refused_the_revoked_tool_after_a_grant_revoke():
+    """Revoking one tool deliberately keeps token_version (the mid-task token still authenticates), so the guard
+    is the per-call grant check. Without it, a token issued before the revoke would keep the revoked power."""
     aid = create_ok("chiefofstaff", kind="custom", tool_grants=["web.scrape", "datagov.search"])["agent_id"]
     token = mint("chiefofstaff", aid)
     assert call("chiefofstaff", token, "web.scrape", SCRAPE).status_code == 200  # control
     r = client.post(f"{API}/agents/{aid}/grants/web.scrape/revoke", headers=login("chiefofstaff"))
     assert r.status_code == 200, r.text
-    r = call("chiefofstaff", token, "web.scrape", SCRAPE)
-    assert r.status_code == 401, r.text
-    assert r.json()["detail"]["error"] == "token_revoked"
+    r = call("chiefofstaff", token, "web.scrape", SCRAPE)  # the same, pre-revoke token
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"]["error"] == "tool_not_granted"
     assert call("chiefofstaff", mint("chiefofstaff", aid), "web.scrape", SCRAPE).status_code == 403  # fresh token: not granted
 
 

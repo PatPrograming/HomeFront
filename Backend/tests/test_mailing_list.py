@@ -20,6 +20,9 @@ LIST = ["ana@example.gov", "ben@example.gov"]
 
 def _agent(recipients=None, kind="email"):
     body = {"agent_id": f"agent-ml-{uuid.uuid4().hex[:8]}", "name": "Comms", "agency": "City", "kind": kind}
+    if kind == "email":
+        # Omitted grants are the recommended set (email.send only); the list tool must be granted explicitly.
+        body["tool_grants"] = ["email.send", "email.send_list"]
     if recipients is not None:
         body["recipients"] = recipients
     r = client.post("/api/v1/agents", json=body)

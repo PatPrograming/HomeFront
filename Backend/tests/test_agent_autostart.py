@@ -91,7 +91,8 @@ def test_a_second_message_does_not_start_another(client, session, launcher):
 
 def test_the_browser_gets_the_same_chat_message_as_before(client, session, launcher):
     body = send(client).json()
-    assert set(body) == {"id", "ts", "role", "text"} and body["text"] == "Check my email"
+    assert set(body) == {"id", "ts", "role", "text", "connect"} and body["text"] == "Check my email"
+    assert body["connect"] is None  # the optional connect field is only set for connect prompts
 
 
 # --- stopping ---------------------------------------------------------------------
