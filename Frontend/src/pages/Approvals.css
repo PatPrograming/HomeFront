@@ -188,3 +188,23 @@
   color: #5c4100;
   word-break: break-word;
 }
+
+.share-panel {
+  flex-basis: 100%;
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 14px 16px;
+  background: var(--surface-2, var(--surface));
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.share-note {
+  margin: 0;
+}
+
+.share-fine {
+  margin: 0;
+  font-size: 13px;
+}

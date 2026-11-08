@@ -3,7 +3,15 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../lib/api";
 import { agentsApi as api } from "../lib/agentsApi";
-import { describeError, TERMINAL_RUN_STATUSES, type Agent, type Run, type RunStep } from "../lib/agents";
+import {
+  describeError,
+  sendsEmail,
+  TERMINAL_RUN_STATUSES,
+  type Agent,
+  type Run,
+  type RunStep,
+} from "../lib/agents";
+import ResearchOutput from "../components/ResearchOutput/ResearchOutput";
 import "./RunTask.css";
 
 const POLL_MS = 1500;
@@ -29,6 +37,15 @@ const preview = (value: unknown, max = 160) => {
 
 const when = (ts: number | null | undefined) => (ts ? new Date(ts * 1000).toLocaleTimeString() : "");
 
+function trailSummary(steps: RunStep[]): string {
+  const calls = steps.filter((s) => s.type === "tool_call");
+  const count = (d: string) => calls.filter((s) => s.decision === d).length;
+  const parts = [`${calls.length} tool call${calls.length === 1 ? "" : "s"}`];
+  if (count("deny")) parts.push(`${count("deny")} blocked`);
+  if (count("pending_approval")) parts.push(`${count("pending_approval")} waiting for approval`);
+  return `Research trail · ${parts.join(" · ")}`;
+}
+
 function startError(e: unknown): string {
   if (e instanceof ApiError && (e as ApiError & { status?: number }).status === 503) {
     return (
@@ -51,6 +68,25 @@ function Step({ step, index }: { step: RunStep; index: number }) {
       </li>
     );
   }
+  if (step.type === "pipeline") {
+    return (
+      <li className="run-step run-step-pipeline">
+        <span className="step-num">{index + 1}</span>
+        <div className="step-body">
+          <div className="step-head">
+            <span className="pipeline-chip">{step.stage || "pipeline"}</span>
+            <span className="muted">{step.message || "Pipeline stage"}</span>
+          </div>
+          {step.result_preview && (
+            <p className="step-detail">
+              <span className="muted">Notes </span>
+              <code>{preview(step.result_preview, 220)}</code>
+            </p>
+          )}
+        </div>
+      </li>
+    );
+  }
   if (step.type !== "tool_call") {
     return (
       <li className="run-step">
@@ -60,12 +96,14 @@ function Step({ step, index }: { step: RunStep; index: number }) {
     );
   }
   const decision = step.decision || "unknown";
+  const stage = step.pipeline_stage;
   return (
     <li className="run-step">
       <span className="step-num">{index + 1}</span>
       <div className="step-body">
         <div className="step-head">
           <code>{step.tool || "?"}</code>
+          {stage && <span className="pipeline-chip">{stage}</span>}
           <span className={`decision-chip decision-${decision}`}>
             {decision === "pending_approval" ? "waiting for approval" : decision}
           </span>
@@ -100,6 +138,8 @@ function Step({ step, index }: { step: RunStep; index: number }) {
 export default function RunTask({ agent, collapsible = false }: { agent: Agent; collapsible?: boolean }) {
   const [open, setOpen] = useState(!collapsible);
   const [task, setTask] = useState("");
+  const canResearchFirst = agent.kind === "email" || sendsEmail(agent);
+  const [researchFirst, setResearchFirst] = useState(canResearchFirst);
   const [current, setCurrent] = useState<Run | null>(null);
   const [history, setHistory] = useState<Run[]>([]);
   const [starting, setStarting] = useState(false);
@@ -147,7 +187,9 @@ export default function RunTask({ agent, collapsible = false }: { agent: Agent; 
     setStarting(true);
     setError(null);
     try {
-      const run: Run = await api.startRun(agent.agent_id, task.trim());
+      const run: Run = await api.startRun(agent.agent_id, task.trim(), {
+        research_first: canResearchFirst && researchFirst,
+      });
       setCurrent(run);
       loadHistory();
     } catch (e) {
@@ -187,9 +229,23 @@ export default function RunTask({ agent, collapsible = false }: { agent: Agent; 
         maxLength={8000}
         value={task}
         onChange={(e) => setTask(e.target.value)}
-        placeholder="e.g. Email everyone on the mailing list a reminder about Tuesday's 6pm town hall."
+        placeholder="e.g. Email everyone the population of Santa Clara City in 2023."
         aria-label={`Task for ${agent.name}`}
       />
+      {canResearchFirst && (
+        <label className="run-research-first">
+          <input
+            type="checkbox"
+            checked={researchFirst}
+            disabled={busy}
+            onChange={(e) => setResearchFirst(e.target.checked)}
+          />
+          <span>
+            Research first — hand off to the research agent for datasets/figures, then this agent
+            emails from those findings only
+          </span>
+        </label>
+      )}
       <div className="form-actions">
         <button
           className="btn btn-primary"
@@ -200,7 +256,10 @@ export default function RunTask({ agent, collapsible = false }: { agent: Agent; 
           {starting ? "Starting…" : activeId ? "Running…" : "Run"}
         </button>
         <span className="muted mailing-list-hint">
-          Each run calls Claude on Amazon Bedrock (billed to your AWS account). Emails still wait for approval.
+          Each run calls Claude on Amazon Bedrock (billed to your AWS account).
+          {researchFirst && canResearchFirst
+            ? " Research runs before email; emails still wait for approval."
+            : " Emails still wait for approval."}
         </span>
       </div>
       {!agent.active && <p className="muted mailing-list-hint">This agent is inactive, so it can't run.</p>}
@@ -225,20 +284,41 @@ export default function RunTask({ agent, collapsible = false }: { agent: Agent; 
             {current.task}
           </p>
           {steps.length > 0 ? (
-            <ol className="run-steps">
-              {steps.map((s, i) => (
-                <Step key={i} step={s} index={i} />
-              ))}
-            </ol>
+            isActive(current) ? (
+              <ol className="run-steps">
+                {steps.map((s, i) => (
+                  <Step key={i} step={s} index={i} />
+                ))}
+              </ol>
+            ) : (
+              // Once a run ends, the results lead and the tool-call trail folds away
+              // (kept open when something was blocked or is waiting, since that's the story).
+              <details
+                key={current.run_id}
+                className="run-trail"
+                open={steps.some((s) => s.decision === "deny" || s.decision === "pending_approval")}
+              >
+                <summary>
+                  {trailSummary(steps)}
+                </summary>
+                <ol className="run-steps">
+                  {steps.map((s, i) => (
+                    <Step key={i} step={s} index={i} />
+                  ))}
+                </ol>
+              </details>
+            )
           ) : (
             isActive(current) && <p className="muted mailing-list-hint">Thinking…</p>
           )}
-          {current.output && (
-            <div className="run-output">
-              <span className="field-label">Agent's summary</span>
-              <p>{current.output}</p>
-            </div>
+          {current.pipeline === "research_then_email" && (
+            <p className="muted mailing-list-hint">
+              Pipeline: research → email
+              {current.research_agent_id ? ` (${current.research_agent_id})` : ""}
+              {current.research_run_id ? ` · research run ${current.research_run_id}` : ""}
+            </p>
           )}
+          <ResearchOutput agent={agent} run={current} />
           {current.error && <p className="alert alert-error">{current.error}</p>}
         </div>
       )}

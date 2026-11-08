@@ -13,6 +13,7 @@ import type {
   EmailSettings,
   EmailVerification,
   RecipientVerification,
+  Report,
   Run,
   StorageStatus,
   TestEmailResult,
@@ -117,9 +118,26 @@ export const agentsApi = {
   emailPermissions: () => request<EmailPermissions>("/email/permissions"),
 
   // Agent runs (Claude on Bedrock). Poll run() until a terminal status.
-  startRun: (agentId: string, task: string) => request<Run>(`${agentPath(agentId)}/runs`, { method: "POST", body: { task } }),
+  // opts.research_first: research agent runs first, then this agent uses the findings.
+  startRun: (
+    agentId: string,
+    task: string,
+    opts: { research_first?: boolean; research_agent_id?: string } = {},
+  ) =>
+    request<Run>(`${agentPath(agentId)}/runs`, {
+      method: "POST",
+      body: {
+        task,
+        ...(opts.research_first ? { research_first: true } : {}),
+        ...(opts.research_agent_id ? { research_agent_id: opts.research_agent_id } : {}),
+      },
+    }),
   runs: (agentId: string) => request<Run[]>(`${agentPath(agentId)}/runs`),
   run: (agentId: string, runId: string) => request<Run>(`${agentPath(agentId)}/runs/${encodeURIComponent(runId)}`),
+
+  // Reports the agent saved with report.save, newest first.
+  reports: (agentId: string, limit = 50) =>
+    request<Report[]>(`${agentPath(agentId)}/reports?limit=${limit}`),
 
   replaceGrants: (agentId: string, tools: string[]) =>
     request<GrantChange>(`${agentPath(agentId)}/grants`, { method: "PUT", body: { tools } }),

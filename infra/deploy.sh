@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy (or update) the HomeFront Cognito + DynamoDB stack, then print the
+# Deploy (or update) the HomeFront DynamoDB stack, then print the
 # values to paste into the repo-root `.env`.
 #
 #   AWS_REGION=us-east-1 ./infra/deploy.sh            # stack "homefront"
@@ -26,18 +26,20 @@ out() {
     --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
 }
 
-POOL="$(out UserPoolId)"
-CLIENT="$(out UserPoolClientId)"
 POLICY="$(out BackendDataPolicyArn)"
 
+# The stack's own Cognito pool is retired (users migrated 2026-11-08, see infra/README.md):
+# sign-in always uses the mandate pool below, built by Backend/infra/cognito.sh.
 cat <<EOF
 
 Stack $STACK is ready.
 
 # Paste into repo-root .env (Backend + Frontend share this file)
 AWS_REGION=$REGION
-COGNITO_USER_POOL_ID=$POOL
-COGNITO_APP_CLIENT_ID=$CLIENT
+COGNITO_USER_POOL_ID=us-east-1_MLfQpodxG
+COGNITO_STAFF_CLIENT_ID=5be15oitnpm14bg188jpqqs9qv
+COGNITO_AGENT_CLIENT_ID=7aslk40jv9ikchoouqd00avdnp
+COGNITO_DOMAIN=https://mandate-a10-hack-2026.auth.us-east-1.amazoncognito.com
 DYNAMODB_TABLE_PREFIX=$PREFIX
 AGENT_STORE=dynamodb
 

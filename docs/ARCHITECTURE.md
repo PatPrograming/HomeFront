@@ -55,6 +55,9 @@ flowchart LR
 - Holds **only** the user pool id and app client id. Both are public; the client has no secret.
 
 ### 4.2 Amazon Cognito
+
+> **Current pool (2026-11-08):** the app signs everyone in through pool `us-east-1_MLfQpodxG` (managed login, authorization code + PKCE on the `staff-web` client), built by `Backend/infra/cognito.sh`. The SRP pool `homefront-users` (`us-east-1_x2DFWiwCM`) from `infra/cloudformation/homefront.yaml` is retired; its 5 users were migrated to the `staffer` group on 2026-11-08. The rest of §4.2 and §5 describe that retired design.
+
 - Source of truth for identities. The user's id everywhere is the token's `sub`.
 - Sign-in with email + password (SRP, so the password never leaves the browser). Email confirmation required, by code.
 - Password policy: 8+ characters with a lowercase letter and a number.
@@ -67,9 +70,9 @@ flowchart LR
 - Every DynamoDB read and write is keyed by that verified `sub` (profiles) or checked against the agent's `owner_id` (agents). This replaces Supabase RLS.
 
 ### 4.4 Database (DynamoDB)
-- Five tables, named `<DYNAMODB_TABLE_PREFIX><name>`: `profiles`, `usernames`, `agents`, `audit`, `approvals` (§6).
+- Six tables, named `<DYNAMODB_TABLE_PREFIX><name>`: `profiles`, `usernames`, `agents`, `audit`, `approvals`, `reports` (§6).
 - Key schemas are defined once in `Backend/app/core/dynamodb.py` and mirrored in the CloudFormation template; `Backend/tests/test_infra.py` fails if they drift.
-- Browsers never talk to DynamoDB. The `BackendDataPolicy` IAM policy (stack output) grants the backend access to these three tables only.
+- Browsers never talk to DynamoDB. The `BackendDataPolicy` IAM policy (stack output) grants the backend access to these tables only.
 - Local development: DynamoDB Local via `scripts/run-dynamodb-local.sh`.
 
 ## 5. Authentication Flow
@@ -122,23 +125,29 @@ User-defined agents. Read and written by the gateway (`AGENT_STORE=dynamodb`). R
 |---------------|---------|-------------------------------------------------------------|
 | id            | S       | `^[a-z0-9][a-z0-9-]{2,63}$` (used in URLs)                  |
 | owner_id      | S/NULL  | Cognito `sub`. null = shared demo agent                     |
-| kind          | S       | `email` / `social` / `research` / `custom`. Fixed at creation; missing = `custom` |
+| kind          | S       | `email` / `social` / `research` / `market_research` / `custom`. Fixed at creation; missing = `custom` |
 | name / agency | S       | 1–80 / 1–120 chars                                          |
 | instructions  | S       | ≤ 8000 chars. The agent's purpose and system prompt         |
 | model         | S/NULL  | null = runner default                                       |
 | max_steps     | N       | 1–50, default 10. Caps turns per run (AML.T0034)            |
 | tool_grants   | L       | Tool names, checked against `TOOL_REGISTRY` by the API      |
+| scrape_domains | L      | `web.scrape` allowlist: `sam.gov` (exact) or `*.gov` (domain + subdomains), ≤ 50. Empty/missing = any public host. Default `["*.gov"]` for `market_research`. Widening bumps `token_version`; narrowing applies to the next call |
 | token_version | N       | Bumped on grant changes to invalidate workload tokens       |
 | active        | BOOL    | Inactive agents can't get tokens or run                     |
 | created_at / updated_at | S | ISO 8601 UTC                                      |
 
-**Agent types** (`packages/identity-gateway/src/identity_gateway/agent_types.py`, public catalog at `GET /agent-types`): each kind supplies default instructions, tools and `max_steps` for fields left out of `POST /agents`, plus a tool ceiling. Email: `email.send`, `datagov.search`. Social: `social.post`, `social.reply`. Research: `web.scrape`, `datagov.search`, never an outbound tool, because it reads untrusted content. `custom` has no ceiling. Granting a tool outside the ceiling returns `403 tool_not_allowed_for_kind` and is audited as `grant_denied`. `/mcp/call` checks the ceiling again, so a grant written straight to the table is still blocked.
+**Agent types** (`packages/identity-gateway/src/identity_gateway/agent_types.py`, public catalog at `GET /agent-types`): each kind supplies default instructions, tools and `max_steps` for fields left out of `POST /agents`, plus a tool ceiling. Email: `email.send`, `datagov.search`. Social: `social.post`, `social.reply`. Research: `web.scrape`, `datagov.search`, never an outbound tool, because it reads untrusted content. Procurement market research (`market_research`, FAR Part 10): `web.scrape`, `datagov.search`, `usaspending.search`, `sam.entity_lookup`, `report.save`, also never outbound; its `scrape_domains` default to `["*.gov"]`. `custom` has no ceiling. Granting a tool outside the ceiling returns `403 tool_not_allowed_for_kind` and is audited as `grant_denied`. `/mcp/call` checks the ceiling again, so a grant written straight to the table is still blocked.
 
 The field limits are enforced by the API's request models (DynamoDB has no check constraints). The demo agent `agent-comms-01` is seeded at startup if missing.
 
 **API access** (`/agents*`, `/auth/token`, `/audit`): a signed-in user gets their own agents plus ownerless demo agents, and new agents are owned by the creator. Anonymous callers (only when `AGENT_ADMIN_REQUIRES_LOGIN=false`) get ownerless agents only. Other users' agents return `404`. An invalid user token is always `401`.
 
-Workload tokens and agent run records are still in memory.
+**Gateway checks on every tool call** (`call_tool` in `identity_gateway/app.py`, in order): secret probe → type ceiling → grant → taint → scrape domain → mailing list → human approval → run.
+- **Taint tracking** (information-flow control): tools carry `untrusted_input` (returns external content: `web.scrape`, `usaspending.search`, `sam.entity_lookup`; `social.reply` is flagged too but only runs after approval, so it never taints) and `outbound` (`email.send`, `email.send_list`, `social.post`, `social.reply`) flags. After an `untrusted_input` tool *executes* in a trace (run id, or token session for manual `/mcp/call`), every outbound call in that trace is denied `403 tainted_session`, audited with AML.T0051.001 / AML.T0086 and AML.M0030. This applies to every type, including `custom`. A new run or token session starts clean. Approvals are not re-checked against taint: a request can only be created while its trace is clean, so its arguments predate the untrusted content, and a person reviews them.
+- **Scrape domains** (argument-level authorization): if `scrape_domains` is set, `web.scrape` to any other host is denied `403 domain_not_allowed` (audited); the handler also checks live redirects against it.
+- **SSRF guard** (`mcp_tools/handlers.py`): `web.scrape` refuses non-http(s) schemes, credentials in URLs, localhost names and any private, loopback, link-local (incl. 169.254.169.254), multicast, reserved or unspecified address, resolving DNS on live fetches and re-checking each redirect. The result is `status: denied` with an ATLAS note (AML.M0033).
+
+Workload tokens, taint state and agent run records are still in memory.
 
 ### `audit` (pk `agent_id`, sk `<ts>#<id>`)
 The activity log: one item per gateway decision or agent change (`identity_gateway/audit.py`). Each event has a `trace_id` (the run id, or the workload-token session id for manual MCP calls), an `actor` (`user:<sub>`, `agent:<id>` or `anonymous`), a `decision` and compact ATLAS ids. Queried newest-first per agent through `GET /audit?agent_id=&trace_id=&decision=&type=`. Items expire after 90 days (`expires_at` TTL). A failed write is kept in memory and counted in `GET /status`.
@@ -146,7 +155,12 @@ The activity log: one item per gateway decision or agent change (`identity_gatew
 ### `approvals` (pk `id`)
 Human approval for tools with `requires_hitl` (`email.send`, `social.post`, `social.reply`; `identity_gateway/approvals.py`, ATLAS AML.M0029). The gateway does not run these tools on a call: it stores a `pending` approval and returns `pending_approval` to the agent. A signed-in user approves (optionally editing the arguments, which must still match the tool schema) or rejects through `/approvals/{id}/approve|reject`. Approval re-checks the grant, the agent type and `active`, so a revoke after the request blocks it. Status leaves `pending` exactly once (conditional write), so a request can't be sent twice; requests expire after 24 hours. `/approvals` is a user-only route: an agent's workload token can't approve its own request.
 
-`GET /status` reports which store (DynamoDB or memory) agents, the activity log and approvals are using, plus any startup fallback warnings.
+### `reports` (pk `agent_id`, sk `<ts>#<id>`)
+Markdown reports agents save with `report.save` (`identity_gateway/reports.py`): `report_id`, `title` (≤ 200), `body` (≤ 50 000), `trace_id`, `run_id`, `created_at`. The agent id comes from the caller's workload token, never from arguments. Listed newest-first through `GET /agents/{id}/reports`, owner-scoped like other `/agents` routes.
+
+**Social posts are share links, not API posts.** HomeFront holds no social logins. After a person approves a `social.post` or `social.reply`, the handler (`packages/mcp-tools/src/mcp_tools/share_links.py`) builds a prefilled compose URL for X, Bluesky, Reddit, Facebook or LinkedIn. The person opens it in their own signed-in browser and presses Post. The result is `status: "handed_off"`, `published: false`, and the activity log says so: HomeFront can't tell whether the post went out. X, Bluesky and Reddit carry the text; Facebook and LinkedIn carry only a link; images can't be attached to any. Instagram has no compose link and is rejected (`platform_not_supported`). The gateway builds every URL from a fixed host, and a reply target is used only if it is already on that platform's domain. For unattended posting you would need per-platform OAuth instead.
+
+`GET /status` reports which store (DynamoDB or memory) agents, the activity log, approvals and reports are using, plus any startup fallback warnings.
 
 ### Domain tables
 TODO: list HomeFront's own tables. Add each to `TABLES` in `Backend/app/core/dynamodb.py` **and** the CloudFormation template (plus the IAM policy). Every item that belongs to a user should carry the owner's `sub`, and every access should check it.
@@ -206,14 +220,18 @@ HomeFront/
 
 | Variable                    | Used by           | Secret? |
 |-----------------------------|-------------------|---------|
-| `COGNITO_USER_POOL_ID`, `VITE_COGNITO_USER_POOL_ID` | backend, frontend | no |
-| `COGNITO_APP_CLIENT_ID`, `VITE_COGNITO_CLIENT_ID`   | backend, frontend | no (public client) |
+| `COGNITO_USER_POOL_ID` (`us-east-1_MLfQpodxG`) | backend | no |
+| `COGNITO_STAFF_CLIENT_ID`, `VITE_COGNITO_CLIENT_ID` (`5be15oitnpm14bg188jpqqs9qv`, `staff-web`) | backend, frontend | no (public client) |
+| `COGNITO_AGENT_CLIENT_ID` (`7aslk40jv9ikchoouqd00avdnp`, `mandate-agent`) | backend, agent | no (its secret is) |
+| `COGNITO_DOMAIN`, `VITE_COGNITO_DOMAIN` (`https://mandate-a10-hack-2026.auth.us-east-1.amazoncognito.com`) | backend, agent, frontend | no |
 | `AWS_REGION`                | backend           | no      |
 | AWS credentials (`AWS_PROFILE`, keys, or a role) | backend | **yes** |
 | `DYNAMODB_TABLE_PREFIX`     | backend           | no      |
 | `DYNAMODB_ENDPOINT_URL`     | backend (DynamoDB Local only) | no |
 | `AGENT_STORE`               | backend (`memory` / `dynamodb`) | no |
 | `ALLOWED_ORIGINS`           | backend (CORS)    | no      |
+| `DATA_GOV_API_KEY`          | backend (datagov.search, sam.entity_lookup) | **yes** |
+| `HOMEFRONT_LIVE_DATAGOV` / `HOMEFRONT_LIVE_SCRAPE` / `HOMEFRONT_LIVE_USASPENDING` / `HOMEFRONT_LIVE_SAM` | backend (`1` = live external calls; otherwise simulated) | no |
 
 ## 11. Security Checklist
 - [ ] `.env` is in `.gitignore`
