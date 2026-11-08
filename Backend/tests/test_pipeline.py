@@ -9,14 +9,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.helpers import ADMIN
 from tests.test_runner import FakeModel, response, text, tool_use, use_model  # noqa: F401
 
-from identity_gateway import app as gateway
+from identity_gateway import agents_api as gateway
 from identity_gateway.pipeline import EMAIL_TASK, RESEARCH_TASK, execute_research_then_email
 from identity_gateway.runner import AgentRunner, RunnerConfig, new_run
 from identity_gateway.store import AgentRecord
 
-client = TestClient(app)
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login", "old_tables")
 
 
 def _id() -> str:

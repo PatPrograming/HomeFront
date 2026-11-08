@@ -11,6 +11,7 @@ from typing import Any, Callable, Iterable, Protocol
 
 from .approvals import ApprovalRepository, MemoryApprovalRepository
 from .audit import AuditRepository, MemoryAuditRepository, compact_atlas
+from .reports import MemoryReportRepository, ReportRepository
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,39 @@ def normalize_recipients(addresses: Iterable[str]) -> list[str]:
     if len(cleaned) > MAX_RECIPIENTS:
         raise InvalidRecipientsError([], f"A mailing list holds at most {MAX_RECIPIENTS} addresses.")
     return sorted(cleaned)
+
+
+# Per-agent web.scrape domain allowlist (empty = any public host).
+MAX_SCRAPE_DOMAINS = 50
+_DOMAIN_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_DOMAIN_PATTERN_RE = re.compile(rf"^(?:\*\.)?{_DOMAIN_LABEL}(?:\.{_DOMAIN_LABEL})*$")
+
+
+class InvalidScrapeDomainsError(ValueError):
+    def __init__(self, invalid: list[str], message: str | None = None) -> None:
+        self.invalid = invalid
+        super().__init__(message or f"Invalid domain patterns: {', '.join(invalid)}")
+
+
+def normalize_scrape_domains(patterns: Iterable[str] | None) -> list[str]:
+    """Lower-cased, de-duplicated, sorted patterns: `example.gov` (exact) or
+    `*.gov` (that domain and its subdomains). Raises InvalidScrapeDomainsError."""
+    cleaned = {p.strip().lower().rstrip(".") for p in (patterns or ()) if p and p.strip()}
+    invalid = sorted(
+        p for p in cleaned if len(p) > 253 or not _DOMAIN_PATTERN_RE.match(p) or p.replace(".", "").isdigit()
+    )
+    if invalid:
+        raise InvalidScrapeDomainsError(invalid)
+    if len(cleaned) > MAX_SCRAPE_DOMAINS:
+        raise InvalidScrapeDomainsError([], f"At most {MAX_SCRAPE_DOMAINS} domain patterns are allowed.")
+    return sorted(cleaned)
+
+
+def widens_scrape_policy(before: list[str], after: list[str]) -> bool:
+    """True if `after` may allow a host `before` didn't (like adding a grant)."""
+    if not before:
+        return False  # was unrestricted; nothing can widen it
+    return not after or bool(set(after) - set(before))
 
 
 MAX_FROM_NAME = 80
@@ -123,6 +157,8 @@ class AgentRecord:
     # Mailing list (normalized, see normalize_recipients).
     recipients: list[str] = field(default_factory=list)
     email_settings: EmailSettings = field(default_factory=EmailSettings)
+    # web.scrape domain allowlist (normalized patterns). Empty = any public host.
+    scrape_domains: list[str] = field(default_factory=list)
     token_version: int = 1
     active: bool = True
     created_at: float = field(default_factory=time.time)
@@ -166,6 +202,7 @@ def _copy(agent: AgentRecord) -> AgentRecord:
         tool_grants=set(agent.tool_grants),
         recipients=list(agent.recipients),
         email_settings=replace(agent.email_settings),
+        scrape_domains=list(agent.scrape_domains),
     )
 
 
@@ -252,6 +289,8 @@ class GatewayStore:
         self._audit: AuditRepository = audit or MemoryAuditRepository()
         # Pending/decided human approvals for requires_hitl tools.
         self.approvals: ApprovalRepository = MemoryApprovalRepository()
+        # Reports saved by agents with report.save.
+        self.reports: ReportRepository = MemoryReportRepository()
         # Events the durable audit store rejected; still listed so nothing vanishes.
         self._unsaved_audit = MemoryAuditRepository()
         self.audit_write_errors = 0
@@ -259,6 +298,8 @@ class GatewayStore:
         # Set by the host app when a configured store couldn't be used.
         self.storage_warnings: list[str] = []
         self.tokens: dict[str, TokenRecord] = {}
+        # trace id (run id or token session) -> first untrusted read in it.
+        self._tainted: dict[str, dict[str, Any]] = {}
 
     def use_agent_repository(self, repo: AgentRepository) -> None:
         with self._lock:
@@ -271,6 +312,14 @@ class GatewayStore:
     def use_approval_repository(self, repo: ApprovalRepository) -> None:
         with self._lock:
             self.approvals = repo
+
+    def use_report_repository(self, repo: ReportRepository) -> None:
+        with self._lock:
+            self.reports = repo
+
+    @property
+    def report_backend(self) -> str:
+        return getattr(self.reports, "backend", type(self.reports).__name__)
 
     @property
     def approval_backend(self) -> str:
@@ -308,6 +357,7 @@ class GatewayStore:
         owner_id: str | None = None,
         kind: str = "custom",
         recipients: Iterable[str] = (),
+        scrape_domains: Iterable[str] = (),
     ) -> AgentRecord:
         rec = AgentRecord(
             agent_id=agent_id or f"agent-{uuid.uuid4().hex[:8]}",
@@ -320,6 +370,7 @@ class GatewayStore:
             owner_id=owner_id,
             kind=kind,
             recipients=normalize_recipients(recipients),
+            scrape_domains=normalize_scrape_domains(scrape_domains),
         )
         with self._lock:
             return self._agents.insert(rec)
@@ -340,6 +391,18 @@ class GatewayStore:
 
         def apply(agent: AgentRecord) -> None:
             agent.recipients = recipients
+
+        return self._mutate(agent_id, apply)
+
+    def set_scrape_domains(self, agent_id: str, patterns: Iterable[str]) -> AgentRecord:
+        domains = normalize_scrape_domains(patterns)
+
+        def apply(agent: AgentRecord) -> None:
+            # Like grants: widening invalidates tokens; narrowing applies to the
+            # next call (the policy is read fresh per call) without ending the run.
+            if widens_scrape_policy(agent.scrape_domains, domains):
+                agent.token_version += 1
+            agent.scrape_domains = domains
 
         return self._mutate(agent_id, apply)
 
@@ -424,6 +487,31 @@ class GatewayStore:
             # Mid-task revoke / grant change invalidated this token version.
             return None
         return agent, tok
+
+    # --- taint tracking ---------------------------------------------------
+    # Once a run or token session has executed an untrusted_input tool, the
+    # model's context may hold injected instructions, so outbound tools are
+    # refused for the rest of that trace. In memory, like the tokens it keys on.
+
+    MAX_TAINTED = 10_000
+
+    def mark_tainted(self, trace_id: str | None, tool: str) -> None:
+        if not trace_id:
+            return
+        with self._lock:
+            if trace_id in self._tainted:
+                return
+            self._tainted[trace_id] = {"tool": tool, "ts": time.time()}
+            while len(self._tainted) > self.MAX_TAINTED:
+                self._tainted.pop(next(iter(self._tainted)))
+
+    def taint_of(self, trace_id: str | None) -> dict[str, Any] | None:
+        """What first tainted this trace ({"tool", "ts"}), or None if it's clean."""
+        if not trace_id:
+            return None
+        with self._lock:
+            taint = self._tainted.get(trace_id)
+            return dict(taint) if taint else None
 
     # --- audit ------------------------------------------------------------
 

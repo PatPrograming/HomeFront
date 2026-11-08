@@ -17,6 +17,8 @@ Tables (names are <DYNAMODB_TABLE_PREFIX><name>):
                           (identity_gateway/audit.py)
 - approvals  pk id        human approvals for high-risk tool calls
                           (identity_gateway/approvals.py)
+- reports    pk agent_id  reports saved with report.save, sk "<ts>#<id>"
+                          (identity_gateway/reports.py)
 """
 from __future__ import annotations
 
@@ -53,6 +55,16 @@ TABLES: dict[str, dict[str, Any]] = {
     "approvals": {
         "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
         "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
+    },
+    "reports": {
+        "KeySchema": [
+            {"AttributeName": "agent_id", "KeyType": "HASH"},
+            {"AttributeName": "sk", "KeyType": "RANGE"},
+        ],
+        "AttributeDefinitions": [
+            {"AttributeName": "agent_id", "AttributeType": "S"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+        ],
     },
 }
 

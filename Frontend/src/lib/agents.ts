@@ -1,7 +1,7 @@
 // Shared shapes and helpers for agents, agent types and tools (see GET /agent-types).
 import { ApiError } from "./api";
 
-export type AgentKind = "email" | "social" | "research" | "custom";
+export type AgentKind = "email" | "social" | "research" | "market_research" | "custom";
 
 export interface Agent {
   agent_id: string;
@@ -17,6 +17,8 @@ export interface Agent {
   recipients: string[];
   // Missing on APIs older than email settings; read via emailSettingsOf().
   email_settings?: EmailSettings;
+  // web.scrape domain allowlist ("*.gov", "sam.gov"); empty = any public host.
+  scrape_domains?: string[];
   token_version: number;
   active: boolean;
 }
@@ -51,6 +53,7 @@ export interface AgentType {
   // null = no ceiling (any registered tool).
   allowed_tools: string[] | null;
   default_max_steps: number;
+  default_scrape_domains?: string[];
 }
 
 export interface Tool {
@@ -70,6 +73,9 @@ const TOOL_ACTIONS: Record<string, string> = {
   "social.reply": "reply to comments",
   "web.scrape": "read web pages",
   "datagov.search": "search data.gov",
+  "usaspending.search": "search past federal awards",
+  "sam.entity_lookup": "look up SAM.gov vendors",
+  "report.save": "save reports",
   "census.query": "query Census data",
   "openfda.search": "search openFDA",
   "eia.query": "query EIA energy data",
@@ -278,6 +284,18 @@ export interface RunStep {
   pipeline_stage?: string;
   research_run_id?: string;
   research_status?: string;
+}
+
+// A report saved with report.save (GET /agents/{id}/reports). body is Markdown.
+export interface Report {
+  report_id: string;
+  agent_id: string;
+  title: string;
+  body: string;
+  // Run id for agent runs, or the workload-token session for manual calls.
+  trace_id: string | null;
+  run_id: string | null;
+  created_at: number;
 }
 
 export interface Run {

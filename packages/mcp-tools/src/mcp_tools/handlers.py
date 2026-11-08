@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
+import re
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import date
 from email.utils import formataddr
 from typing import Any, Callable
 
@@ -225,6 +229,155 @@ def handle_social_reply(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# --- web.scrape SSRF guard ------------------------------------------------
+# The gateway fetches URLs chosen by the model, which may come from injected
+# content. Only public http(s) hosts are reachable: never the instance
+# metadata endpoint (169.254.169.254), loopback, or private networks.
+
+SCRAPE_SCHEMES = {"http", "https"}
+_BLOCKED_HOSTNAMES = {"localhost", "localhost.localdomain", "metadata", "metadata.google.internal"}
+SSRF_ATLAS_NOTE = (
+    "Blocked a fetch to a non-public address (server-side request forgery). "
+    "AML.T0053 tool misuse; AML.M0033 input validation."
+)
+
+
+class UrlNotAllowed(ValueError):
+    """web.scrape refused a URL (scheme, credentials or a non-public address)."""
+
+
+def _ip_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _literal_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """The address `host` names without DNS, including legacy IPv4 spellings
+    like 2130706433 or 0x7f.1 that the socket layer would accept."""
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    if re.fullmatch(r"[0-9a-fA-FxX.]+", host) and re.search(r"\d", host):
+        try:
+            return ipaddress.IPv4Address(socket.inet_aton(host))
+        except OSError:
+            return None
+    return None
+
+
+def check_scrape_url(url: str, resolve: bool = True) -> str:
+    """Return the URL if web.scrape may fetch it, else raise UrlNotAllowed.
+
+    resolve=False checks only what can be known offline (scheme, literal IPs,
+    localhost names); the live path resolves DNS and checks every address.
+    """
+    try:
+        parts = urllib.parse.urlsplit(url)
+        port = parts.port
+    except ValueError as exc:
+        raise UrlNotAllowed(f"malformed URL: {exc}") from exc
+    scheme = (parts.scheme or "").lower()
+    if scheme not in SCRAPE_SCHEMES:
+        raise UrlNotAllowed(f"scheme {scheme or '(none)'!r} is not allowed; use http or https")
+    if parts.username or parts.password:
+        raise UrlNotAllowed("credentials in URLs are not allowed")
+    host = (parts.hostname or "").rstrip(".").lower()
+    if not host:
+        raise UrlNotAllowed("URL has no host")
+    if host in _BLOCKED_HOSTNAMES or host.endswith(".localhost"):
+        raise UrlNotAllowed(f"{host} is a local address")
+    ip = _literal_ip(host)
+    if ip is not None:
+        if _ip_blocked(ip):
+            raise UrlNotAllowed(f"{ip} is not a public address")
+        return url
+    if resolve:
+        try:
+            infos = socket.getaddrinfo(
+                host, port or (443 if scheme == "https" else 80), proto=socket.IPPROTO_TCP
+            )
+        except (socket.gaierror, UnicodeError) as exc:
+            raise UrlNotAllowed(f"couldn't resolve {host}: {exc}") from exc
+        if not infos:
+            raise UrlNotAllowed(f"couldn't resolve {host}")
+        for info in infos:
+            addr = ipaddress.ip_address(info[4][0].split("%", 1)[0])
+            if _ip_blocked(addr):
+                raise UrlNotAllowed(f"{host} resolves to {addr}, which is not a public address")
+    return url
+
+
+def host_matches_domains(host: str, patterns: list[str] | tuple[str, ...]) -> bool:
+    """Per-agent scrape allowlist. `*.example.gov` matches example.gov and any
+    subdomain (suffix on a dot boundary); a bare pattern matches exactly."""
+    host = (host or "").rstrip(".").lower()
+    if not host:
+        return False
+    for pattern in patterns:
+        if pattern.startswith("*."):
+            suffix = pattern[2:]
+            if host == suffix or host.endswith("." + suffix):
+                return True
+        elif host == pattern:
+            return True
+    return False
+
+
+def check_scrape_domain(url: str, patterns: list[str] | tuple[str, ...] | None) -> None:
+    """Raise UrlNotAllowed if a domain policy is set and the URL's host is outside it."""
+    if not patterns:
+        return
+    try:
+        host = urllib.parse.urlsplit(url).hostname or ""
+    except ValueError:
+        host = ""
+    if not host_matches_domains(host, patterns):
+        raise UrlNotAllowed(f"{host or 'this URL'} is outside the agent's allowed domains ({', '.join(patterns)})")
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-validate every redirect target, so a public page can't bounce the
+    fetch to the metadata endpoint, an internal host, or (when the agent has a
+    domain policy) a site outside it."""
+
+    max_redirections = 5
+
+    def __init__(self, allowed_domains: list[str] | None = None) -> None:
+        super().__init__()
+        self.allowed_domains = allowed_domains
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        check_scrape_url(newurl, resolve=True)
+        check_scrape_domain(newurl, self.allowed_domains)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _scrape_opener(allowed_domains: list[str] | None = None) -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(_SafeRedirectHandler(allowed_domains))
+
+
+def _scrape_denied(url: str, reason: str, simulated: bool) -> dict[str, Any]:
+    return {
+        "status": "denied",
+        "error": "url_not_allowed",
+        "simulated": simulated,
+        "url": url,
+        "reason": reason,
+        "untrusted": True,
+        "atlas_note": SSRF_ATLAS_NOTE,
+    }
+
+
 # Browser-like headers: many .gov sites (Census QuickFacts, city CMS) reject
 # bare library user-agents with HTTP 403.
 _SCRAPE_HEADERS = {
@@ -311,15 +464,27 @@ def _focus_text(text: str, q: str, *, csv: bool) -> tuple[str, dict[str, Any]]:
 
 
 def handle_web_scrape(args: dict[str, Any]) -> dict[str, Any]:
-    url = args.get("url") or "https://example.gov"
+    url = str(args.get("url") or "https://example.gov").strip()
     q = args.get("q") if isinstance(args.get("q"), str) else ""
-    # Demo-safe: do not perform unrestricted live scraping by default.
+    # Demo-safe: do not perform live scraping unless HOMEFRONT_LIVE_SCRAPE=1.
     live = os.environ.get("HOMEFRONT_LIVE_SCRAPE") == "1"
+    # Injected by the gateway from the agent's scrape_domains policy (the
+    # gateway also checks the first URL); here it also covers redirects.
+    allowed_domains = [d for d in (args.get("allowed_domains") or []) if isinstance(d, str)] or None
+    try:
+        # Offline checks run in both modes so the policy is testable without network.
+        check_scrape_url(url, resolve=live)
+        check_scrape_domain(url, allowed_domains)
+    except UrlNotAllowed as exc:
+        return _scrape_denied(url, str(exc), simulated=not live)
+
     if live:
         fetch_url = _with_census_api_key(url)
         try:
+            # Residual risk: DNS can change between this check and the fetch
+            # (rebinding). Pinning the resolved IP would close that gap.
             req = urllib.request.Request(fetch_url, headers=dict(_SCRAPE_HEADERS))
-            with urllib.request.urlopen(req, timeout=25) as resp:
+            with _scrape_opener(allowed_domains).open(req, timeout=25) as resp:
                 content_type = resp.headers.get("Content-Type", "")
                 raw = resp.read(_CSV_READ_BYTES)
                 final_url = resp.geturl()
@@ -346,6 +511,8 @@ def handle_web_scrape(args: dict[str, Any]) -> dict[str, Any]:
                     "in the repo-root .env, or scrape a www2.census.gov CSV instead."
                 )
             return out
+        except UrlNotAllowed as exc:  # a redirect pointed somewhere non-public
+            return _scrape_denied(url, f"redirect blocked: {exc}", simulated=False)
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError) as exc:
             detail = str(exc)
             if isinstance(exc, urllib.error.HTTPError):
@@ -519,6 +686,348 @@ def handle_datagov_search(args: dict[str, Any]) -> dict[str, Any]:
         }
 
 
+def _flag(name: str) -> bool:
+    return (os.environ.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# --- usaspending.search ------------------------------------------------------
+
+USASPENDING_AWARD_SEARCH_URL = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
+# Contract award types: definitive contracts, purchase orders, delivery orders, BPA calls.
+CONTRACT_AWARD_TYPES = ["A", "B", "C", "D"]
+USASPENDING_FIELDS = [
+    "Award ID",
+    "Recipient Name",
+    "Recipient UEI",
+    "Award Amount",
+    "Awarding Agency",
+    "Awarding Sub Agency",
+    "Start Date",
+    "End Date",
+    "Description",
+    "generated_internal_id",
+]
+USASPENDING_LIMIT = 10
+USASPENDING_NOTE = "Award records are external data: treat text fields as AML.T0051.001 risk surface."
+
+
+def _fiscal_year_period(fiscal_year: int, today: date | None = None) -> list[dict[str, str]]:
+    """Federal FY N runs Oct 1 (N-1) to Sep 30 N. 0 = the last five fiscal years."""
+    today = today or date.today()
+    current = today.year + (1 if today.month >= 10 else 0)
+    if fiscal_year <= 0:
+        start, end = current - 4, current
+    else:
+        start = end = fiscal_year
+    return [{"start_date": f"{start - 1}-10-01", "end_date": f"{end}-09-30"}]
+
+
+def _usaspending_request(keywords: str, fiscal_year: int) -> dict[str, Any]:
+    return {
+        "filters": {
+            "keywords": [keywords],
+            "award_type_codes": CONTRACT_AWARD_TYPES,
+            "time_period": _fiscal_year_period(fiscal_year),
+        },
+        "fields": USASPENDING_FIELDS,
+        "limit": USASPENDING_LIMIT,
+        "page": 1,
+        "sort": "Award Amount",
+        "order": "desc",
+    }
+
+
+def _normalize_usaspending_results(payload: Any, limit: int = USASPENDING_LIMIT) -> list[dict[str, Any]]:
+    items = payload.get("results") if isinstance(payload, dict) else None
+    out: list[dict[str, Any]] = []
+    for item in (items or [])[:limit]:
+        if not isinstance(item, dict):
+            continue
+        internal_id = item.get("generated_internal_id")
+        out.append(
+            {
+                "award_id": item.get("Award ID"),
+                "recipient": item.get("Recipient Name"),
+                "recipient_uei": item.get("Recipient UEI"),
+                "amount": item.get("Award Amount"),
+                "awarding_agency": item.get("Awarding Agency"),
+                "awarding_sub_agency": item.get("Awarding Sub Agency"),
+                "start_date": item.get("Start Date"),
+                "end_date": item.get("End Date"),
+                "description": (item.get("Description") or "")[:240] or None,
+                "url": f"https://www.usaspending.gov/award/{internal_id}" if internal_id else None,
+            }
+        )
+    return out
+
+
+def _simulated_awards(keywords: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "award_id": "70Z02325C00000001",
+            "recipient": "Example Federal Solutions LLC",
+            "recipient_uei": "EXMPL1234567",
+            "amount": 1_250_000.0,
+            "awarding_agency": "Department of Homeland Security",
+            "awarding_sub_agency": "U.S. Coast Guard",
+            "start_date": "2024-11-15",
+            "end_date": "2026-11-14",
+            "description": f"[simulated] {keywords} services and support",
+            "url": None,
+        },
+        {
+            "award_id": "GS00Q24ABC0002",
+            "recipient": "Sample Small Business Inc",
+            "recipient_uei": "SMPL98765432",
+            "amount": 310_400.0,
+            "awarding_agency": "General Services Administration",
+            "awarding_sub_agency": "Federal Acquisition Service",
+            "start_date": "2025-03-01",
+            "end_date": "2026-02-28",
+            "description": f"[simulated] {keywords} (8(a) set-aside)",
+            "url": None,
+        },
+    ]
+
+
+def handle_usaspending_search(args: dict[str, Any]) -> dict[str, Any]:
+    """Search past contract awards on USAspending.gov (public API, no key)."""
+    keywords = " ".join(str(args.get("keywords") or "").split())[:200]
+    try:
+        fiscal_year = int(args.get("fiscal_year") or 0)
+    except (TypeError, ValueError):
+        fiscal_year = 0
+    base = {"keywords": keywords, "fiscal_year": fiscal_year or None, "untrusted": True}
+    if len(keywords) < 3:
+        return {**base, "status": "error", "error": "keywords must be at least 3 characters"}
+    if fiscal_year and not 2008 <= fiscal_year <= 2100:
+        return {**base, "status": "error", "error": "fiscal_year must be 2008 or later, or 0"}
+
+    if not _flag("HOMEFRONT_LIVE_USASPENDING"):
+        results = _simulated_awards(keywords)
+        return {
+            **base,
+            "status": "ok",
+            "simulated": True,
+            "result_count": len(results),
+            "results": results,
+            "atlas_note": USASPENDING_NOTE,
+            "hint": "Set HOMEFRONT_LIVE_USASPENDING=1 to search live USAspending.gov awards.",
+        }
+
+    try:
+        req = urllib.request.Request(
+            USASPENDING_AWARD_SEARCH_URL,
+            data=json.dumps(_usaspending_request(keywords, fiscal_year)).encode("utf-8"),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "HomeFront/0.1",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read(500_000).decode("utf-8", errors="replace")
+        payload = json.loads(raw)
+    except urllib.error.HTTPError as exc:
+        return {**base, "status": "error", "error": f"HTTP {exc.code}: {exc.reason}"}
+    except (urllib.error.URLError, TimeoutError) as exc:
+        return {**base, "status": "error", "error": str(exc)}
+    except json.JSONDecodeError:
+        return {**base, "status": "error", "error": "Non-JSON response from USAspending"}
+
+    results = _normalize_usaspending_results(payload)
+    return {
+        **base,
+        "status": "ok",
+        "simulated": False,
+        "source": "USAspending.gov API v2 spending_by_award",
+        "result_count": len(results),
+        "results": results,
+        "atlas_note": USASPENDING_NOTE,
+    }
+
+
+# --- sam.entity_lookup -------------------------------------------------------
+
+SAM_ENTITY_URL = "https://api.sam.gov/entity-information/v3/entities"
+SAM_LIMIT = 10
+SAM_NOTE = "api.data.gov key retained by gateway (AML.M0026); registration text is vendor-written."
+
+
+def _sam_live_enabled() -> bool:
+    return bool(_datagov_api_key()) and _flag("HOMEFRONT_LIVE_SAM")
+
+
+def _scrub(value: Any, secret: str) -> Any:
+    """Remove `secret` from any string in `value` (error texts can echo URLs)."""
+    if not secret:
+        return value
+    if isinstance(value, str):
+        return value.replace(secret, "[redacted]")
+    if isinstance(value, dict):
+        return {k: _scrub(v, secret) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub(v, secret) for v in value]
+    return value
+
+
+def _normalize_sam_entities(payload: Any, limit: int = SAM_LIMIT) -> list[dict[str, Any]]:
+    items = payload.get("entityData") if isinstance(payload, dict) else None
+    out: list[dict[str, Any]] = []
+    for item in (items or [])[:limit]:
+        if not isinstance(item, dict):
+            continue
+        reg = item.get("entityRegistration") or {}
+        core = item.get("coreData") or {}
+        address = core.get("physicalAddress") or {}
+        btypes = core.get("businessTypes") or {}
+        business_types = [
+            t.get("businessTypeDesc")
+            for t in (btypes.get("businessTypeList") or [])
+            if isinstance(t, dict) and t.get("businessTypeDesc")
+        ]
+        sba_types = [
+            t.get("sbaBusinessTypeDesc")
+            for t in (btypes.get("sbaBusinessTypeList") or [])
+            if isinstance(t, dict) and t.get("sbaBusinessTypeDesc")
+        ]
+        out.append(
+            {
+                "legal_business_name": reg.get("legalBusinessName"),
+                "uei": reg.get("ueiSAM"),
+                "cage_code": reg.get("cageCode"),
+                "registration_status": reg.get("registrationStatus"),
+                "registration_expires": reg.get("registrationExpirationDate"),
+                "city": address.get("city"),
+                "state": address.get("stateOrProvinceCode"),
+                "business_types": business_types[:12],
+                "sba_business_types": sba_types[:8],
+            }
+        )
+    return out
+
+
+def _simulated_entities(name: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "legal_business_name": f"{name.upper()} SOLUTIONS LLC",
+            "uei": "SIMUL4TED001",
+            "cage_code": "0SIM1",
+            "registration_status": "Active",
+            "registration_expires": "2027-06-30",
+            "city": "Arlington",
+            "state": "VA",
+            "business_types": ["Limited Liability Company", "Woman Owned Small Business"],
+            "sba_business_types": ["SBA Certified 8(a) Program Participant"],
+        }
+    ]
+
+
+def handle_sam_entity_lookup(args: dict[str, Any]) -> dict[str, Any]:
+    """Look up SAM.gov entities with the gateway-held api.data.gov key. Never return the key."""
+    name = " ".join(str(args.get("name") or "").split())[:120]
+    base = {"name": name, "credentials_exposed": False, "untrusted": True, "atlas_note": SAM_NOTE}
+    if len(name) < 2:
+        return {**base, "status": "error", "error": "name must be at least 2 characters"}
+
+    if not _sam_live_enabled():
+        results = _simulated_entities(name)
+        return {
+            **base,
+            "status": "ok",
+            "simulated": True,
+            "result_count": len(results),
+            "results": results,
+            "hint": "Set DATA_GOV_API_KEY and HOMEFRONT_LIVE_SAM=1 to query SAM.gov live.",
+        }
+
+    api_key = _datagov_api_key()
+    params = {
+        "legalBusinessName": name,
+        "registrationStatus": "A",
+        "includeSections": "entityRegistration,coreData",
+    }
+    try:
+        req = urllib.request.Request(
+            f"{SAM_ENTITY_URL}?{urllib.parse.urlencode(params)}",
+            headers={"X-Api-Key": api_key, "Accept": "application/json", "User-Agent": "HomeFront/0.1"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read(500_000).decode("utf-8", errors="replace")
+        payload = json.loads(raw)
+    except urllib.error.HTTPError as exc:
+        return _scrub({**base, "status": "error", "error": f"HTTP {exc.code}: {exc.reason}"}, api_key)
+    except (urllib.error.URLError, TimeoutError) as exc:
+        return _scrub({**base, "status": "error", "error": str(exc)}, api_key)
+    except json.JSONDecodeError:
+        return {**base, "status": "error", "error": "Non-JSON response from SAM.gov"}
+
+    results = _normalize_sam_entities(payload)
+    total = payload.get("totalRecords") if isinstance(payload, dict) else None
+    return _scrub(
+        {
+            **base,
+            "status": "ok",
+            "simulated": False,
+            "source": "SAM.gov Entity Management API v3",
+            "total_records": total,
+            "result_count": len(results),
+            "results": results,
+        },
+        api_key,
+    )
+
+
+# --- report.save ------------------------------------------------------------
+
+MAX_REPORT_TITLE = 200
+MAX_REPORT_BODY = 50_000
+
+# (report dict) -> saved report dict. Set by the gateway, which owns storage.
+ReportSink = Callable[[dict[str, Any]], dict[str, Any]]
+_report_sink: ReportSink | None = None
+
+
+def set_report_sink(sink: ReportSink | None) -> None:
+    global _report_sink
+    _report_sink = sink
+
+
+def handle_report_save(args: dict[str, Any]) -> dict[str, Any]:
+    """Save a markdown report. `agent_id`, `trace_id` and `run_id` are injected
+    by the gateway from the caller's workload token, never from arguments."""
+    agent_id = args.get("agent_id")
+    if not agent_id:
+        raise ValueError("report.save needs the calling agent (gateway-injected agent_id)")
+    title = " ".join(str(args.get("title") or "").split())
+    body = str(args.get("body") or "").replace("\r\n", "\n").strip()
+    if not title or not body:
+        return {"status": "error", "error": "title and body are both required"}
+    if len(title) > MAX_REPORT_TITLE:
+        return {"status": "error", "error": f"title is limited to {MAX_REPORT_TITLE} characters"}
+    if len(body) > MAX_REPORT_BODY:
+        return {"status": "error", "error": f"body is limited to {MAX_REPORT_BODY} characters"}
+    if _report_sink is None:
+        raise RuntimeError("No report store is configured")
+    saved = _report_sink(
+        {
+            "agent_id": agent_id,
+            "title": title,
+            "body": body,
+            "trace_id": args.get("trace_id"),
+            "run_id": args.get("run_id"),
+        }
+    )
+    return {
+        "status": "saved",
+        "report_id": saved.get("report_id"),
+        "title": title,
+        "characters": len(body),
+        "message": "Report saved. Agency staff can read it on this agent's Reports list.",
+    }
+
+
 from .agency_apis import (
     handle_bls_series,
     handle_census_query,
@@ -539,6 +1048,9 @@ HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "social.reply": handle_social_reply,
     "web.scrape": handle_web_scrape,
     "datagov.search": handle_datagov_search,
+    "usaspending.search": handle_usaspending_search,
+    "sam.entity_lookup": handle_sam_entity_lookup,
+    "report.save": handle_report_save,
     "census.query": handle_census_query,
     "openfda.search": handle_openfda_search,
     "eia.query": handle_eia_query,

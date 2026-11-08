@@ -9,6 +9,7 @@ describe("nav tabs", () => {
       "Agents",
       "Monitoring",
       "Approvals",
+      "Reports",
       "Activity",
       "Account",
     ]);

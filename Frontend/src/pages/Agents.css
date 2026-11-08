@@ -53,7 +53,8 @@
   color: #5b3a9c;
 }
 
-.kind-badge.kind-research {
+.kind-badge.kind-research,
+.kind-badge.kind-market_research {
   background: #e8f4ec;
   color: var(--success);
 }
@@ -134,7 +135,8 @@
   color: #5b3a9c;
 }
 
-.type-icon.kind-research {
+.type-icon.kind-research,
+.type-icon.kind-market_research {
   background: #e8f4ec;
   color: var(--success);
 }

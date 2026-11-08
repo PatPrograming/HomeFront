@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -36,7 +37,12 @@ for rel in (
 from atlas_enricher import AnnotateRequest, AtlasEnricher  # noqa: E402
 from atlas_enricher.enricher import AnnotateEvent  # noqa: E402
 from mcp_tools import handlers as email_handlers  # noqa: E402
-from mcp_tools.handlers import invoke_tool, resolve_sender, ses_identity_status  # noqa: E402
+from mcp_tools.handlers import (  # noqa: E402
+    host_matches_domains,
+    invoke_tool,
+    resolve_sender,
+    ses_identity_status,
+)
 from mcp_tools.registry import get_tool, list_tools, tool_public_view  # noqa: E402
 
 from . import email_admin  # noqa: E402
@@ -50,18 +56,21 @@ from .agent_types import (
     get_agent_type,
 )
 from .approvals import ApprovalConflict, ApprovalRecord
+from .reports import ReportRecord
 from .runner import AgentRunner, RunStore, new_run
 from .store import (
     AGENT_ID_PATTERN,
     DEFAULT_MAX_STEPS,
     MAX_FROM_NAME,
     MAX_RECIPIENTS,
+    MAX_SCRAPE_DOMAINS,
     MAX_SIGNATURE,
     AgentRecord,
     DuplicateAgentError,
     GatewayStore,
     InvalidEmailSettingsError,
     InvalidRecipientsError,
+    InvalidScrapeDomainsError,
     normalize_email,
     normalize_email_settings,
 )
@@ -75,6 +84,14 @@ runner: AgentRunner | None = None
 enricher = AtlasEnricher()
 
 router = APIRouter()
+
+
+def _save_report(data: dict[str, Any]) -> dict[str, Any]:
+    # Looked up per call: the host app may swap in the DynamoDB repository.
+    return store.reports.insert(ReportRecord(**data)).view()
+
+
+email_handlers.set_report_sink(_save_report)
 
 
 class AuthRequest(BaseModel):
@@ -118,6 +135,9 @@ class CreateAgentRequest(BaseModel):
     agent_id: str | None = Field(default=None, pattern=AGENT_ID_PATTERN)
     # Mailing list; see PUT /agents/{id}/recipients.
     recipients: list[str] = Field(default_factory=list, max_length=MAX_RECIPIENTS * 2)
+    # web.scrape domain allowlist, e.g. ["*.gov", "example.org"]. Left out =
+    # the type's default; [] = any public host.
+    scrape_domains: list[str] | None = Field(default=None, max_length=MAX_SCRAPE_DOMAINS * 2)
 
 
 class EmailSettingsUpdate(BaseModel):
@@ -149,6 +169,8 @@ class UpdateAgentRequest(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=100)
     max_steps: int | None = Field(default=None, ge=1, le=50)
     active: bool | None = None
+    # Replaces the web.scrape domain allowlist; [] removes the restriction.
+    scrape_domains: list[str] | None = Field(default=None, max_length=MAX_SCRAPE_DOMAINS * 2)
 
 
 def _agent_view(agent: AgentRecord) -> dict[str, Any]:
@@ -164,9 +186,17 @@ def _agent_view(agent: AgentRecord) -> dict[str, Any]:
         "tool_grants": sorted(agent.tool_grants),
         "recipients": list(agent.recipients),
         "email_settings": agent.email_settings.view(),
+        "scrape_domains": list(agent.scrape_domains),
         "token_version": agent.token_version,
         "active": agent.active,
     }
+
+
+def _scrape_domains_error(exc: InvalidScrapeDomainsError) -> HTTPException:
+    return HTTPException(
+        status_code=400,
+        detail={"error": "invalid_scrape_domains", "message": str(exc), "invalid": exc.invalid},
+    )
 
 
 def _recipients_error(exc: InvalidRecipientsError) -> HTTPException:
@@ -180,6 +210,20 @@ def _recipients_error(exc: InvalidRecipientsError) -> HTTPException:
 EMAIL_SEND = "email.send"
 EMAIL_SEND_LIST = "email.send_list"
 EMAIL_TOOLS = (EMAIL_SEND, EMAIL_SEND_LIST)
+# Tools whose handler needs to know the calling agent (gateway-injected).
+CALLER_CONTEXT_TOOLS = frozenset({"report.save"})
+WEB_SCRAPE = "web.scrape"
+
+
+def _scrape_domain_problem(agent: AgentRecord, tool_name: str, arguments: dict[str, Any]) -> str | None:
+    """The host a web.scrape call is refused for ("" if the URL has none), or None if allowed."""
+    if tool_name != WEB_SCRAPE or not agent.scrape_domains:
+        return None
+    try:
+        host = (urllib.parse.urlsplit(str(arguments.get("url") or "")).hostname or "").rstrip(".").lower()
+    except ValueError:
+        host = ""
+    return None if host and host_matches_domains(host, agent.scrape_domains) else host
 
 
 def _sender_preview(agent: AgentRecord) -> dict[str, Any]:
@@ -353,6 +397,11 @@ def create_agent(
         body.instructions if "instructions" in sent else agent_type.default_instructions
     )
     max_steps = body.max_steps if "max_steps" in sent else agent_type.default_max_steps
+    scrape_domains = (
+        body.scrape_domains
+        if body.scrape_domains is not None
+        else list(agent_type.default_scrape_domains)
+    )
 
     unknown = [t for t in tool_grants if get_tool(t) is None]
     if unknown:
@@ -373,9 +422,12 @@ def create_agent(
             owner_id=actor.user_id,
             kind=body.kind,
             recipients=body.recipients,
+            scrape_domains=scrape_domains,
         )
     except InvalidRecipientsError as exc:
         raise _recipients_error(exc)
+    except InvalidScrapeDomainsError as exc:
+        raise _scrape_domains_error(exc)
     except DuplicateAgentError:
         raise HTTPException(status_code=409, detail=f"Agent {body.agent_id} already exists")
     store.append_audit(
@@ -401,13 +453,21 @@ def get_agent(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any
 def update_agent(
     agent_id: str, body: UpdateAgentRequest, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
-    _accessible_agent(agent_id, actor)
+    before = _accessible_agent(agent_id, actor)
     # exclude_unset: only fields the caller sent. "model": null resets to the
     # runner default; null for any other field is ignored.
     changes = body.model_dump(exclude_unset=True)
     changes = {k: v for k, v in changes.items() if v is not None or k == "model"}
+    domains = changes.pop("scrape_domains", None)
     try:
-        agent = store.update_agent(agent_id, **changes)
+        if domains is not None:
+            # Validated before any other field changes, so a bad list changes nothing.
+            agent = store.set_scrape_domains(agent_id, domains)
+            if agent.scrape_domains != before.scrape_domains:
+                changes["scrape_domains"] = agent.scrape_domains
+        agent = store.update_agent(agent_id, **{k: v for k, v in changes.items() if k != "scrape_domains"})
+    except InvalidScrapeDomainsError as exc:
+        raise _scrape_domains_error(exc)
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown agent")
     if changes:
@@ -920,6 +980,93 @@ def call_tool(
             },
         )
 
+    trace_id = run_id or getattr(tok, "session_id", None)
+
+    # Information-flow control: after this run/session read untrusted content,
+    # nothing may leave the agency, whatever the agent's type or grants.
+    taint = store.taint_of(trace_id) if tool.outbound else None
+    if taint:
+        atlas = enricher.annotate(
+            AnnotateRequest(
+                event=AnnotateEvent.tainted_session,
+                tool=tool_name,
+                agent_id=agent.agent_id,
+                reason=f"{taint['tool']} returned untrusted content earlier in this trace",
+            )
+        )
+        event = store.append_audit(
+            {
+                "type": "tool_call",
+                "run_id": run_id,
+                "trace_id": trace_id,
+                "actor": f"agent:{agent.agent_id}",
+                "decision": "deny",
+                "reason": "tainted_session",
+                "agent_id": agent.agent_id,
+                "tool": tool_name,
+                "tainted_by": taint["tool"],
+                "args_hash": _hash_args(arguments),
+                "atlas": atlas.model_dump(),
+                "detail": f"Blocked: this trace read untrusted content via {taint['tool']}",
+            }
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "tainted_session",
+                "message": (
+                    f"Blocked {tool_name}: this run already read untrusted content via "
+                    f"{taint['tool']}, so outbound tools are disabled for it (AML.M0030). "
+                    "Start a new run to send, or hand off to a person."
+                ),
+                "tainted_by": taint["tool"],
+                "atlas": atlas.model_dump(),
+                "audit_id": event["id"],
+            },
+        )
+
+    # Argument-level authorization: an agent with a domain policy may only
+    # scrape matching hosts (redirects are checked again by the handler).
+    blocked_host = _scrape_domain_problem(agent, tool_name, arguments)
+    if blocked_host is not None:
+        atlas = enricher.annotate(
+            AnnotateRequest(
+                event=AnnotateEvent.deny,
+                tool=tool_name,
+                agent_id=agent.agent_id,
+                reason=f"{blocked_host or 'URL'} outside agent scrape_domains",
+            )
+        )
+        event = store.append_audit(
+            {
+                "type": "tool_call",
+                "run_id": run_id,
+                "trace_id": trace_id,
+                "actor": f"agent:{agent.agent_id}",
+                "decision": "deny",
+                "reason": "domain_not_allowed",
+                "agent_id": agent.agent_id,
+                "tool": tool_name,
+                "args_hash": _hash_args(arguments),
+                "atlas": atlas.model_dump(),
+                "detail": f"Blocked: {blocked_host or 'URL'} isn't in {', '.join(agent.scrape_domains)}",
+            }
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "domain_not_allowed",
+                "message": (
+                    f"Blocked {tool_name}: {blocked_host or 'that URL'} is outside this agent's "
+                    f"allowed domains ({', '.join(agent.scrape_domains)}) (AML.M0028)."
+                ),
+                "host": blocked_host or None,
+                "allowed_domains": list(agent.scrape_domains),
+                "atlas": atlas.model_dump(),
+                "audit_id": event["id"],
+            },
+        )
+
     # Outbound email only reaches the agent's mailing list. Checked before
     # queuing so an injected recipient never even reaches a reviewer.
     problem = _recipient_problem(agent, tool_name, arguments)
@@ -979,7 +1126,21 @@ def call_tool(
             agent_id=agent.agent_id,
         )
     )
-    result = _run_handler(tool, tool_name, arguments)
+    run_args = dict(arguments)
+    run_args.pop("allowed_domains", None)  # gateway-injected only
+    if tool_name == WEB_SCRAPE and agent.scrape_domains:
+        run_args["allowed_domains"] = list(agent.scrape_domains)
+    if tool_name in CALLER_CONTEXT_TOOLS:
+        # Who is calling comes from the workload token, never from arguments.
+        run_args.update(
+            agent_id=agent.agent_id,
+            trace_id=trace_id,
+            run_id=run_id,
+        )
+    result = _run_handler(tool, tool_name, run_args)
+    if tool.untrusted_input:
+        # Taint even if the handler refused the URL: conservative and simple.
+        store.mark_tainted(trace_id, tool_name)
 
     event = store.append_audit(
         {
@@ -1217,6 +1378,11 @@ def approve(
         raise HTTPException(status_code=400, detail="Credentials can't be passed as tool arguments")
 
     # Re-check authorization at approval time: a revoke after the request wins.
+    # Taint is deliberately not re-checked: a request can only exist if its
+    # trace was clean when the agent made it, so its arguments were written
+    # before any untrusted content entered the context, and a person reviews
+    # (and may edit) them now. Untrusted reads later in the same run don't
+    # change what was queued.
     blocked_reason = None
     if not agent.active:
         blocked_reason = "the agent is inactive"
@@ -1524,6 +1690,16 @@ def get_run(agent_id: str, run_id: str, actor: Actor = Depends(get_actor)) -> di
     return run.view()
 
 
+@router.get("/agents/{agent_id}/reports")
+def list_reports(
+    agent_id: str, limit: int = 50, actor: Actor = Depends(get_actor)
+) -> list[dict[str, Any]]:
+    """Reports this agent saved with report.save, newest first."""
+    _accessible_agent(agent_id, actor)
+    limit = max(1, min(limit, 200))
+    return [r.view() for r in store.reports.list(agent_id, limit)]
+
+
 @router.get("/audit")
 def audit(
     limit: int = 100,
@@ -1551,6 +1727,7 @@ def storage_status() -> dict[str, Any]:
         "agent_store": store.agent_backend,
         "audit_store": store.audit_backend,
         "approval_store": store.approval_backend,
+        "report_store": store.report_backend,
         "audit_write_errors": store.audit_write_errors,
         "last_audit_error": store.last_audit_error,
         "warnings": list(store.storage_warnings),

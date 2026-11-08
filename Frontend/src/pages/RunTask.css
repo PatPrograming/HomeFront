@@ -5,6 +5,11 @@
   padding: 12px 0;
   border-top: 1px solid var(--line);
   min-width: 0;
+  /* Fill the parent instead of sizing to content: the agent card aligns its
+     children to flex-start, and the nowrap history rows would otherwise widen
+     this panel (and the textarea) past the card's edge. */
+  align-self: stretch;
+  width: 100%;
 }
 
 .run-task-collapsed {

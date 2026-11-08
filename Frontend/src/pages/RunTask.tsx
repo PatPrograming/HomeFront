@@ -11,6 +11,7 @@ import {
   type Run,
   type RunStep,
 } from "../lib/agents";
+import ResearchOutput from "../components/ResearchOutput/ResearchOutput";
 import "./RunTask.css";
 
 const POLL_MS = 1500;
@@ -35,6 +36,15 @@ const preview = (value: unknown, max = 160) => {
 };
 
 const when = (ts: number | null | undefined) => (ts ? new Date(ts * 1000).toLocaleTimeString() : "");
+
+function trailSummary(steps: RunStep[]): string {
+  const calls = steps.filter((s) => s.type === "tool_call");
+  const count = (d: string) => calls.filter((s) => s.decision === d).length;
+  const parts = [`${calls.length} tool call${calls.length === 1 ? "" : "s"}`];
+  if (count("deny")) parts.push(`${count("deny")} blocked`);
+  if (count("pending_approval")) parts.push(`${count("pending_approval")} waiting for approval`);
+  return `Research trail · ${parts.join(" · ")}`;
+}
 
 function startError(e: unknown): string {
   if (e instanceof ApiError && (e as ApiError & { status?: number }).status === 503) {
@@ -274,11 +284,30 @@ export default function RunTask({ agent, collapsible = false }: { agent: Agent; 
             {current.task}
           </p>
           {steps.length > 0 ? (
-            <ol className="run-steps">
-              {steps.map((s, i) => (
-                <Step key={i} step={s} index={i} />
-              ))}
-            </ol>
+            isActive(current) ? (
+              <ol className="run-steps">
+                {steps.map((s, i) => (
+                  <Step key={i} step={s} index={i} />
+                ))}
+              </ol>
+            ) : (
+              // Once a run ends, the results lead and the tool-call trail folds away
+              // (kept open when something was blocked or is waiting, since that's the story).
+              <details
+                key={current.run_id}
+                className="run-trail"
+                open={steps.some((s) => s.decision === "deny" || s.decision === "pending_approval")}
+              >
+                <summary>
+                  {trailSummary(steps)}
+                </summary>
+                <ol className="run-steps">
+                  {steps.map((s, i) => (
+                    <Step key={i} step={s} index={i} />
+                  ))}
+                </ol>
+              </details>
+            )
           ) : (
             isActive(current) && <p className="muted mailing-list-hint">Thinking…</p>
           )}
@@ -289,12 +318,7 @@ export default function RunTask({ agent, collapsible = false }: { agent: Agent; 
               {current.research_run_id ? ` · research run ${current.research_run_id}` : ""}
             </p>
           )}
-          {current.output && (
-            <div className="run-output">
-              <span className="field-label">Agent's summary</span>
-              <p style={{ whiteSpace: "pre-wrap" }}>{current.output}</p>
-            </div>
-          )}
+          <ResearchOutput agent={agent} run={current} />
           {current.error && <p className="alert alert-error">{current.error}</p>}
         </div>
       )}

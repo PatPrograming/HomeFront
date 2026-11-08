@@ -13,6 +13,7 @@ import type {
   EmailSettings,
   EmailVerification,
   RecipientVerification,
+  Report,
   Run,
   StorageStatus,
   TestEmailResult,
@@ -133,6 +134,10 @@ export const agentsApi = {
     }),
   runs: (agentId: string) => request<Run[]>(`${agentPath(agentId)}/runs`),
   run: (agentId: string, runId: string) => request<Run>(`${agentPath(agentId)}/runs/${encodeURIComponent(runId)}`),
+
+  // Reports the agent saved with report.save, newest first.
+  reports: (agentId: string, limit = 50) =>
+    request<Report[]>(`${agentPath(agentId)}/reports?limit=${limit}`),
 
   replaceGrants: (agentId: string, tools: string[]) =>
     request<GrantChange>(`${agentPath(agentId)}/grants`, { method: "PUT", body: { tools } }),
