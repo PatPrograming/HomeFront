@@ -45,5 +45,5 @@ if [[ -z "${HOMEFRONT_LIVE_DATAGOV:-}" ]]; then
   fi
 fi
 
-# Unified API: Supabase user auth (/api/v1/*) + agent IAM + ATLAS (/, /atlas, /mcp, …)
+# Unified API: Cognito user auth (/api/v1/*) + agent IAM + ATLAS (/, /atlas, /mcp, …)
 exec python -m uvicorn app.main:app --app-dir Backend --host 0.0.0.0 --port 8080

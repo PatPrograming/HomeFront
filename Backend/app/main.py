@@ -14,7 +14,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="HomeFront API",
         description=(
-            "Supabase user auth + agent workload identity with MITRE ATLAS-tagged MCP authorization"
+            "Cognito user auth + agent workload identity with MITRE ATLAS-tagged MCP authorization"
         ),
         version="0.1.0",
     )

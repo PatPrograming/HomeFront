@@ -9,15 +9,15 @@ const repoRoot = path.resolve(__dirname, "..");
 export default defineConfig(({ mode }) => {
   // Single repo-root .env for Backend + Frontend.
   const env = loadEnv(mode, repoRoot, "");
-  const supabaseUrl = (env.VITE_SUPABASE_URL || env.SUPABASE_URL || "").replace(/\/$/, "");
-  const supabaseAnon = env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || "";
+  const userPoolId = env.VITE_COGNITO_USER_POOL_ID || env.COGNITO_USER_POOL_ID || "";
+  const clientId = env.VITE_COGNITO_CLIENT_ID || env.COGNITO_APP_CLIENT_ID || "";
 
   return {
     envDir: repoRoot,
     plugins: [react()],
     define: {
-      "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(supabaseUrl),
-      "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(supabaseAnon),
+      "import.meta.env.VITE_COGNITO_USER_POOL_ID": JSON.stringify(userPoolId),
+      "import.meta.env.VITE_COGNITO_CLIENT_ID": JSON.stringify(clientId),
       "import.meta.env.VITE_API_BASE": JSON.stringify(env.VITE_API_BASE || ""),
     },
     server: {
