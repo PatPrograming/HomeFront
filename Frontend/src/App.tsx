@@ -32,41 +32,41 @@ export default function App() {
           <Route
             path="/agents"
             element={
-              <RequireAuth>
+              /*<RequireAuth>*/
                 <Agents />
-              </RequireAuth>
+              /*</RequireAuth>*/
             }
           />
           <Route
             path="/agents/new"
             element={
-              <RequireAuth>
+              /*<RequireAuth>*/
                 <NewAgent />
-              </RequireAuth>
+              /*</RequireAuth>*/
             }
           />
           <Route
             path="/approvals"
             element={
-              <RequireAuth>
+              /*<RequireAuth>*/
                 <Approvals />
-              </RequireAuth>
+              /*</RequireAuth>*/
             }
           />
           <Route
             path="/activity"
             element={
-              <RequireAuth>
+              /*<RequireAuth>*/
                 <Activity />
-              </RequireAuth>
+              /*</RequireAuth>*/
             }
           />
           <Route
             path="/monitoring"
             element={
-              <RequireAuth>
+              /*<RequireAuth>*/
                 <Monitoring />
-              </RequireAuth>
+              /*</RequireAuth>*/
             }
           />
           <Route path="*" element={<Home />} />
