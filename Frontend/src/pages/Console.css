@@ -1350,7 +1350,7 @@
     top: 84px;
     max-height: calc(100vh - 100px);
     overflow-y: auto;
-    padding: 16px 0;
+    padding: 16px 0 220px; /* room below the last item for its "⋯" menu, which this scrolling column would clip */
   }
   .mandate-console .conv-toggle,
   .conv-close-row,

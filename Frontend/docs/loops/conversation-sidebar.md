@@ -1,6 +1,6 @@
 # Loop: conversation-sidebar
 
-Status: REVIEWING
+Status: DONE
 Profile: feature
 Round: 1 / 4
 Base commit: 34d53c6
@@ -27,7 +27,7 @@ sidebar that gets out of the way when collapsed, without losing the office's aud
 
 | ID | Check | Command | Pass when |
 |----|-------|---------|-----------|
-| C1 | Sidebar renders sections, menu, rename, delete confirmation, collapsed and archived views | `cd Frontend && npx vitest run src/components/Sidebar.test.tsx 2>&1` | stdout matches /Tests\s+\d+ passed/ |
+| C1 | Sidebar renders sections, menu, rename, delete confirmation, collapsed and archived views; its wrapper sends actions to the API, saves collapse, leaves a removed open conversation; search sends q | `cd Frontend && npx vitest run src/components/Sidebar.test.tsx src/components/SidebarView.test.tsx src/lib/useSessions.test.tsx 2>&1` | stdout matches /Tests\s+\d+ passed/ |
 | C2 | Sections, menu actions call the right API, collapse persists (and survives blocked storage) | `cd Frontend && npx vitest run src/lib/sidebar.test.ts 2>&1` | stdout matches /Tests\s+\d+ passed/ |
 | C3 | Mock API: search, rename, pin, group, archive, restore, soft delete, short auto titles | `cd Frontend && npx vitest run src/lib/mockApi.test.ts -t "sidebar" 2>&1` | stdout matches /Tests\s+\d+ passed/ |
 | C4 | Frontend types, build, full suite | `cd Frontend && npx tsc --noEmit && npm run build && npx vitest run` | exit 0 |
@@ -70,3 +70,16 @@ sidebar that gets out of the way when collapsed, without losing the office's aud
   removes it; Archive hides it (and closes it if open), Archived lists it, Restore brings it back; collapse
   survives reload; 375 px drawer + menu, Escape closes only the menu; drawer stays full when desktop is collapsed.
 - Found, for Lane E: a deleted conversation's pending drafts still count as waiting.
+- Trial (lite) on 128a88b: FALSIFIED on test proof. Survivors: wrapper skipping runAction (M3), no onRemoved (M4),
+  no saveCollapsed on toggle (M5), useSessions dropping q (M6), api using the wrong param name (M7), the menu's
+  Delete deleting without asking (M8). Cosmetic: the "⋯" menu clipped at the bottom of a short sidebar.
+
+### Round 2 — 2026-11-08
+- Built: `SidebarView.tsx` split out so `Sidebar.test.tsx` renders the real wrapper with the view's props captured
+  (actions → api, onRemoved, collapse saved, drawer forces expanded); `useSessions.test.tsx` (reload asks with q and
+  archived); api tests for `?q=&archived=1`, PATCH and DELETE; a view test that the menu's Delete only asks.
+  Sidebar column gets bottom room so the menu isn't clipped (menu bottom 534 px < rail bottom 614 px).
+- Hand-run mutations M3–M8: each now fails 1–2 tests; files restored.
+- C1 widened to include the wrapper, view and hook tests (stricter, not looser).
+- Outcome checks: 4/4 (round-2.json); 149 frontend tests.
+- Decision: DONE. No second trial (cost); trial ACCEPT not claimed.
