@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import time
 import urllib.parse
@@ -43,6 +44,7 @@ SCOPES = {
 REQUIRED_SCOPE = {"gmail": "https://www.googleapis.com/auth/gmail.send", "x": "tweet.write"}
 AUTH_URL = {"gmail": "https://accounts.google.com/o/oauth2/v2/auth", "x": "https://x.com/i/oauth2/authorize"}
 TOKEN_URL = {"gmail": "https://oauth2.googleapis.com/token", "x": "https://api.x.com/2/oauth2/token"}
+X_HOSTS = ("x.com", "www.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com")
 REVOKE_URL = {"gmail": "https://oauth2.googleapis.com/revoke", "x": "https://api.x.com/2/oauth2/revoke"}
 GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 X_ME_URL = "https://api.x.com/2/users/me"
@@ -131,6 +133,17 @@ class OAuthConfig:
 
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _tweet_id(reply_to: str) -> str:
+    """X wants the post's numeric id; the agent usually has the post's link (x.com/<user>/status/<id>)."""
+    if reply_to.isdigit():
+        return reply_to
+    link = urllib.parse.urlparse(reply_to)
+    match = re.fullmatch(r"/[^/]+/status/(\d+)/?", link.path)
+    if link.scheme != "https" or link.hostname not in X_HOSTS or not match:
+        raise ProviderError("reply_to is not an X post")
+    return match.group(1)
 
 
 def _key(staffer: str, provider: str) -> dict[str, str]:
@@ -308,7 +321,7 @@ class ConnectionService:
     def post_x(self, staffer: str, text: str, reply_to: str | None = None) -> dict:
         payload: dict[str, Any] = {"text": text}
         if reply_to:
-            payload["reply"] = {"in_reply_to_tweet_id": reply_to}
+            payload["reply"] = {"in_reply_to_tweet_id": _tweet_id(reply_to)}
         posted = self._call(staffer, "x", X_TWEETS_URL, payload)
         return {"status": "posted", "id": posted["data"]["id"]}
 

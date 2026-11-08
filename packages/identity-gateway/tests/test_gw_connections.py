@@ -404,6 +404,21 @@ def test_post_x_reply_sets_in_reply_to_tweet_id(svc, provider):
     assert json.loads(provider.to(X_TWEETS)[0].content)["reply"] == {"in_reply_to_tweet_id": "1234567890"}
 
 
+@pytest.mark.parametrize("link", ["https://x.com/someone/status/1234567890", "https://twitter.com/a/status/1234567890?s=20"])
+def test_post_x_reply_accepts_the_post_link_the_agent_has(svc, provider, link):
+    """social_reply carries the post's link, not its id; X only accepts the numeric id."""
+    connect(svc, provider_id="x")
+    svc.post_x("maya", "Thanks!", reply_to=link)
+    assert json.loads(provider.to(X_TWEETS)[0].content)["reply"] == {"in_reply_to_tweet_id": "1234567890"}
+
+
+def test_post_x_reply_to_something_that_is_not_a_post_sends_nothing(svc, cx, provider):
+    connect(svc, provider_id="x")
+    with pytest.raises(cx.ProviderError):
+        svc.post_x("maya", "Thanks!", reply_to="https://evil.example/status/1")
+    assert provider.to(X_TWEETS) == []
+
+
 def test_gmail_connection_cannot_post_to_x(svc, cx, provider):
     connect(svc)
     with pytest.raises(cx.NeedsConnection):
