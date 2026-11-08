@@ -366,3 +366,122 @@ def test_draft_item_accepts_the_new_outbound_tools():
 
     literal = get_args(DraftItem.model_fields["tool"].annotation)
     assert {"email_send_list", "social_reply"} <= set(literal)
+
+
+# ---- locked tools ----------------------------------------------------------------------------
+# Lead's ruling: email_send_list is locked to chief_of_staff. The admin role editor can never grant it
+# to another role, and it is always held for review. One contracts-level LOCKED_TOOLS map feeds both
+# the Cedar role forbids and the role editor.
+
+
+def test_LOCKED_TOOLS_is_exactly_email_send_list_for_chief_of_staff():
+    from mandate_contracts.roles import LOCKED_TOOLS
+
+    assert LOCKED_TOOLS == {"email_send_list": frozenset({"chief_of_staff"})}
+
+
+def test_every_locked_tool_is_a_governed_tool():
+    from mandate_contracts.roles import LOCKED_TOOLS
+
+    assert set(LOCKED_TOOLS) <= set(ROLE_GOVERNED_TOOLS)
+
+
+def test_every_locked_tool_appears_in_ROLE_TOOLS_only_for_its_allowed_roles():
+    from mandate_contracts.roles import LOCKED_TOOLS
+
+    for tool, allowed in LOCKED_TOOLS.items():
+        holders = {r for r, tools in ROLE_TOOLS.items() if tool in tools}
+        assert holders == set(allowed), tool
+
+
+def test_generated_role_forbid_for_each_locked_tool_names_only_its_allowed_roles():
+    from mandate_contracts.roles import LOCKED_TOOLS
+
+    for tool, allowed in LOCKED_TOOLS.items():
+        text = ROLE_POLICIES[role_policy_id(tool)]
+        listed = set(re.findall(r'"(\w+)"', re.search(r"\[(.*?)\]", text).group(1)))
+        assert listed == set(allowed), tool
+
+
+def test_role_allows_locked_tool_is_false_for_a_disallowed_role_even_with_an_override_granting_it():
+    from mandate_contracts.roles import role_allows
+
+    override = {"email_send_list", "datagov_search"}
+    assert role_allows("intern", "email.send_list", tools=override) is False
+
+
+def test_role_allows_override_replaces_the_default_tool_set():
+    from mandate_contracts.roles import role_allows
+
+    override = {"email_send_list", "datagov_search"}
+    assert role_allows("intern", "datagov.search", tools=override) is True
+    assert role_allows("intern", "web.scrape", tools=override) is False  # in intern's default, not in override
+
+
+def test_role_allows_chief_of_staff_loses_a_tool_missing_from_the_override():
+    from mandate_contracts.roles import role_allows
+
+    assert role_allows("chief_of_staff", "email.send_list", tools={"datagov_search"}) is False
+
+
+def test_role_allows_with_tools_none_uses_the_ROLE_TOOLS_default():
+    from mandate_contracts.roles import role_allows
+
+    assert role_allows("intern", "web.scrape", tools=None) is True
+    assert role_allows("chief_of_staff", "email.send_list", tools=None) is True
+
+
+def test_effective_role_tools_defaults_to_ROLE_TOOLS_when_there_is_no_override():
+    from mandate_contracts.roles import effective_role_tools
+
+    for role, tools in ROLE_TOOLS.items():
+        assert effective_role_tools(role, None) == frozenset(tools), role
+
+
+def test_effective_role_tools_override_replaces_default_and_is_a_frozenset():
+    from mandate_contracts.roles import effective_role_tools
+
+    result = effective_role_tools("intern", {"datagov_search", "census_query"})
+    assert isinstance(result, frozenset)
+    assert result == frozenset({"datagov_search", "census_query"})
+
+
+def test_effective_role_tools_drops_ungoverned_names_from_an_override():
+    from mandate_contracts.roles import effective_role_tools
+
+    result = effective_role_tools("caseworker", {"datagov_search", "records_bulk_export", "not_a_tool"})
+    assert result == frozenset({"datagov_search"})
+
+
+def test_effective_role_tools_removes_locked_tools_for_disallowed_roles():
+    from mandate_contracts.roles import effective_role_tools
+
+    override = {"email_send_list", "datagov_search"}
+    assert effective_role_tools("intern", override) == frozenset({"datagov_search"})
+    assert effective_role_tools("caseworker", override) == frozenset({"datagov_search"})
+
+
+def test_effective_role_tools_keeps_a_locked_tool_for_its_allowed_role():
+    from mandate_contracts.roles import effective_role_tools
+
+    assert effective_role_tools("chief_of_staff", {"email_send_list", "datagov_search"}) == frozenset(
+        {"email_send_list", "datagov_search"}
+    )
+
+
+def test_effective_role_tools_for_an_unknown_role_is_empty_even_with_an_override():
+    from mandate_contracts.roles import effective_role_tools
+
+    for role in ("admin", "", None):
+        assert effective_role_tools(role, None) == frozenset(), role
+        assert effective_role_tools(role, {"datagov_search"}) == frozenset(), role
+
+
+def test_autonomy_locks_the_mailing_list_category():
+    gateway_src = ROOT / "packages" / "identity-gateway" / "src"
+    sys.path.insert(0, str(gateway_src))
+    try:
+        from identity_gateway import autonomy
+    except ImportError:
+        pytest.skip("identity_gateway.autonomy is not importable from the contracts test environment")
+    assert "mailing_list" in autonomy.LOCKED
