@@ -11,20 +11,14 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "Backend" / "infra" / "setup.sh"
-STARTER = ["case-read-same-office", "draft-revise", "email-send-known-recipient", "forbid-bulk-export",
-           "forbid-campaign-post", "read-tools", "social-post-official"]
-# draft-revise is a starter permit setup.sh creates without the flag: every role holds draft_revise anyway.
-# Starter policies added with the agent-permissions change. setup.sh never updates a policy, so each is a
-# new file: the forbid is safe to add anywhere (it only takes power away); the permits give an assistant
-# new reach, so they come with the office-role policies.
+POLICY_NAMES = sorted(p.stem for p in (ROOT / "packages" / "mandate-contracts" / "policies").glob("*.cedar"))
+# Starter policies added with the agent-permissions change: the forbid is safe anywhere; the permits come with the
+# office-role policies.
 NEW_FORBID = "forbid-campaign-reply"
 NEW_PERMITS = ["research-tools", "email-send-list-office", "social-reply-official", "report-save"]
-ROLE = ["role-bls-series", "role-case-read", "role-census-query", "role-datagov-search", "role-draft-revise", "role-eia-query",
-        "role-email-send-list", "role-email-send", "role-epa-search", "role-fcc-search", "role-fec-search",
-        "role-inbox-read", "role-nasa-search", "role-noaa-climate", "role-nps-parks", "role-openfda-search",
-        "role-report-save", "role-sam-entity-lookup", "role-social-post", "role-social-reply",
-        "role-usaspending-search", "role-web-scrape"]
-ALL = sorted(STARTER + [NEW_FORBID, *NEW_PERMITS] + ROLE)
+STARTER = [n for n in POLICY_NAMES if not n.startswith("role-") and n != NEW_FORBID and n not in NEW_PERMITS]
+ROLE = [n for n in POLICY_NAMES if n.startswith("role-")]
+ALL = POLICY_NAMES
 
 # Stand-in for the aws CLI: an existing table and store, policies by description, STAFFER items from a file.
 FAKE_AWS = f"""#!{sys.executable}
@@ -45,6 +39,12 @@ elif op == "create-policy":
     name = json.loads(args[args.index("--definition") + 1])["static"]["description"]
     state["policies"][name] = "avp-" + name
     print(state["policies"][name])
+elif op == "get-policy":
+    pid = args[args.index("--policy-id") + 1]
+    print(state["texts"].get(pid, "old text"))
+elif op == "update-policy":
+    pid = args[args.index("--policy-id") + 1]
+    state["texts"][pid] = json.loads(args[args.index("--definition") + 1])["static"]["statement"]
 elif op == "scan":
     print(json.dumps({{"Items": state["staffers"]}}))
 else:
@@ -74,8 +74,9 @@ def fake(tmp_path):
                MANDATE_ENV_FILE=str(env_file))
 
     class Fake:
-        def setup(self, policies, staffers):
-            state_path.write_text(json.dumps({"calls": [], "policies": policies, "staffers": staffers}))
+        def setup(self, policies, staffers, texts=None):
+            state = {"calls": [], "policies": policies, "staffers": staffers, "texts": texts or {}}
+            state_path.write_text(json.dumps(state))
 
         def run(self, *args):
             return subprocess.run(["bash", str(SCRIPT), *args], env=env, capture_output=True, text=True)
@@ -112,7 +113,7 @@ def test_without_the_flag_no_role_policy_is_added(fake):
         assert f"skipped: {name}" in result.stdout, name
         assert f"created: {name}" not in result.stdout
     assert ["dynamodb", "scan"] not in fake.state()["calls"]
-    assert result.stdout.count("skipped: role-") == 22
+    assert result.stdout.count("skipped: role-") == len(ROLE)
 
 
 def test_with_the_flag_and_every_role_on_file_all_34_policies_exist_once(fake):
@@ -155,3 +156,37 @@ def test_dry_run_calls_nothing(fake):
     assert result.returncode == 0
     assert fake.state()["calls"] == []
     assert "dynamodb scan" in result.stderr
+
+
+def _role_files():
+    policies = ROOT / "packages" / "mandate-contracts" / "policies"
+    return {name: (policies / f"{name}.cedar").read_text() for name in ROLE}
+
+
+def test_update_rewrites_only_role_policies_whose_text_changed(fake):
+    """The admin-editable role table needs the role-agnostic policies in AVP; setup.sh never updated before."""
+    files = _role_files()
+    current = {"avp-role-web-scrape": files["role-web-scrape"]}  # already the new text
+    fake.setup({**EXISTING, **{name: f"avp-{name}" for name in ROLE}}, GOOD, current)
+    result = fake.run("--apply", "--update-role-policies")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count("updated: role-") == len(ROLE) - 1 and "exists: role-web-scrape" in result.stdout
+    after = fake.state()
+    assert after["texts"] == {f"avp-{n}": t for n, t in files.items()}
+    assert ["verifiedpermissions", "create-policy"] not in after["calls"]
+    assert fake.env_names() == sorted(STARTER + ROLE)  # same ids, same names
+    again = fake.run("--apply", "--update-role-policies")
+    assert "updated:" not in again.stdout
+
+
+def test_without_the_update_flag_existing_role_policies_are_left_alone(fake):
+    fake.setup({**EXISTING, **{name: f"avp-{name}" for name in ROLE}}, GOOD)
+    assert fake.run("--apply", "--with-role-policies").returncode == 0
+    assert ["verifiedpermissions", "update-policy"] not in fake.state()["calls"]
+    assert ["verifiedpermissions", "get-policy"] not in fake.state()["calls"]
+
+
+def test_update_dry_run_calls_nothing(fake):
+    fake.setup({}, [])
+    result = fake.run("--update-role-policies")
+    assert result.returncode == 0 and fake.state()["calls"] == []

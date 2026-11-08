@@ -12,9 +12,9 @@ request shape cannot drift. Two rules matter for security:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable
 
-from .roles import ROLE_POLICIES
+from .roles import ROLE_POLICIES, effective_role_tools
 
 NAMESPACE = "Mandate"
 
@@ -77,11 +77,21 @@ def action(tool: str) -> dict[str, str]:
     return {"actionType": f"{NAMESPACE}::Action", "actionId": tool}
 
 
-def agent_entity(agent_id: str, office: str, mode: str, role: str) -> dict[str, Any]:
-    """`role` must come from the STAFFER item in DynamoDB; "" (no role on file) fails every role policy."""
+def agent_entity(
+    agent_id: str, office: str, mode: str, role: str, role_tools: Iterable[str] | None = None
+) -> dict[str, Any]:
+    """`role` comes from the STAFFER item and `role_tools` from the role's DynamoDB list
+    (`effective_role_tools`); None means the reviewed default for `role`. The role policies read only
+    `roleTools`: an empty set (no or unknown role) fails every one of them."""
+    tools = effective_role_tools(role, None) if role_tools is None else role_tools
     return {
         "identifier": {"entityType": f"{NAMESPACE}::Agent", "entityId": agent_id},
-        "attributes": {"office": _value(office), "mode": _value(mode), "role": _value(role)},
+        "attributes": {
+            "office": _value(office),
+            "mode": _value(mode),
+            "role": _value(role),
+            "roleTools": {"set": [_value(t) for t in sorted(tools)]},
+        },
     }
 
 

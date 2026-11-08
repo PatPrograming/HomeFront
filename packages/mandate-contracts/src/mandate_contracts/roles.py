@@ -3,10 +3,16 @@
 The role lives in the STAFFER item in DynamoDB (`officeRole`), never in the token, the request body
 or tool input. The gateway reads it on every call and sends it to Cedar as `principal.role`.
 
-`ROLE_POLICIES` are Cedar `forbid`s, one per tool. A forbid always wins in Cedar, so a role can only
-take tools away from the starter permits, never add one, and the starter forbids (bulk export,
-campaign post) still bind every role, the Chief of Staff included. A missing or unknown role matches
-no list, so every role forbid fires: fail closed.
+What each role may do is data, not policy: `ROLE_TOOLS` is the reviewed default, and an admin can
+replace a role's list in DynamoDB (`ROLE#<role>`, the "People & roles" tab). The gateway reads the list
+on every call and sends `effective_role_tools(role, stored)` to Cedar as `principal.roleTools`.
+
+`ROLE_POLICIES` are Cedar `forbid`s, one per tool, that name no role ("deny unless the tool is in
+`principal.roleTools`"), so the policies never change at runtime. A forbid always wins in Cedar, so a
+role can only take tools away from the starter permits, never add one, and the starter forbids (bulk
+export, campaign post) still bind every role, the Chief of Staff included. A missing or unknown role
+gets an empty set, so every role forbid fires: fail closed. `LOCKED_TOOLS` stay with their roles
+whatever an admin stores.
 """
 
 from __future__ import annotations
@@ -126,15 +132,63 @@ def role_policy_id(tool: str) -> str:
 
 
 def _role_policy(tool: str) -> str:
-    # A locked tool names only its allowed roles, derived from ROLE_TOOLS so the two cannot drift.
-    roles = ", ".join(
-        f'"{r}"' for r, tools in ROLE_TOOLS.items() if tool in tools and r in LOCKED_TOOLS.get(tool, {r})
-    )
+    """Deny the tool unless it is in the role's list (`principal.roleTools`, from DynamoDB via the gateway).
+    The policy names no role, so an admin's edit never edits a policy. A locked tool also names the only
+    roles that may hold it, so Cedar keeps the lock even if a gateway sent a wrong list."""
+    unless = f'principal has roleTools && principal.roleTools.contains("{tool}")'
+    if tool in LOCKED_TOOLS:
+        roles = ", ".join(f'"{r}"' for r in ROLE_TOOLS if r in LOCKED_TOOLS[tool])
+        unless += f" && principal has role && [{roles}].contains(principal.role)"
     return f"""forbid(principal, action == Mandate::Action::"{tool}", resource)
-  unless {{ principal has role && [{roles}].contains(principal.role) }};"""
+  unless {{ {unless} }};"""
 
 
 ROLE_POLICIES: dict[str, str] = {role_policy_id(t): _role_policy(t) for t in ROLE_GOVERNED_TOOLS}
+
+
+def assignable_tools(role: str) -> tuple[str, ...]:
+    """The tools an admin may give this role: governed tools (never an always-denied one), minus locked
+    tools the role may not hold. An unknown role may hold nothing."""
+    if role not in ROLE_TOOLS:
+        return ()
+    return tuple(t for t in ROLE_GOVERNED_TOOLS if role in LOCKED_TOOLS.get(t, {role}))
+
+
+class RoleChangeError(ValueError):
+    """A role edit an admin may not make. The message is plain words for the console."""
+
+
+def validate_role_tools(role: str, tools: Iterable[str]) -> tuple[str, ...]:
+    """Check an admin's new tool list for a role; return it in TOOLS order or raise RoleChangeError."""
+    if role not in ROLE_TOOLS:
+        raise RoleChangeError(f"There is no office role called {role!r}.")
+    tools = list(tools)
+    if len(set(tools)) != len(tools):
+        raise RoleChangeError("A tool is listed twice.")
+    for tool in tools:
+        if tool not in TOOLS:
+            raise RoleChangeError(f"There is no tool called {tool!r}.")
+        if TOOLS[tool].always_denied:
+            raise RoleChangeError(f"{tool} is blocked for everyone by policy and cannot be given to a role.")
+        if tool not in assignable_tools(role):
+            allowed = " and ".join(ROLE_LABELS[r] for r in ROLE_TOOLS if r in LOCKED_TOOLS[tool])
+            raise RoleChangeError(f"{tool} is locked by policy to the {allowed} only.")
+    return tuple(t for t in ROLE_GOVERNED_TOOLS if t in tools)
+
+
+def describe_role_change(role: str, before: Iterable[str], after: Iterable[str]) -> list[str]:
+    """Plain words for what an edit lets every staffer in this role (and their assistant) newly do or stop doing."""
+    label = ROLE_LABELS.get(role, role)
+    before, after = set(before), set(after)
+    gained = [t for t in ROLE_GOVERNED_TOOLS if t in after - before]
+    lost = [t for t in ROLE_GOVERNED_TOOLS if t in before - after]
+    return [f"Every {label}'s assistant will be able to {tool_action(t)}." for t in gained] + [
+        f"Every {label}'s assistant will no longer be able to {tool_action(t)}." for t in lost
+    ]
+
+
+def tool_action(tool: str) -> str:
+    return TOOL_ACTIONS.get(tool, tool)
 
 
 def role_label(role: str | None) -> str:

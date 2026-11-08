@@ -17,6 +17,11 @@
 #            the flag too: alone they would give every role, interns included, those tools.
 #            Without the flag, role policies already in the store are kept and still named in
 #            .env.aws; none are added.
+#        bash Backend/infra/setup.sh --apply --update-role-policies
+#            also rewrites a role-* policy already in the store whose text differs from its file (AVP
+#            keeps the policy id, so .env.aws does not change). Needed once for the admin-editable role
+#            table (docs/ROLES.md): the new role policies read principal.roleTools, which only the new
+#            gateway sends, so run the new gateway code first. Other policies are never updated.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -30,10 +35,12 @@ DRY_RUN=1
 WITH_ROLES=0
 # Permits that grant a tool to every role; only safe next to the role-*.cedar forbids that narrow them.
 NEEDS_ROLE_POLICIES=" research-tools email-send-list-office social-reply-official report-save "
+UPDATE_ROLES=0
 for arg in "$@"; do
   case "$arg" in
     --apply) DRY_RUN=0 ;;
     --with-role-policies) WITH_ROLES=1 ;;
+    --update-role-policies) UPDATE_ROLES=1 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -125,7 +132,18 @@ for file in "$POLICY_DIR"/*.cedar; do
   # AVP keeps a static policy's description; we store the readable name there.
   policy_id="$(lookup verifiedpermissions list-policies --policy-store-id "$STORE_ID" \
     --query "policies[?definition.static.description=='$name'].policyId | [0]" --output text)"
-  if [[ -n "$policy_id" && "$policy_id" != "None" ]]; then
+  if [[ -n "$policy_id" && "$policy_id" != "None" && $name == role-* && $UPDATE_ROLES == 1 ]]; then
+    current="$(lookup verifiedpermissions get-policy --policy-store-id "$STORE_ID" --policy-id "$policy_id" \
+      --query definition.static.statement --output text)"
+    if [[ "$current" == "$(<"$file")" ]]; then  # both sides without the trailing newline
+      echo "exists: $name ($policy_id)"
+    else
+      definition="$(python3 -c 'import json,sys; print(json.dumps({"static": {"description": sys.argv[1], "statement": open(sys.argv[2]).read()}}))' "$name" "$file")"
+      run verifiedpermissions update-policy --policy-store-id "$STORE_ID" --policy-id "$policy_id" \
+        --definition "$definition" >/dev/null
+      echo "updated: $name ($policy_id)"
+    fi
+  elif [[ -n "$policy_id" && "$policy_id" != "None" ]]; then
     echo "exists: $name ($policy_id)"
   elif [[ ( $name == role-* || $NEEDS_ROLE_POLICIES == *" $name "* ) && $WITH_ROLES == 0 ]]; then
     echo "skipped: $name (pass --with-role-policies to add the office-role policies)"

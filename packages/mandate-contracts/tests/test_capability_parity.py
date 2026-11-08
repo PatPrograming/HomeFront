@@ -291,10 +291,15 @@ def test_only_chief_and_legislative_aide_get_procurement_tools():
         assert {r for r, t in ROLE_TOOLS.items() if tool in t} == {"chief_of_staff", "legislative_aide"}
 
 
-def test_role_policy_lists_are_generated_from_ROLE_TOOLS():
+def test_role_policies_read_the_role_table_and_only_locked_tools_name_roles():
+    """The role list is data (principal.roleTools, admin-editable); a locked tool also pins its roles in Cedar."""
+    from mandate_contracts.roles import LOCKED_TOOLS
+
     for tool in ROLE_GOVERNED_TOOLS:
-        listed = set(re.findall(r'"(\w+)"', re.search(r"\[(.*?)\]", ROLE_POLICIES[role_policy_id(tool)]).group(1)))
-        assert listed == {r for r, tools in ROLE_TOOLS.items() if tool in tools}, tool
+        text = ROLE_POLICIES[role_policy_id(tool)]
+        assert f'principal.roleTools.contains("{tool}")' in text, tool
+        listed = set(re.findall(r'"(\w+)"', m.group(1))) if (m := re.search(r"\[(.*?)\]", text)) else set()
+        assert listed == set(LOCKED_TOOLS.get(tool, ())), tool
 
 
 def test_role_allows_reads_the_same_table_for_dotted_registry_names():

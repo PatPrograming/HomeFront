@@ -345,8 +345,12 @@ def _build_real_cedar():
     text = "\n".join(p.read_text() for p in files)
     names = {f"policy{i}": p.stem for i, p in enumerate(files)}  # cedarpy numbers policies in file order
 
+    def value(typed):
+        kind, v = next(iter(typed.items()))
+        return [value(x) for x in v] if kind == "set" else v
+
     def plain(typed):
-        return {k: next(iter(v.values())) for k, v in typed.items()}
+        return {k: value(v) for k, v in typed.items()}
 
     def uid(identifier):
         return {"__entity": {"type": identifier["entityType"], "id": identifier["entityId"]}}
@@ -357,7 +361,7 @@ def _build_real_cedar():
         def is_authorized(self, req):
             from mandate_contracts import cedar
 
-            agent = cedar.agent_entity(req.agent_id, req.office, req.mode, req.role)
+            agent = cedar.agent_entity(req.agent_id, req.office, req.mode, req.role, req.effective_role_tools)
             entities = [
                 {"uid": uid(e["identifier"]), "attrs": plain(e["attributes"]), "parents": []}
                 for e in (agent, req.resource)

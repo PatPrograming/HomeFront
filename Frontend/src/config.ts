@@ -19,6 +19,7 @@ export const NAV_LINKS: NavLink[] = [
 
 // Shown only to the Cognito group "admin".
 export const ADMIN_LINK: NavLink = { label: "Admin", href: "/admin" };
+export const PEOPLE_LINK: NavLink = { label: "People & roles", href: "/admin/people" };
 
 export interface Staffer {
   id: string; // Cognito username

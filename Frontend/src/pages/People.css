@@ -1,0 +1,163 @@
+/* People & roles (admin). Uses the console's tokens from Console.css (.mandate-console). */
+.role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.role-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-width: 0;
+}
+
+.role-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.role-head h3 {
+  font-size: 16px;
+}
+
+.role-head .muted {
+  font-size: 14px;
+}
+
+.role-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.role-tools li {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--tone);
+  font-size: 14px;
+}
+
+.role-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.role-editor fieldset {
+  display: grid;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.role-editor legend {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.tool-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.tool-check input {
+  margin-top: 4px;
+}
+
+.tool-check.blocked {
+  color: var(--ink-soft);
+}
+
+.role-warning {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--flag-tint);
+  color: var(--ink);
+}
+
+.role-warning ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.people,
+.change-log {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.person {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.person:first-child {
+  border-top: 0;
+}
+
+.person-who {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.person-field {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.person-field select {
+  min-height: 40px;
+  max-width: 100%;
+}
+
+.person-save {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  font-size: 14px;
+}
+
+.change-log li {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.change-log li:first-child {
+  border-top: 0;
+}
+
+@media (min-width: 900px) {
+  .person {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}

@@ -184,6 +184,7 @@ class Gateway:
                 office=session.office,
                 mode=session.mode,
                 role=staffer.office_role or "",  # from the STAFFER item, never from the token or input
+                role_tools=self.store.get_role_tools(staffer.office_role),  # the role's list, read fresh
                 tool=tool,
                 resource=cedar.case_entity(params.case_id, case.office) if case else cedar.tool_entity(tool),
                 context=cedar.build_context(  # always every key; a missing key would skip a forbid
@@ -285,6 +286,7 @@ class Gateway:
                 office=draft.office,
                 mode="official",
                 role=staffer.office_role or "",
+                role_tools=self.store.get_role_tools(staffer.office_role),
                 tool=tool,
                 resource=cedar.tool_entity(tool),
                 context=cedar.build_context(

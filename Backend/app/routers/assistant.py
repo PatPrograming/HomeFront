@@ -21,7 +21,7 @@ from identity_gateway.gateway import PLATFORMS, REVISABLE_FIELDS, SOCIAL_TOOLS, 
 from identity_gateway.tokens import InvalidToken, verify_mandate_token
 from mandate_contracts import TOOLS, MandateClaims, cedar
 from mandate_contracts.ddb import ChatMessageItem, DraftItem
-from mandate_contracts.roles import ROLE_TOOLS, role_reason
+from mandate_contracts.roles import role_reason
 
 try:
     from app.core.cognito import StaffIdentity, require_admin, require_staff
@@ -400,10 +400,11 @@ def _within_role(category: str, staff: StaffIdentity) -> None:
     Cedar denies that tool before any grant or "auto" is read, so this is not the guarantee; it stops
     the API from recording a permission the staffer does not have. The role is read from DynamoDB.
     """
-    staffer = get_gateway().store.get_staffer(staff.username)
+    store = get_gateway().store
+    staffer = store.get_staffer(staff.username)
     role = staffer.office_role if staffer else None
     tool = CATEGORY_TOOL[category]
-    if tool not in ROLE_TOOLS.get(role or "", ()):
+    if tool not in store.get_role_tools(role):
         raise HTTPException(status.HTTP_403_FORBIDDEN, f"Not part of your role: {role_reason(role, tool)}")
 
 

@@ -142,6 +142,8 @@ and never deletes.
    STAFFER item finds a valid `officeRole` on each one. Run `test-users.sh --apply` first. The four
    new permits (`research-tools`, `email-send-list-office`, `social-reply-official`, `report-save`)
    wait for the same flag: without the role forbids, every role would get those tools.
+   `--update-role-policies` rewrites a `role-*` policy already in the store when its text differs
+   from the file (same policy id). It is needed once for the admin-editable role table.
 4. `Backend/infra/.env.aws` (untracked): `AVP_POLICY_STORE_ID` and `AVP_POLICY_NAMES`, the map
    from AVP's generated policy ids to the readable names that decision events show.
 
@@ -153,6 +155,8 @@ active after an Offboard.
 bash Backend/infra/setup.sh                    # dry run: print the commands only
 bash Backend/infra/setup.sh --apply
 bash Backend/infra/setup.sh --apply --with-role-policies   # after test-users.sh --apply wrote every role
+bash Backend/infra/setup.sh --update-role-policies         # dry run: which role policies would change
+bash Backend/infra/setup.sh --apply --update-role-policies # after the new gateway code is running
 set -a; source Backend/infra/.env.aws; set +a
 .venv/bin/python Backend/infra/seed.py                  # dry run
 .venv/bin/python Backend/infra/seed.py --apply
@@ -176,3 +180,17 @@ By default the script only prints the `aws` commands. It touches nothing and nee
 bash Backend/infra/connections.sh            # dry run
 bash Backend/infra/connections.sh --apply    # needs the aws CLI with credentials
 ```
+
+## People & roles (admin tab)
+
+The admin "People & roles" tab (`Backend/app/routers/people.py`) lists the Cognito users with their group
+and office role, assigns either one, and edits what each office role may do. The server needs these IAM
+permissions on the user pool, in addition to what it already has on the `mandate` table:
+
+- `cognito-idp:ListUsers`
+- `cognito-idp:ListUsersInGroup`
+- `cognito-idp:AdminAddUserToGroup`
+- `cognito-idp:AdminRemoveUserFromGroup`
+
+Without them the tab shows the AWS error and changes nothing. Role edits are stored as `ROLE#<role>` items in
+`mandate`; admin changes are logged as `ADMINLOG#<day>` items. See `docs/ROLES.md` for how Cedar enforces them.

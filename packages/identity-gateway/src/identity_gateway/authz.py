@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from mandate_contracts import cedar
-from mandate_contracts.roles import ROLE_GOVERNED_TOOLS, ROLE_TOOLS, role_policy_id
+from mandate_contracts.roles import LOCKED_TOOLS, ROLE_GOVERNED_TOOLS, effective_role_tools, role_policy_id
 
 
 # The tools the `research-tools` permit names: the ten public agency APIs plus the two procurement lookups.
@@ -34,6 +34,12 @@ class AuthzRequest:
     tool: str
     resource: dict[str, Any]  # cedar.case_entity(...) or cedar.tool_entity(...)
     context: dict[str, Any]  # cedar.build_context(...): every key always present
+    # The role's tool list from DynamoDB (MandateStore.get_role_tools); None = the reviewed default for `role`.
+    role_tools: frozenset[str] | None = None
+
+    @property
+    def effective_role_tools(self) -> frozenset[str]:
+        return effective_role_tools(self.role) if self.role_tools is None else self.role_tools
 
 
 @dataclass(frozen=True)
@@ -70,7 +76,7 @@ class AvpAuthorizer:
             action=cedar.action(req.tool),
             resource=req.resource["identifier"],
             context=req.context,
-            entities={"entityList": [cedar.agent_entity(req.agent_id, req.office, req.mode, req.role), req.resource]},
+            entities={"entityList": [cedar.agent_entity(req.agent_id, req.office, req.mode, req.role, req.effective_role_tools), req.resource]},
         )
         ids = [self.policy_names.get(p["policyId"], p["policyId"]) for p in response.get("determiningPolicies", [])]
         # A Cedar evaluation error means some policy was skipped; a skipped forbid would
@@ -104,7 +110,8 @@ class StarterPolicyAuthorizer:
             forbids.append("forbid-campaign-post")
         if req.tool == "social_reply" and req.mode == "official" and account == "campaign":
             forbids.append("forbid-campaign-reply")
-        if req.tool in ROLE_GOVERNED_TOOLS and req.tool not in ROLE_TOOLS.get(req.role, ()):
+        locked_out = req.role not in LOCKED_TOOLS.get(req.tool, {req.role})
+        if req.tool in ROLE_GOVERNED_TOOLS and (req.tool not in req.effective_role_tools or locked_out):
             forbids.append(role_policy_id(req.tool))
         if forbids:
             return AuthzDecision(False, forbids)

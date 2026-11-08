@@ -36,6 +36,16 @@ def draft_key(draft_id: str) -> dict[str, str]:
     return {"pk": f"DRAFT#{draft_id}", "sk": META}
 
 
+def role_key(role: str) -> dict[str, str]:
+    """An office role's tool list, as an admin last set it in the "People & roles" tab."""
+    return {"pk": f"ROLE#{role}", "sk": META}
+
+
+def admin_event_key(ts: str, event_id: str) -> dict[str, str]:
+    """Admin changes to people and roles, partitioned by day like decision events."""
+    return {"pk": f"ADMINLOG#{ts[:10]}", "sk": f"{ts}#{event_id}"}
+
+
 def autonomy_key(staffer_id: str, category: str) -> dict[str, str]:
     """One item per staffer and category, next to the staffer's META item."""
     return {"pk": f"STAFFER#{staffer_id}", "sk": f"AUTONOMY#{category}"}
@@ -70,6 +80,27 @@ class StafferItem(WireModel):
     role: Literal["staffer", "admin"]  # the Cognito group: who may use the admin pages
     # The job in the office (roles.py): which tools the assistant may use. None fails closed in Cedar.
     office_role: Role | None = None
+
+
+class RoleItem(WireModel):
+    """ROLE#<role> / META. No item means the role uses the reviewed default in roles.ROLE_TOOLS."""
+
+    tools: list[str]
+    updated_by: str
+    updated_at: str
+
+
+class AdminEventItem(WireModel):
+    """ADMINLOG#<day> / <ts>#<id>. One change an admin made in the "People & roles" tab."""
+
+    id: str
+    ts: str
+    actor: str  # the admin's Cognito username
+    type: Literal["role_assigned", "group_changed", "role_tools_changed"]
+    target: str  # a username, or a role id for role_tools_changed
+    before: str | list[str] | None = None
+    after: str | list[str] | None = None
+    summary: str  # plain words, shown in the console
 
 
 class CaseItem(WireModel):

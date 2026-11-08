@@ -6,6 +6,7 @@ from pathlib import Path
 
 import jwt
 import pytest
+from mandate_contracts.roles import ROLE_TOOLS as ROLE_TOOLS_DEFAULT
 
 PKG = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PKG / "src"))
@@ -131,7 +132,13 @@ def test_cedar_entities():
         "office": {"string": "rep-x"},
         "mode": {"string": "official"},
         "role": {"string": "caseworker"},
+        # The reviewed default for the role when no DynamoDB list is passed.
+        "roleTools": {"set": [{"string": t} for t in sorted(ROLE_TOOLS_DEFAULT["caseworker"])]},
     }
+    assert agent_entity("agent-1", "rep-x", "official", "caseworker", ["web_scrape"])["attributes"]["roleTools"] == {
+        "set": [{"string": "web_scrape"}]
+    }
+    assert agent_entity("agent-1", "rep-x", "official", "senator")["attributes"]["roleTools"] == {"set": []}
     assert case_entity("case-7", "rep-x")["identifier"] == {
         "entityType": "Mandate::Case",
         "entityId": "case-7",
@@ -179,7 +186,8 @@ def test_ddb_keys():
 
 
 def test_role_policies_cover_every_governed_tool_and_every_role_is_a_known_tool_list():
-    from mandate_contracts.roles import ROLE_GOVERNED_TOOLS, ROLE_LABELS, ROLE_POLICIES, ROLE_TOOLS, Role
+    from mandate_contracts.roles import ROLE_GOVERNED_TOOLS, ROLE_LABELS, ROLE_POLICIES, ROLE_TOOLS, Role, role_policy_id
+    from mandate_contracts.roles import LOCKED_TOOLS
 
     assert list(ROLE_TOOLS) == list(get_args(Role)) == list(ROLE_LABELS)
     assert set(ROLE_GOVERNED_TOOLS) == {n for n, spec in TOOLS.items() if not spec.always_denied}
@@ -188,7 +196,11 @@ def test_role_policies_cover_every_governed_tool_and_every_role_is_a_known_tool_
     assert set(ROLE_TOOLS["chief_of_staff"]) == set(ROLE_GOVERNED_TOOLS)
     assert set(ROLE_POLICIES) <= set(STARTER_POLICIES)
     for name, text in ROLE_POLICIES.items():
-        assert text.startswith("forbid(") and "principal has role" in text, name
+        # Role-agnostic: the policy reads only principal.roleTools, so editing a role never edits a policy.
+        tool = next(t for t in ROLE_GOVERNED_TOOLS if role_policy_id(t) == name)
+        assert text.startswith("forbid(") and f'principal.roleTools.contains("{tool}")' in text, name
+        if tool not in LOCKED_TOOLS:  # a locked tool also pins its roles (test_capability_parity)
+            assert not any(f'"{role}"' in text for role in ROLE_TOOLS), name
 
 
 def test_staffer_item_office_role_is_optional_and_checked():
