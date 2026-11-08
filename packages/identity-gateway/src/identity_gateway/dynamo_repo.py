@@ -28,6 +28,7 @@ def agent_to_item(agent: AgentRecord) -> dict[str, Any]:
     return {
         "id": agent.agent_id,
         "owner_id": agent.owner_id,
+        "kind": agent.kind,
         "name": agent.name,
         "agency": agent.agency,
         "instructions": agent.instructions,
@@ -47,6 +48,8 @@ def agent_from_item(item: dict[str, Any]) -> AgentRecord:
     return AgentRecord(
         agent_id=item["id"],
         owner_id=item.get("owner_id"),
+        # Rows written before agent types existed are custom agents.
+        kind=item.get("kind") or "custom",
         name=item["name"],
         agency=item["agency"],
         instructions=item.get("instructions") or "",

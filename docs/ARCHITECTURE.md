@@ -117,6 +117,7 @@ User-defined agents. Read and written by the gateway (`AGENT_STORE=dynamodb`). R
 |---------------|---------|-------------------------------------------------------------|
 | id            | S       | `^[a-z0-9][a-z0-9-]{2,63}$` (used in URLs)                  |
 | owner_id      | S/NULL  | Cognito `sub`. null = shared demo agent                     |
+| kind          | S       | `email` / `social` / `research` / `custom`. Fixed at creation; missing = `custom` |
 | name / agency | S       | 1–80 / 1–120 chars                                          |
 | instructions  | S       | ≤ 8000 chars. The agent's purpose and system prompt         |
 | model         | S/NULL  | null = runner default                                       |
@@ -125,6 +126,8 @@ User-defined agents. Read and written by the gateway (`AGENT_STORE=dynamodb`). R
 | token_version | N       | Bumped on grant changes to invalidate workload tokens       |
 | active        | BOOL    | Inactive agents can't get tokens or run                     |
 | created_at / updated_at | S | ISO 8601 UTC                                      |
+
+**Agent types** (`packages/identity-gateway/src/identity_gateway/agent_types.py`, public catalog at `GET /agent-types`): each kind supplies default instructions, tools and `max_steps` for fields left out of `POST /agents`, plus a tool ceiling. Email: `email.send`, `datagov.search`. Social: `social.post`, `social.reply`. Research: `web.scrape`, `datagov.search`, never an outbound tool, because it reads untrusted content. `custom` has no ceiling. Granting a tool outside the ceiling returns `403 tool_not_allowed_for_kind` and is audited as `grant_denied`. `/mcp/call` checks the ceiling again, so a grant written straight to the table is still blocked.
 
 The field limits are enforced by the API's request models (DynamoDB has no check constraints). The demo agent `agent-comms-01` is seeded at startup if missing.
 

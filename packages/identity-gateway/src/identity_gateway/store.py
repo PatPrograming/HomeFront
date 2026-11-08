@@ -31,6 +31,8 @@ class AgentRecord:
     max_steps: int = DEFAULT_MAX_STEPS
     # Cognito user id (`sub`). None = system/demo agent.
     owner_id: str | None = None
+    # Agent type (see agent_types.py); sets the tool ceiling. Fixed at creation.
+    kind: str = "custom"
     token_version: int = 1
     active: bool = True
     created_at: float = field(default_factory=time.time)
@@ -152,6 +154,7 @@ class GatewayStore:
         model: str | None = None,
         max_steps: int = DEFAULT_MAX_STEPS,
         owner_id: str | None = None,
+        kind: str = "custom",
     ) -> AgentRecord:
         rec = AgentRecord(
             agent_id=agent_id or f"agent-{uuid.uuid4().hex[:8]}",
@@ -162,6 +165,7 @@ class GatewayStore:
             model=model,
             max_steps=max_steps,
             owner_id=owner_id,
+            kind=kind,
         )
         with self._lock:
             return self._agents.insert(rec)

@@ -27,6 +27,14 @@ from atlas_enricher.router import build_router  # noqa: E402
 from mcp_tools.handlers import invoke_tool  # noqa: E402
 from mcp_tools.registry import get_tool, list_tools, tool_public_view  # noqa: E402
 
+from .agent_types import (
+    AGENT_TYPES,
+    DEFAULT_KIND,
+    AgentKind,
+    agent_type_view,
+    disallowed_tools,
+    get_agent_type,
+)
 from .runner import AgentRunner, RunStore, new_run
 from .store import (
     AGENT_ID_PATTERN,
@@ -87,6 +95,10 @@ class ToolCallRequest(BaseModel):
 
 # Field limits mirror the check constraints on public.agents.
 class CreateAgentRequest(BaseModel):
+    """`kind` picks a template: instructions, tool_grants and max_steps left
+    out of the request take the type's defaults. Fixed after creation."""
+
+    kind: AgentKind = DEFAULT_KIND
     name: str = Field(min_length=1, max_length=80)
     agency: str = Field(min_length=1, max_length=120)
     instructions: str = Field(default="", max_length=8000)
@@ -110,6 +122,7 @@ class UpdateAgentRequest(BaseModel):
 def _agent_view(agent: AgentRecord) -> dict[str, Any]:
     return {
         "agent_id": agent.agent_id,
+        "kind": agent.kind,
         "name": agent.name,
         "agency": agent.agency,
         "instructions": agent.instructions,
@@ -220,6 +233,52 @@ def tools_catalog() -> list[dict[str, Any]]:
     return [tool_public_view(t) for t in list_tools()]
 
 
+@app.get("/agent-types")
+def agent_types_catalog() -> list[dict[str, Any]]:
+    """Public catalog of agent types: templates and tool ceilings."""
+    return [agent_type_view(t) for t in AGENT_TYPES.values()]
+
+
+def _kind_denial(kind: str, tools: list[str]) -> dict[str, Any]:
+    label = get_agent_type(kind).label
+    return {
+        "error": "tool_not_allowed_for_kind",
+        "message": f"{label} agents can't hold {', '.join(tools)} (AML.M0028 least privilege).",
+        "kind": kind,
+        "tools": tools,
+    }
+
+
+def _enforce_kind_ceiling(agent: AgentRecord, tools: list[str]) -> None:
+    """Raise 403 (and audit a deny) if any of `tools` is outside the agent's type."""
+    blocked = disallowed_tools(agent.kind, tools)
+    if not blocked:
+        return
+    atlas = enricher.annotate(
+        AnnotateRequest(
+            event=AnnotateEvent.deny,
+            tool=blocked[0],
+            agent_id=agent.agent_id,
+            reason=f"tool outside {agent.kind} agent ceiling",
+        )
+    )
+    event = store.append_audit(
+        {
+            "type": "grant_denied",
+            "decision": "deny",
+            "agent_id": agent.agent_id,
+            "tool": blocked[0],
+            "tools": blocked,
+            "kind": agent.kind,
+            "atlas": atlas.model_dump(),
+        }
+    )
+    raise HTTPException(
+        status_code=403,
+        detail={**_kind_denial(agent.kind, blocked), "atlas": atlas.model_dump(), "audit_id": event["id"]},
+    )
+
+
 @app.get("/agents")
 def agents(actor: Actor = Depends(get_actor)) -> list[dict[str, Any]]:
     return [_agent_view(a) for a in store.list_agents() if actor.can_access(a)]
@@ -229,19 +288,32 @@ def agents(actor: Actor = Depends(get_actor)) -> list[dict[str, Any]]:
 def create_agent(
     body: CreateAgentRequest, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
-    unknown = [t for t in body.tool_grants if get_tool(t) is None]
+    agent_type = get_agent_type(body.kind)
+    sent = body.model_fields_set
+    tool_grants = body.tool_grants if "tool_grants" in sent else sorted(agent_type.default_tools)
+    instructions = (
+        body.instructions if "instructions" in sent else agent_type.default_instructions
+    )
+    max_steps = body.max_steps if "max_steps" in sent else agent_type.default_max_steps
+
+    unknown = [t for t in tool_grants if get_tool(t) is None]
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown tools: {unknown}")
+    blocked = disallowed_tools(body.kind, tool_grants)
+    if blocked:
+        # No agent exists yet, so nothing to audit against.
+        raise HTTPException(status_code=403, detail=_kind_denial(body.kind, blocked))
     try:
         agent = store.create_agent(
             body.name,
             body.agency,
-            body.tool_grants,
+            tool_grants,
             body.agent_id,
-            instructions=body.instructions,
+            instructions=instructions,
             model=body.model,
-            max_steps=body.max_steps,
+            max_steps=max_steps,
             owner_id=actor.user_id,
+            kind=body.kind,
         )
     except DuplicateAgentError:
         raise HTTPException(status_code=409, detail=f"Agent {body.agent_id} already exists")
@@ -315,10 +387,11 @@ def me(resolved=Depends(require_agent)) -> dict[str, Any]:
 def replace_grants(
     agent_id: str, body: GrantUpdate, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
-    _accessible_agent(agent_id, actor)
+    current = _accessible_agent(agent_id, actor)
     unknown = [t for t in body.tools if get_tool(t) is None]
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown tools: {unknown}")
+    _enforce_kind_ceiling(current, body.tools)
     agent = store.set_grants(agent_id, body.tools)
     atlas = enricher.annotate(
         AnnotateRequest(event=AnnotateEvent.revoke, agent_id=agent_id, reason="grants replaced")
@@ -384,9 +457,10 @@ def revoke_tool(
 def grant_tool(
     agent_id: str, tool_name: str, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
-    _accessible_agent(agent_id, actor)
+    current = _accessible_agent(agent_id, actor)
     if get_tool(tool_name) is None:
         raise HTTPException(status_code=404, detail="Unknown tool")
+    _enforce_kind_ceiling(current, [tool_name])
     agent = store.grant_tool(agent_id, tool_name)
     atlas = enricher.annotate(
         AnnotateRequest(
@@ -468,6 +542,37 @@ def call_tool(
             detail={
                 "error": "secret_probe_blocked",
                 "message": "Credentials are not exposed to agents (AML.M0026).",
+                "atlas": atlas.model_dump(),
+                "audit_id": event["id"],
+            },
+        )
+
+    # Defense in depth: the grant routes already enforce the type's ceiling,
+    # but a grant written straight to the table must not get past it either.
+    if disallowed_tools(agent.kind, [tool_name]):
+        atlas = enricher.annotate(
+            AnnotateRequest(
+                event=AnnotateEvent.deny,
+                tool=tool_name,
+                agent_id=agent.agent_id,
+                reason=f"tool outside {agent.kind} agent ceiling",
+            )
+        )
+        event = store.append_audit(
+            {
+                "type": "tool_call",
+                "run_id": run_id,
+                "decision": "deny",
+                "agent_id": agent.agent_id,
+                "tool": tool_name,
+                "args_hash": _hash_args(arguments),
+                "atlas": atlas.model_dump(),
+            }
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                **_kind_denial(agent.kind, [tool_name]),
                 "atlas": atlas.model_dump(),
                 "audit_id": event["id"],
             },
