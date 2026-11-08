@@ -81,15 +81,13 @@ def test_the_role_session_is_named_for_the_conversation_lasts_an_hour_and_is_bed
     (call,) = sts.calls
     assert call["RoleArn"] == ROLE and call["RoleSessionName"] == "agent-sid-42" and call["DurationSeconds"] == 3600
     policy = json.loads(call["Policy"])
-    actions = {a for statement in policy["Statement"] for a in statement["Action"]}
-    assert actions == {"bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream", "bedrock:ApplyGuardrail"}
-    assert all(statement["Effect"] == "Allow" for statement in policy["Statement"])
-    resources = {a: statement["Resource"] for statement in policy["Statement"] for a in statement["Action"]}
-    assert resources["bedrock:InvokeModel"] == resources["bedrock:InvokeModelWithResponseStream"] == [
-        "arn:aws:bedrock:us-east-1:*:inference-profile/us.anthropic.claude-sonnet-5*",
-        "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5*",
-    ], "Sonnet 5 only"
-    assert resources["bedrock:ApplyGuardrail"] == ["arn:aws:bedrock:us-east-1:*:guardrail/l74ju5pcrcdg"], "one guardrail"
+    assert policy["Statement"] == [  # the whole list, so an extra or widened statement fails too
+        {"Effect": "Allow", "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+         "Resource": ["arn:aws:bedrock:us-east-1:*:inference-profile/us.anthropic.claude-sonnet-5*",
+                      "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5*"]},
+        {"Effect": "Allow", "Action": ["bedrock:ApplyGuardrail"],
+         "Resource": ["arn:aws:bedrock:us-east-1:*:guardrail/l74ju5pcrcdg"]},
+    ]
 
 
 def test_a_long_session_id_still_makes_a_valid_session_name():
@@ -232,12 +230,13 @@ def test_staffers_cannot_read_the_assistant_status(client, monkeypatch):
 SCRIPT = Path(__file__).resolve().parents[1] / "infra" / "agent-role.sh"
 
 
-def _dry_run(tmp_path, *args, exit_code=1):
+def _dry_run(tmp_path, *args, exit_code=1, get_role_exit=None):
     """Run the script with a fake `aws` that records every call (a dry run must make none)."""
     calls = tmp_path / "aws-calls"
     fake = tmp_path / "bin"
     fake.mkdir()
-    (fake / "aws").write_text(f'#!/bin/sh\necho "$@" >> {calls}\nexit {exit_code}\n')
+    get_role = f'case "$1 $2" in "iam get-role") exit {get_role_exit};; esac\n' if get_role_exit is not None else ""
+    (fake / "aws").write_text(f'#!/bin/sh\necho "$@" >> {calls}\n{get_role}exit {exit_code}\n')
     (fake / "aws").chmod(0o755)
     env = {"PATH": f"{fake}:/usr/bin:/bin", "AWS_ACCOUNT_ID": "123456789012"}
     result = subprocess.run(["bash", str(SCRIPT), *args], capture_output=True, text=True, env=env)
@@ -272,3 +271,12 @@ def test_apply_on_an_existing_role_also_tags_it(tmp_path):
     assert any(c.startswith("iam update-assume-role-policy --role-name homefront-agent") for c in made)
     assert "iam tag-role --role-name homefront-agent --tags Key=project,Value=homefront" in made
     assert not any(c.startswith("iam create-role") for c in made)
+
+
+def test_apply_creates_a_missing_role_with_path_duration_and_tag(tmp_path):
+    result, calls = _dry_run(tmp_path, "--apply", exit_code=0, get_role_exit=254)  # get-role: no such role
+    assert result.returncode == 0, result.stderr
+    made = calls.read_text()
+    create = made[made.index("iam create-role"):made.index("iam put-role-policy")]  # its policy JSON spans lines
+    assert create.startswith("iam create-role --role-name homefront-agent --path / --max-session-duration 3600")
+    assert create.rstrip().endswith("--tags Key=project,Value=homefront")
