@@ -20,12 +20,18 @@
 }
 
 .mission {
-  font-size: clamp(44px, 6vw, 72px);
-  line-height: 1.02;
+  font-size: clamp(40px, 5.2vw, 64px);
+  line-height: 1.05;
   letter-spacing: -0.025em;
 }
 
+.mission .line-1,
 .mission .line-2 {
+  display: block;
+}
+
+.mission .line-2 {
+  margin-top: 0.08em;
   color: var(--red-600);
 }
 
