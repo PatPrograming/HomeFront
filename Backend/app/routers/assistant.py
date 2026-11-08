@@ -592,5 +592,7 @@ def decide_plan(sid: str, plan_id: str, body: PlanDecisionIn, staff: StaffIdenti
         store.set_plan_tools(sid, list(item.get("tools", [])))
     get_gateway()._record(claims, "plan_decide", f"plan {plan_id}", "ALLOW" if approved else "DENY",
                           "approved by staff" if approved else "cancelled by staff")
+    if approved:
+        _ensure_agent(sid, staff)  # the agent may have stopped while the card waited; it must see the approval
     _post(sid, "user", "Approved the plan." if approved else "Cancelled the plan.")
     return {"id": plan_id, "status": new_status, "planTools": store.plan_tools(sid)}
