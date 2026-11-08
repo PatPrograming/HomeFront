@@ -16,6 +16,8 @@ export default function ReviewPanel({
   onClose,
   onGrant,
   onDecided,
+  position,
+  onNext,
 }: {
   draft: Draft;
   locked: boolean;
@@ -23,6 +25,8 @@ export default function ReviewPanel({
   onClose: () => void;
   onGrant?: (sid: string, category: string) => void; // so the chat's disclosure can list the grant
   onDecided?: (status: "sent" | "rejected") => void; // so the draft's card in the chat can say what happened
+  position?: { index: number; total: number }; // where this draft is in the waiting list (1-based)
+  onNext?: () => void; // open the next waiting draft without going back to the list
 }) {
   const [edits, setEdits] = useState<DraftEdits>({});
   const [busy, setBusy] = useState(false);
@@ -62,11 +66,23 @@ export default function ReviewPanel({
             {title}
           </h2>
         </div>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close review">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </button>
+        <div className="review-panel-nav">
+          {position && onNext && position.total > 1 && (
+            <>
+              <span className="muted review-position">
+                {position.index} of {position.total}
+              </span>
+              <button type="button" className="btn-plain review-next" onClick={onNext}>
+                Next waiting
+              </button>
+            </>
+          )}
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close review">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <div className="review-panel-body">

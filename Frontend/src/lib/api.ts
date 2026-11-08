@@ -70,6 +70,19 @@ export interface Draft {
   args: Record<string, string>;
   createdAt: string;
   sid?: string; // the session that drafted it; "Allow for this session" grants the category there
+  /** The server's rank (Backend/app/routers/draft_rank.py): from the category, the original email and the age. */
+  urgency: "high" | "medium" | "low";
+  score: number;
+  reason: string;
+}
+
+/** GET /sessions: one of the caller's conversations (Lane E's route). Carries the card fields, so switching to
+ * it can show the identity line without another call. */
+export interface SessionSummary extends SessionCard {
+  title: string;
+  status: "active" | "revoked" | "expired";
+  waiting: number;
+  createdAt: string;
 }
 
 /** What the staffer may change before approving: the text, never the recipient or account. */
@@ -157,6 +170,7 @@ export const api = {
 
   // HomeFront console (lane B contract, docs/LANES.md)
   startSession: () => request<SessionCard>("/sessions", { method: "POST", body: {} }),
+  listSessions: () => request<{ sessions: SessionSummary[] }>("/sessions"),
   sessionStatus: (sid: string) => request<SessionStatus>(`/sessions/${encodeURIComponent(sid)}`),
   events: (cursor?: string | null) => request<EventPage>(eventsPath(cursor)),
   offboard: (stafferId: string) =>

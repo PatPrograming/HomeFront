@@ -13,6 +13,7 @@ interface InboxEmail {
   id: string;
   from: string;
   subject: string;
+  body: string;
   kind: string;
 }
 
@@ -26,7 +27,7 @@ interface Stats {
 
 export interface AssistantState {
   chats: Record<string, ChatMessage[]>;
-  drafts: Record<string, Draft & { actingFor: string; sid: string }>;
+  drafts: Record<string, Omit<Draft, "urgency" | "score" | "reason"> & { actingFor: string; sid: string }>; // ranked when listed
   autonomy: Record<string, Record<string, Stats>>; // username → category → stats
   answered: Record<string, string[]>; // username → inbox email ids already handled
   grants?: Record<string, string[]>; // sid → categories the staffer let the agent send alone in that session
@@ -62,6 +63,35 @@ const DEFAULT_PROMOTE_AFTER = 3;
 const MIN_UNCHANGED_SHARE = 0.9;
 
 const inbox = new Map((inboxData as InboxEmail[]).map((e) => [e.id, e]));
+
+// A copy of Backend/app/routers/draft_rank.py for mock mode: the same weights, words and thresholds. It reads the
+// category, the original email (only when the reply goes to its sender) and the age, never the draft text.
+const KIND_WEIGHT: Record<string, number> = {
+  sensitive: 40, case_status: 30, scheduling: 20, info_request: 15, new_conversation: 10, social_post: 10,
+  staff_memo: 5, suspicious: 5, newsletter: 0,
+};
+const URGENT_WORDS = ["urgent", "emergency", "eviction", "evicted", "medical", "hospital", "deadline", "today", "asap", "immediately", "shut off", "homeless"];
+const REPEAT_PHRASES = ["third time", "second time", "again", "follow up", "follow-up", "no reply", "nobody", "haven't heard", "still waiting", "called back"];
+const mentions = (text: string, words: string[]) => words.filter((w) => new RegExp(`\\b${w.replace(/[-]/g, "\\$&")}\\b`).test(text));
+
+export function rankDraft(draft: Pick<Draft, "tool" | "category" | "args" | "createdAt">, now: number): Pick<Draft, "urgency" | "score" | "reason"> {
+  const email = draft.args.in_reply_to ? inbox.get(draft.args.in_reply_to) : undefined;
+  const toSender = draft.tool === "email_send" && email !== undefined && email.from.toLowerCase() === (draft.args.to ?? "").toLowerCase();
+  const text = toSender ? `${email!.subject}\n${email!.body}`.toLowerCase() : "";
+  const urgent = mentions(text, URGENT_WORDS);
+  const repeat = mentions(text, REPEAT_PHRASES).length > 0;
+  const minutes = Math.max(0, Math.floor((now - Date.parse(draft.createdAt)) / 60_000));
+  const score = (KIND_WEIGHT[draft.category] ?? 10) + (urgent.length ? 30 : 0) + (repeat ? 15 : 0) + Math.min(20, Math.floor((minutes * 2) / 60));
+  const age = minutes < 60 ? "waiting under an hour" : minutes < 48 * 60 ? `waiting ${Math.floor(minutes / 60)} h` : `waiting ${Math.floor(minutes / 1440)} days`;
+  const named = urgent.slice(0, 2).map((w) => `'${w}'`).join(", ");
+  const reason = [
+    LABELS[draft.category] ?? draft.category,
+    ...(urgent.length ? [`mentions ${named}${urgent.length > 2 ? ` and ${urgent.length - 2} more` : ""}`] : []),
+    ...(repeat ? ["wrote before"] : []),
+    age,
+  ].join(" · ");
+  return { urgency: score >= 60 ? "high" : score >= 35 ? "medium" : "low", score, reason };
+}
 
 // The mock API's error: `status` and `data` look like ApiError's, so pages handle both the same way.
 export class MockError extends Error {
@@ -281,8 +311,10 @@ export function assistantRoute(
   }
 
   if (method === "GET" && pathname === "/drafts") {
-    const drafts = Object.values(state.drafts).filter((d) => d.actingFor === user && d.status === "pending");
-    return { drafts: drafts.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)) };
+    const drafts = Object.values(state.drafts)
+      .filter((d) => d.actingFor === user && d.status === "pending")
+      .map((d) => ({ ...d, ...rankDraft(d, now) }));
+    return { drafts: drafts.sort((a, b) => b.score - a.score || a.createdAt.localeCompare(b.createdAt)) };
   }
   const draftPath = pathname.match(/^\/drafts\/([^/]+)\/(approve|reject)$/);
   if (method === "POST" && draftPath) {

@@ -1,0 +1,78 @@
+{
+  "round": 0,
+  "at": "2026-11-08T09:39:08.637Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162",
+  "passed": [
+    "C1",
+    "C4"
+  ],
+  "failed": [
+    "C2",
+    "C3",
+    "C5"
+  ],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Server scorer and ranked /drafts",
+      "command": "PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/bin/python -m pytest -q Backend/tests/test_draft_rank.py",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 2045,
+      "note": "",
+      "stdoutTail": ".......                                                                  [100%]\n=============================== warnings summary ===============================\n../../../.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n7 passed, 1 warning in 1.30s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Waiting list: pick any, ranked/time order, urgency badge, this/all scope, Next in panel",
+      "command": "cd Frontend && npx vitest run src/components/WaitingList.test.tsx src/lib/waiting.test.ts src/components/ReviewPanel.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 1446,
+      "note": "",
+      "stdoutTail": " ❯ src/components/ReviewPanel.test.tsx:54:18\n     52|       <ReviewPanel draft={email} locked={false} onDone={async () => {}…\n     53|     );\n     54|     expect(html).toContain(\"1 of 4\");\n       |                  ^\n     55|     expect(html).toContain(\"Next waiting\");\n     56|   });\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯\n\n\n Test Files  3 failed (3)\n      Tests  1 failed | 4 passed (5)\n   Start at  01:38:02\n   Duration  385ms (transform 120ms, setup 0ms, collect 85ms, tests 15ms, environment 1ms, prepare 209ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Conversations: list, new, switch; mock lists several open sessions",
+      "command": "cd Frontend && npx vitest run src/components/ConversationList.test.tsx src/pages/ConsoleConversations.test.tsx src/lib/mockApi.test.ts 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": false,
+      "exit": 1,
+      "ms": 26283,
+      "note": "",
+      "stdoutTail": " ❯ src/lib/mockApi.test.ts:176:3\n    174|   });\n    175| \n    176|   it(\"ranks waiting drafts with urgency, score and reason\", async () =…\n       |   ^\n    177|     vi.useFakeTimers();\n    178|     const a = (await mockRequest(\"POST\", \"/sessions\", {}, MAYA)) as { …\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯\n\n\n Test Files  3 failed (3)\n      Tests  7 failed | 8 passed (15)\n   Start at  01:38:03\n   Duration  25.49s (transform 224ms, setup 0ms, collect 292ms, tests 25.18s, environment 0ms, prepare 173ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Backend suite",
+      "command": "PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/bin/python -m pytest -q Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 39012,
+      "note": "",
+      "stdoutTail": "........................................................................ [ 17%]\n........................................................................ [ 35%]\n........................................................................ [ 52%]\n......................................s................................. [ 70%]\n........................................................................ [ 87%]\n.....ss...........................................                       [100%]\n=============================== warnings summary ===============================\n../../../.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n407 passed, 3 skipped, 1 warning in 37.98s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C5",
+      "check": "Frontend types, build, suite",
+      "command": "cd Frontend && npx tsc --noEmit && npm run build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 647,
+      "note": "",
+      "stdoutTail": "src/components/ConversationList.test.tsx(4,15): error TS2305: Module '\"../lib/api\"' has no exported member 'SessionSummary'.\nsrc/components/ConversationList.test.tsx(5,30): error TS2307: Cannot find module './ConversationList' or its corresponding type declarations.\nsrc/components/ReviewPanel.test.tsx(52,92): error TS2322: Type '{ draft: Draft; locked: false; onDone: () => Promise<void>; onClose: () => void; position: { index: number; total: number; }; onNext: () => void; }' is not assignable to type 'IntrinsicAttributes & { draft: Draft; locked: boolean; onDone: () => Promise<void>; onClose: () => void; onGrant?: ((sid: string, category: string) => void) | undefined; onDecided?: ((status: \"rejected\" | \"sent\") => void) | undefined; }'.\n  Property 'position' does not exist on type 'IntrinsicAttributes & { draft: Draft; locked: boolean; onDone: () => Promise<void>; onClose: () => void; onGrant?: ((sid: string, category: string) => void) | undefined; onDecided?: ((status: \"rejected\" | \"sent\") => void) | undefined; }'.\nsrc/components/WaitingList.test.tsx(5,52): error TS2307: Cannot find module './WaitingList' or its corresponding type declarations.\nsrc/components/WaitingList.test.tsx(7,71): error TS2339: Property 'urgency' does not exist on type 'Draft'.\nsrc/components/WaitingList.test.tsx(8,12): error TS2353: Object literal may only specify known properties, and 'score' does not exist in type 'Draft'.\nsrc/lib/waiting.test.ts(3,38): error TS2307: Cannot find module './waiting' or its corresponding type declarations.\nsrc/lib/waiting.test.ts(12,44): error TS7006: Parameter 'x' implicitly has an 'any' type.\nsrc/lib/waiting.test.ts(13,108): error TS7006: Parameter 'x' implicitly has an 'any' type.\nsrc/lib/waiting.test.ts(17,44): error TS7006: Parameter 'x' implicitly has an 'any' type.\nsrc/pages/ConsoleConversations.test.tsx(3,48): error TS2305: Module '\"../lib/api\"' has no exported member 'SessionSummary'.\nsrc/pages/ConsoleConversations.test.tsx(20,78): error TS2353: Object literal may only specify known properties, and 'urgency' does not exist in type 'Draft'.",
+      "stderrTail": ""
+    }
+  ]
+}

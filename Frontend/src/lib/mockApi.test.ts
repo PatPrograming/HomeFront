@@ -133,3 +133,56 @@ describe("mock forbidden request", () => {
     vi.useRealTimers();
   });
 });
+
+describe("mock GET /sessions: several conversations", () => {
+  beforeEach(() => store.clear());
+
+  it("keeps earlier conversations open, lists the caller's own with title and waiting count", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); // only the clock: mockRequest still waits its 120 ms
+    const a = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    const b = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    await mockRequest("POST", "/sessions", {}, DANA);
+    await mockRequest("POST", `/sessions/${a.sid}/messages`, { text: "Check my email please" }, MAYA);
+    vi.advanceTimersByTime(2000);
+    await mockRequest("GET", `/sessions/${a.sid}/messages`, undefined, MAYA); // the scripted reply holds drafts
+    const { sessions } = (await mockRequest("GET", "/sessions", undefined, MAYA)) as {
+      sessions: { sid: string; title: string; status: string; waiting: number; agent: string }[];
+    };
+    expect(sessions.map((s) => s.sid).sort()).toEqual([a.sid, b.sid].sort()); // not Dana's
+    const first = sessions.find((s) => s.sid === a.sid)!;
+    expect(first).toMatchObject({ title: "Check my email please", status: "active", agent: "agent-1" });
+    expect(first.waiting).toBeGreaterThan(0);
+    expect(sessions.find((s) => s.sid === b.sid)).toMatchObject({ title: "New conversation", status: "active", waiting: 0 });
+    vi.useRealTimers();
+  });
+
+  it("each conversation keeps its own chat", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); // only the clock: mockRequest still waits its 120 ms
+    const a = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    const b = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    await mockRequest("POST", `/sessions/${a.sid}/messages`, { text: "only in A" }, MAYA);
+    const inB = (await mockRequest("GET", `/sessions/${b.sid}/messages`, undefined, MAYA)) as { messages: { text: string }[] };
+    expect(inB.messages).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it("caps open conversations per person", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); // only the clock: mockRequest still waits its 120 ms
+    for (let i = 0; i < 5; i++) await mockRequest("POST", "/sessions", {}, MAYA);
+    await expect(mockRequest("POST", "/sessions", {}, MAYA)).rejects.toMatchObject({ status: 409 });
+    vi.useRealTimers();
+  });
+
+  it("ranks waiting drafts with urgency, score and reason", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); // only the clock: mockRequest still waits its 120 ms
+    const a = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    await mockRequest("POST", `/sessions/${a.sid}/messages`, { text: "Check my email" }, MAYA);
+    vi.advanceTimersByTime(2000);
+    await mockRequest("GET", `/sessions/${a.sid}/messages`, undefined, MAYA);
+    const { drafts } = (await mockRequest("GET", "/drafts", undefined, MAYA)) as { drafts: { score: number; urgency: string; reason: string }[] };
+    expect(drafts.length).toBeGreaterThan(1);
+    expect(drafts.map((d) => d.score)).toEqual([...drafts.map((d) => d.score)].sort((x, y) => y - x));
+    for (const d of drafts) expect(["high", "medium", "low"]).toContain(d.urgency);
+    expect(drafts[0].reason).toMatch(/Case status updates/);
+  });
+});

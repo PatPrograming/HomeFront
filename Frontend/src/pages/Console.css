@@ -728,6 +728,21 @@
 }
 
 @media (max-width: 600px) {
+  /* Title on its own line, the three header buttons in one row under it. */
+  .assistant-head {
+    flex-wrap: wrap;
+  }
+  .head-actions {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+  .head-actions button {
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
   .identity-sep {
     display: none;
   }
@@ -1071,6 +1086,307 @@
   }
 }
 
+/* Conversations: a left rail from 1280 px, a drawer opened by "Conversations" below. */
+.conversations {
+  display: grid;
+  gap: 10px;
+}
+
+.conversations ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.mandate-console .new-conversation {
+  justify-self: start;
+  min-height: 36px;
+  font-size: 14px;
+}
+
+.mandate-console .conversation {
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  gap: 2px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.mandate-console .conversation:hover {
+  background: var(--tone);
+}
+
+.mandate-console .conversation[aria-current="true"] {
+  background: #e3ebf5;
+}
+
+.conversation-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conversation-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.conversation-meta:empty {
+  display: none;
+}
+
+.conversation-status.is-revoked {
+  color: var(--deny);
+  font-weight: 600;
+}
+
+.conversation-waiting {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.mandate-console .conv-toggle {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+@media (min-width: 1280px) {
+  .assistant-shell {
+    grid-template-columns: 220px minmax(0, 1fr) 320px;
+  }
+  .assistant-shell.has-review {
+    grid-template-columns: 220px minmax(0, 1fr) minmax(380px, 440px);
+  }
+  .conv-rail {
+    position: sticky;
+    top: 84px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    padding: 16px 0;
+  }
+  .mandate-console .conv-toggle,
+  .conv-close-row,
+  .conv-backdrop {
+    display: none;
+  }
+}
+
+@media (max-width: 1279px) {
+  .conv-rail {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 60;
+    width: min(320px, 88%);
+    padding: 12px 16px 24px;
+    overflow-y: auto;
+    background: var(--canvas, #f5f7fa);
+    box-shadow: 12px 0 32px rgba(15, 28, 46, 0.16);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.25s;
+  }
+  .conv-rail.is-open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+
+/* The waiting list: a popover under the badge, a sheet on a phone. */
+.waiting-anchor {
+  position: relative;
+}
+
+.waiting-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 2px 4px rgba(15, 28, 46, 0.04), 0 24px 48px rgba(15, 28, 46, 0.14);
+}
+
+.waiting-popover-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.waiting-popover-head h2 {
+  font-size: 16px;
+}
+
+.waiting-list {
+  display: grid;
+  gap: 10px;
+}
+
+.waiting-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.seg {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--tone);
+}
+
+.mandate-console .seg button {
+  min-height: 30px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.mandate-console .seg button[aria-pressed="true"] {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(15, 28, 46, 0.1);
+}
+
+.waiting-rows {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.mandate-console .waiting-row {
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.mandate-console .waiting-row:hover {
+  background: var(--tone);
+}
+
+.waiting-main {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.waiting-who {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waiting-what {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waiting-meta,
+.waiting-reason {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.waiting-empty {
+  padding: 8px 2px;
+  font-size: 14px;
+}
+
+.urgency {
+  flex-shrink: 0;
+  min-width: 58px;
+  margin-top: 1px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.urgency-high {
+  background: var(--deny-tint);
+  color: var(--deny);
+}
+
+.urgency-medium {
+  background: var(--flag-tint);
+  color: var(--flag);
+}
+
+.urgency-low {
+  background: var(--tone);
+  color: var(--ink-soft);
+}
+
+.review-panel-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.review-position {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mandate-console .review-next {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .waiting-popover {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    width: auto;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    padding: 16px;
+    animation: sheet-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .review-panel-head {
+    flex-wrap: wrap;
+  }
+}
+
 @keyframes sheet-in {
   from {
     transform: translateY(24px);
@@ -1094,8 +1410,13 @@
   .activity .chevron {
     transition: none;
   }
-  .review-slot {
+  .review-slot,
+  .waiting-popover {
     animation: none;
+  }
+  .conv-rail,
+  .conv-rail.is-open {
+    transition: none;
   }
 }
 

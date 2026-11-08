@@ -13,7 +13,7 @@ vi.stubGlobal("sessionStorage", {
 const SID = "sid-1";
 const state = { openId: null as string | null, error: null as Error | null };
 const draft = (id: string, to: string): Draft => ({
-  id, status: "pending", tool: "email_send", category: "case_status", categoryLabel: "Case status updates",
+  id, status: "pending", tool: "email_send", category: "case_status", categoryLabel: "Case status updates", urgency: "medium", score: 40, reason: "r",
   args: { to, subject: `Re: ${id}`, body: `Body ${id}` }, createdAt: "2026-11-08T08:00:03Z", sid: SID,
 });
 const drafts = [draft("d1", "marcus.bell@example.com"), draft("d2", "rosa@example.com"), draft("d3", "kevin@example.com")];

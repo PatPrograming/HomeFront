@@ -27,6 +27,7 @@ except ModuleNotFoundError as exc:  # STUB until lane A (WP1) merges Backend/app
     from identity_gateway.auth_stub import StaffIdentity, require_staff
 
 from app.routers.sessions import SESSION_TTL_SECONDS, _created_epoch  # noqa: E402  (same session clock as the broker)
+from app.routers.draft_rank import rank_draft  # noqa: E402
 from app.services.agent_supervisor import AgentStartError, get_supervisor  # noqa: E402
 
 router = APIRouter(tags=["assistant"])
@@ -157,13 +158,23 @@ def agent_send_message(body: MessageIn, claims: MandateClaims = Depends(require_
 
 @router.get("/drafts")
 def list_drafts(staff: StaffIdentity = Depends(require_staff)) -> dict:
-    drafts = get_gateway().store.pending_drafts_for(staff.username)
-    return {
-        "drafts": [
-            {"id": draft_id, **draft.model_dump(mode="json"), "categoryLabel": LABELS.get(draft.category, draft.category)}
-            for draft_id, draft in drafts
-        ]
-    }
+    store = get_gateway().store
+    now = datetime.now(timezone.utc)
+    drafts = []
+    for draft_id, draft in store.pending_drafts_for(staff.username):
+        reply_to = draft.args.get("in_reply_to")
+        email = store.get_email(reply_to) if reply_to else None
+        drafts.append(
+            {
+                "id": draft_id,
+                **draft.model_dump(mode="json"),
+                "categoryLabel": LABELS.get(draft.category, draft.category),
+                **rank_draft(draft, email, now),
+            }
+        )
+    # Most urgent first; the oldest first among equals. The console can also show them by time.
+    drafts.sort(key=lambda d: (-d["score"], d["createdAt"]))
+    return {"drafts": drafts}
 
 
 @router.post("/drafts/{draft_id}/approve")

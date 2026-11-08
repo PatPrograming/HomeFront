@@ -5,7 +5,7 @@ import type { ChatMessage, Draft } from "../lib/api";
 import ReviewCards, { draftsByReply } from "./ReviewCards";
 
 const draft = (id: string, createdAt: string, to: string): Draft => ({
-  id, status: "pending", tool: "email_send", category: "case_status", categoryLabel: "Case status updates",
+  id, status: "pending", tool: "email_send", category: "case_status", categoryLabel: "Case status updates", urgency: "medium", score: 40, reason: "r",
   args: { to, subject: "Re: x", body: "y" }, createdAt, sid: "sid-1",
 });
 const drafts = [draft("d1", "2026-11-08T08:00:02Z", "marcus.bell@example.com"), draft("d2", "2026-11-08T08:00:09Z", "rosa@example.com")];

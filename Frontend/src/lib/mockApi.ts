@@ -1,7 +1,9 @@
 // Fake backend for mock mode (VITE_MOCK_API=1, dev server only). It answers the same routes as
 // lane A/B's API so the whole demo can be clicked through without a server:
 //   GET  /me                   → { username, sub, email, groups } of the demo user
-//   POST /sessions             → a fake identity card, then a scripted agent run (one event every 2 s)
+//   POST /sessions             → a fake identity card, then a scripted agent run (one event every 2 s); earlier
+//                                conversations stay open, up to MAX_OPEN per person
+//   GET  /sessions             → the caller's conversations: card fields + title, status, waiting (Lane E's shape)
 //   GET  /sessions/{sid}       → { sid, status, actingFor, office, expiresAt }; own sessions, or any for an admin
 //   GET  /events?since=<key>   → contract sample events + the generated ones, same cursor rules
 //   POST /staff/{id}/offboard  → admin only; the agent's next call becomes a DENY and the run stops
@@ -45,6 +47,7 @@ console.info("MANDATE_MOCK_API_MODULE loaded: fake API, no backend is called.");
 const STORE_KEY = "mandate.mock.v1";
 const STEP_MS = 2000;
 const OFFICE = "rep-x";
+const MAX_OPEN = 5; // open conversations per person, like the real per-user cap
 
 type Verdict = Pick<Step, "decision" | "reason" | "policyIds" | "atlas">;
 const allow = (policyId: string): Verdict => ({ decision: "ALLOW", reason: "allowed", policyIds: [policyId], atlas: [] });
@@ -149,7 +152,8 @@ export async function mockRequest(method: string, path: string, body: unknown, t
     result = { username: user.username, sub: `mock-sub-${user.username}`, email: `${user.username}@rep-x.example.gov`, groups: user.groups };
   } else if (method === "POST" && url.pathname === "/sessions") {
     if (state.offboarded[user.username]) throw new MockError(403, "staffer is offboarded");
-    for (const s of Object.values(state.sessions)) if (s.actingFor === user.username) s.stopped = true;
+    const open = Object.values(state.sessions).filter((s) => s.actingFor === user.username && Date.parse(s.expiresAt) > now);
+    if (open.length >= MAX_OPEN) throw new MockError(409, `You have ${MAX_OPEN} open conversations. Use one of them, or wait for one to end.`);
     const sid = crypto.randomUUID();
     const card = {
       sid,
@@ -162,6 +166,20 @@ export async function mockRequest(method: string, path: string, body: unknown, t
     };
     state.sessions[sid] = { ...card, startedAt: now, step: 0, stopped: false };
     result = card;
+  } else if (method === "GET" && url.pathname === "/sessions") {
+    const status = (s: MockSession) => (state.offboarded[s.actingFor] ? "revoked" : Date.parse(s.expiresAt) <= now ? "expired" : "active");
+    const firstWords = (sid: string) => state.assistant.chats[sid]?.find((m) => m.role === "user")?.text.slice(0, 60);
+    const waiting = (sid: string) => Object.values(state.assistant.drafts).filter((d) => d.sid === sid && d.status === "pending").length;
+    const sessions = Object.values(state.sessions)
+      .filter((s) => s.actingFor === user.username)
+      .map(({ startedAt, step: _step, stopped: _stopped, ...card }) => ({
+        ...card,
+        title: firstWords(card.sid) ?? "New conversation",
+        status: status({ ...card, startedAt, step: 0, stopped: false }),
+        waiting: waiting(card.sid),
+        createdAt: new Date(startedAt).toISOString(),
+      }));
+    result = { sessions };
   } else if (method === "GET" && /^\/sessions\/[^/]+$/.test(url.pathname)) {
     const s = state.sessions[decodeURIComponent(url.pathname.split("/")[2])];
     if (!s || (s.actingFor !== user.username && !user.groups.includes("admin"))) throw new MockError(404, "Unknown session");

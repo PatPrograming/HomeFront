@@ -6,7 +6,7 @@ vi.mock("../lib/api", () => ({ api: {} }));
 const { default: ReviewPanel } = await import("./ReviewPanel");
 
 const email: Draft = {
-  id: "d1", status: "pending", tool: "email_send", category: "case_status", categoryLabel: "Case status updates",
+  id: "d1", status: "pending", tool: "email_send", category: "case_status", categoryLabel: "Case status updates", urgency: "medium", score: 40, reason: "r",
   args: { to: "marcus.bell@example.com", subject: "Re: Post office", body: "Hi Marcus," }, createdAt: "2026-11-08T08:00:00Z", sid: "sid-1",
 };
 // The <input> tag showing `value`, and whether it has React's real readOnly attribute (rendered readonly="";
@@ -43,5 +43,15 @@ describe("ReviewPanel: one draft, opened from the chat", () => {
     const html = render(post);
     expect(isReadOnly(inputTag(html, "@official"))).toBe(true);
     expect(html).toContain("Approve and post");
+  });
+});
+
+describe("ReviewPanel: next waiting", () => {
+  it("offers Next with the position when there is another waiting draft", () => {
+    const html = renderToStaticMarkup(
+      <ReviewPanel draft={email} locked={false} onDone={async () => {}} onClose={() => {}} position={{ index: 1, total: 4 }} onNext={() => {}} />,
+    );
+    expect(html).toContain("1 of 4");
+    expect(html).toContain("Next waiting");
   });
 });
