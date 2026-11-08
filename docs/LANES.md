@@ -33,7 +33,7 @@ token replay demo, KMS → HS256, styling go first).
 
 | Lane | WPs | Owner | Branch | Writes only in |
 |---|---|---|---|---|
-| A · Cognito | WP1 | Huy | `Cognito-Huy` | `Backend/infra/cognito.sh`, `Backend/app/core/cognito.py`, `Backend/app/core/auth.py`, `Backend/app/core/config.py` (Cognito settings only), `Backend/tests/test_cognito*.py`, `Backend/infra/README.md` (Cognito section); approved by lead: `Backend/app/routers/profiles.py`, `Backend/app/services/profiles.py`, `Backend/app/schemas/profile.py` and existing `/me` tests (GET /me returns the Cognito identity; PATCH /me removed) |
+| A · Cognito | WP1 | Huy | `Cognito-Huy` | `Backend/infra/cognito.sh`, `Backend/app/core/cognito.py`, `Backend/app/core/auth.py`, `Backend/app/core/config.py` (Cognito settings only), `Backend/tests/test_cognito*.py`, `Backend/infra/README.md` (Cognito section); approved by lead: `Backend/app/routers/profiles.py`, `Backend/app/services/profiles.py`, `Backend/app/schemas/profile.py` existing `/me` tests, and two login tests in `Backend/tests/test_routes.py` (GET /me returns the Cognito identity; PATCH /me removed) |
 | B · Gateway | WP2 + WP3 + WP7 `setup.sh` | gateway author (TBD), Huy until claimed | `Gateway-Huy` | `packages/identity-gateway/**`, `Backend/app/agent_iam.py`, `Backend/app/main.py`, `Backend/app/routers/{sessions,staff,events}.py`, `Backend/infra/{setup.sh,seed.py}`, `Backend/policy/**`, `Backend/tests/test_gateway*.py`, `Backend/requirements.txt`, `scripts/run-gateway.sh` |
 | C · Agent + Guardrails | WP4 + WP5 | Huy | `Agent-Guardrails-Huy` | `agent/**`, `packages/guardrail-scanner/**`, `docs/GUARDRAIL_EVAL.md` |
 | D · Console | WP6 | frontend teammate | `Console-Huy` | `Frontend/**` |
