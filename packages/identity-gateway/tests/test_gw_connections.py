@@ -757,7 +757,7 @@ def test_module_level_helpers_use_the_installed_service(svc, cx):
 # ---- logging --------------------------------------------------------------------------------
 
 
-def test_nothing_logs_a_token_code_or_verifier(svc, clock, table, caplog):
+def test_nothing_logs_a_token_code_or_verifier(env, svc, clock, table, caplog):
     caplog.set_level(logging.DEBUG)
     url = svc.start("maya", "gmail")
     state = state_of(url)
@@ -804,7 +804,7 @@ def is_refresh(request):
 # ---- G1: refresh must not resurrect a disconnected row -----------------------------------------
 
 
-def test_refresh_after_a_concurrent_disconnect_does_not_recreate_the_row(cx, staffers, provider, clock, kms_key, table):
+def test_refresh_after_a_concurrent_disconnect_does_not_recreate_the_row(env, cx, staffers, provider, clock, kms_key, table):
     def disconnect_mid_refresh(request):
         if is_refresh(request):
             table.delete_item(Key={"pk": "CONNECTION#maya", "sk": "PROVIDER#gmail"})
@@ -818,7 +818,7 @@ def test_refresh_after_a_concurrent_disconnect_does_not_recreate_the_row(cx, sta
     assert [i for i in raw_items(table) if i["pk"].startswith("CONNECTION#")] == []
 
 
-def test_send_after_a_concurrent_disconnect_sends_nothing_and_list_still_works(cx, staffers, provider, clock, kms_key, table):
+def test_send_after_a_concurrent_disconnect_sends_nothing_and_list_still_works(env, cx, staffers, provider, clock, kms_key, table):
     def disconnect_mid_refresh(request):
         if is_refresh(request):
             table.delete_item(Key={"pk": "CONNECTION#maya", "sk": "PROVIDER#gmail"})
@@ -835,7 +835,7 @@ def test_send_after_a_concurrent_disconnect_sends_nothing_and_list_still_works(c
 # ---- G2: a failed refresh must not delete a row someone else already refreshed ------------------
 
 
-def test_refresh_failure_keeps_a_row_that_a_parallel_refresh_already_replaced(cx, staffers, provider, clock, kms_key, table):
+def test_refresh_failure_keeps_a_row_that_a_parallel_refresh_already_replaced(env, cx, staffers, provider, clock, kms_key, table):
     holder = {}
 
     def parallel_winner_then_400(request):
@@ -916,7 +916,7 @@ def x_body(**changes):
     return {k: v for k, v in body.items() if v is not None}
 
 
-def test_gmail_grant_without_gmail_send_is_rejected_nothing_stored_and_revoked(cx, staffers, provider, clock, kms_key, table):
+def test_gmail_grant_without_gmail_send_is_rejected_nothing_stored_and_revoked(env, cx, staffers, provider, clock, kms_key, table):
     svc = build(cx, staffers, provider, clock, kms_key, token_override(GOOGLE_TOKEN, google_body(scope="openid email")))
     with pytest.raises(cx.ProviderError):
         connect(svc)
@@ -926,7 +926,7 @@ def test_gmail_grant_without_gmail_send_is_rejected_nothing_stored_and_revoked(c
     assert dict(urllib.parse.parse_qsl(revokes[0].content.decode()))["token"] in (ACCESS_1, REFRESH_1)
 
 
-def test_x_grant_without_tweet_write_is_rejected_nothing_stored_and_revoked(cx, staffers, provider, clock, kms_key, table):
+def test_x_grant_without_tweet_write_is_rejected_nothing_stored_and_revoked(env, cx, staffers, provider, clock, kms_key, table):
     body = x_body(scope="tweet.read users.read offline.access")
     svc = build(cx, staffers, provider, clock, kms_key, token_override(X_TOKEN, body))
     with pytest.raises(cx.ProviderError):
@@ -935,7 +935,7 @@ def test_x_grant_without_tweet_write_is_rejected_nothing_stored_and_revoked(cx, 
     assert len(provider.to(X_REVOKE)) == 1
 
 
-def test_stored_scopes_are_the_scopes_actually_granted(cx, staffers, provider, clock, kms_key, table):
+def test_stored_scopes_are_the_scopes_actually_granted(env, cx, staffers, provider, clock, kms_key, table):
     granted = f"openid https://www.googleapis.com/auth/userinfo.email {GMAIL_SEND_SCOPE}"
     svc = build(cx, staffers, provider, clock, kms_key, token_override(GOOGLE_TOKEN, google_body(scope=granted)))
     conn = connect(svc)
@@ -945,7 +945,7 @@ def test_stored_scopes_are_the_scopes_actually_granted(cx, staffers, provider, c
 
 
 @pytest.mark.parametrize("missing", ["id_token", "access_token", "expires_in"])
-def test_gmail_token_response_missing_a_field_is_provider_error(cx, staffers, provider, clock, kms_key, table, missing):
+def test_gmail_token_response_missing_a_field_is_provider_error(env, cx, staffers, provider, clock, kms_key, table, missing):
     svc = build(cx, staffers, provider, clock, kms_key, token_override(GOOGLE_TOKEN, google_body(**{missing: None})))
     with pytest.raises(cx.ProviderError):
         connect(svc)
@@ -953,7 +953,7 @@ def test_gmail_token_response_missing_a_field_is_provider_error(cx, staffers, pr
 
 
 @pytest.mark.parametrize("missing", ["access_token", "expires_in"])
-def test_x_token_response_missing_a_field_is_provider_error(cx, staffers, provider, clock, kms_key, table, missing):
+def test_x_token_response_missing_a_field_is_provider_error(env, cx, staffers, provider, clock, kms_key, table, missing):
     svc = build(cx, staffers, provider, clock, kms_key, token_override(X_TOKEN, x_body(**{missing: None})))
     with pytest.raises(cx.ProviderError):
         connect(svc, provider_id="x")
@@ -963,7 +963,7 @@ def test_x_token_response_missing_a_field_is_provider_error(cx, staffers, provid
 # ---- G6: clean up the grant when a later step fails; only invalid_grant deletes ------------------
 
 
-def test_failed_x_handle_lookup_revokes_the_fresh_token_and_stores_nothing(cx, staffers, provider, clock, kms_key, table):
+def test_failed_x_handle_lookup_revokes_the_fresh_token_and_stores_nothing(env, cx, staffers, provider, clock, kms_key, table):
     def me_500(request):
         if str(request.url).split("?")[0] == X_ME:
             return httpx.Response(500, json={})
