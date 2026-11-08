@@ -168,13 +168,13 @@ Resources:
                 Action: sts:AssumeRole
                 Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AgentRoleName}
               # Conversation auto-titles (Backend/app/services/conversations.py) run in the gateway on
-              # Haiku 5.5 only. The agents' Sonnet 5 stays with homefront-agent.
+              # Haiku 4.5 only (the workshop's model allowlist denies Haiku 5.5). The agents' Sonnet 5 stays with homefront-agent.
               - Sid: ConversationTitlesHaikuOnly
                 Effect: Allow
                 Action: bedrock:InvokeModel
                 Resource:
-                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-5-5*
-                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.claude-haiku-5-5*
+                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0
               # The gateway's own scan of untrusted tool output (guarded() -> guardrail_scanner.scan).
               - Sid: GuardrailScan
                 Effect: Allow
@@ -365,6 +365,7 @@ Resources:
             - { Name: DYNAMODB_TABLE_PREFIX, Value: !Ref TablePrefix }
             - { Name: AGENT_STORE, Value: dynamodb }
             - { Name: HOMEFRONT_AUTOSTART_AGENT, Value: "1" }
+            - { Name: HOMEFRONT_TITLE_MODEL_ID, Value: us.anthropic.claude-haiku-4-5-20251001-v1:0 } # the one model TaskRole may call
             - Name: HOMEFRONT_AGENT_ROLE_ARN
               Value: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AgentRoleName}
             - Name: CONNECTIONS_KMS_KEY_ID
