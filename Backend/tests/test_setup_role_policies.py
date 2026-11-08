@@ -35,6 +35,12 @@ elif op == "create-policy":
     name = json.loads(args[args.index("--definition") + 1])["static"]["description"]
     state["policies"][name] = "avp-" + name
     print(state["policies"][name])
+elif op == "get-policy":
+    pid = args[args.index("--policy-id") + 1]
+    print(state["texts"].get(pid, "old text"))
+elif op == "update-policy":
+    pid = args[args.index("--policy-id") + 1]
+    state["texts"][pid] = json.loads(args[args.index("--definition") + 1])["static"]["statement"]
 elif op == "scan":
     print(json.dumps({{"Items": state["staffers"]}}))
 else:
@@ -64,8 +70,9 @@ def fake(tmp_path):
                MANDATE_ENV_FILE=str(env_file))
 
     class Fake:
-        def setup(self, policies, staffers):
-            state_path.write_text(json.dumps({"calls": [], "policies": policies, "staffers": staffers}))
+        def setup(self, policies, staffers, texts=None):
+            state = {"calls": [], "policies": policies, "staffers": staffers, "texts": texts or {}}
+            state_path.write_text(json.dumps(state))
 
         def run(self, *args):
             return subprocess.run(["bash", str(SCRIPT), *args], env=env, capture_output=True, text=True)
@@ -125,3 +132,37 @@ def test_dry_run_calls_nothing(fake):
     assert result.returncode == 0
     assert fake.state()["calls"] == []
     assert "dynamodb scan" in result.stderr
+
+
+def _role_files():
+    policies = ROOT / "packages" / "mandate-contracts" / "policies"
+    return {name: (policies / f"{name}.cedar").read_text() for name in ROLE}
+
+
+def test_update_rewrites_only_role_policies_whose_text_changed(fake):
+    """The admin-editable role table needs the role-agnostic policies in AVP; setup.sh never updated before."""
+    files = _role_files()
+    current = {"avp-role-web-scrape": files["role-web-scrape"]}  # already the new text
+    fake.setup({**EXISTING, **{name: f"avp-{name}" for name in ROLE}}, GOOD, current)
+    result = fake.run("--apply", "--update-role-policies")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count("updated: role-") == 5 and "exists: role-web-scrape" in result.stdout
+    after = fake.state()
+    assert after["texts"] == {f"avp-{n}": t for n, t in files.items()}
+    assert ["verifiedpermissions", "create-policy"] not in after["calls"]
+    assert fake.env_names() == sorted(STARTER + ROLE)  # same ids, same names
+    again = fake.run("--apply", "--update-role-policies")
+    assert "updated:" not in again.stdout
+
+
+def test_without_the_update_flag_existing_role_policies_are_left_alone(fake):
+    fake.setup({**EXISTING, **{name: f"avp-{name}" for name in ROLE}}, GOOD)
+    assert fake.run("--apply", "--with-role-policies").returncode == 0
+    assert ["verifiedpermissions", "update-policy"] not in fake.state()["calls"]
+    assert ["verifiedpermissions", "get-policy"] not in fake.state()["calls"]
+
+
+def test_update_dry_run_calls_nothing(fake):
+    fake.setup({}, [])
+    result = fake.run("--update-role-policies")
+    assert result.returncode == 0 and fake.state()["calls"] == []
