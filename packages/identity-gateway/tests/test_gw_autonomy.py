@@ -58,7 +58,7 @@ def test_cedar_still_decides_first_so_a_denied_send_leaves_no_draft(gateway, sto
     assert store.pending_drafts_for("maya") == []
 
 
-def test_official_posts_are_held_until_allowed(gateway, make_token, handler_spy):
+def test_official_posts_are_held_until_allowed(maya_posts, gateway, make_token, handler_spy):
     out = gateway.guarded("social_post", {"account": "official", "text": "Town hall Tuesday"}, make_token())
     assert out.result["status"] == "held_for_review" and out.result["category"] == "social_post"
     assert handler_spy.calls == []

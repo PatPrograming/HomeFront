@@ -17,6 +17,7 @@ from identity_gateway.gateway import get_gateway
 from identity_gateway.tokens import mint_mandate_token
 from mandate_contracts import TOOLS, TTL_SECONDS, MandateClaims
 from mandate_contracts.ddb import SessionItem
+from mandate_contracts.roles import ROLE_TOOLS, role_label
 
 try:
     from app.core.cognito import AgentClientIdentity, StaffIdentity, require_agent_client, require_staff
@@ -29,7 +30,10 @@ router = APIRouter(tags=["broker"])
 
 AGENT_ID = os.environ.get("MANDATE_AGENT_ID", "agent-1")
 SESSION_TTL_SECONDS = 60 * 60  # a session can mint 15-minute mandate tokens for one hour
-ALLOWED_TOOLS = [name for name, spec in TOOLS.items() if not spec.always_denied]
+
+def allowed_tools(office_role: str | None) -> list[str]:
+    """What the console lists as allowed. Display only: Cedar's role policies are what enforce it."""
+    return [name for name, spec in TOOLS.items() if not spec.always_denied and name in ROLE_TOOLS.get(office_role or "", ())]
 
 
 def _iso(epoch: int) -> str:
@@ -67,7 +71,10 @@ def create_session(staff: StaffIdentity = Depends(require_staff)) -> dict:
         "actingFor": session.acting_for,
         "office": session.office,
         "mode": session.mode,
-        "allowedTools": ALLOWED_TOOLS,
+        # The role is read from the STAFFER item; nothing the client sends can set it.
+        "role": staffer.office_role,
+        "roleLabel": role_label(staffer.office_role),
+        "allowedTools": allowed_tools(staffer.office_role),
         "expiresAt": _iso(now + SESSION_TTL_SECONDS),
     }
 

@@ -2,7 +2,7 @@
 
 The gateway builds an `AuthzRequest` from the token and DynamoDB, never from
 tool input. `AvpAuthorizer` is the real one. `StarterPolicyAuthorizer` is a
-test double that applies the same six starter policies in plain Python.
+test double that applies the same policies in plain Python.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from mandate_contracts import cedar
+from mandate_contracts.roles import ROLE_GOVERNED_TOOLS, ROLE_TOOLS, role_policy_id
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class AuthzRequest:
     agent_id: str
     office: str  # the agent's office, from the SESSION item
     mode: str  # "official" or "campaign", from the SESSION item
+    role: str  # the staffer's office role, from the STAFFER item; "" when none is on file
     tool: str
     resource: dict[str, Any]  # cedar.case_entity(...) or cedar.tool_entity(...)
     context: dict[str, Any]  # cedar.build_context(...): every key always present
@@ -59,7 +61,7 @@ class AvpAuthorizer:
             action=cedar.action(req.tool),
             resource=req.resource["identifier"],
             context=req.context,
-            entities={"entityList": [cedar.agent_entity(req.agent_id, req.office, req.mode), req.resource]},
+            entities={"entityList": [cedar.agent_entity(req.agent_id, req.office, req.mode, req.role), req.resource]},
         )
         ids = [self.policy_names.get(p["policyId"], p["policyId"]) for p in response.get("determiningPolicies", [])]
         # A Cedar evaluation error means some policy was skipped; a skipped forbid would
@@ -75,7 +77,7 @@ def _attr(entity_or_context: dict[str, Any], key: str) -> Any:
 
 
 class StarterPolicyAuthorizer:
-    """Test double: the six starter policies (packages/mandate-contracts/policies) in Python.
+    """Test double: the policies in packages/mandate-contracts/policies, in Python.
 
     Cedar semantics: any matching forbid wins; otherwise allow if a permit matches;
     otherwise deny with no determining policy.
@@ -91,6 +93,8 @@ class StarterPolicyAuthorizer:
             forbids.append("forbid-bulk-export")
         if req.tool == "social_post" and req.mode == "official" and account == "campaign":
             forbids.append("forbid-campaign-post")
+        if req.tool in ROLE_GOVERNED_TOOLS and req.tool not in ROLE_TOOLS.get(req.role, ()):
+            forbids.append(role_policy_id(req.tool))
         if forbids:
             return AuthzDecision(False, forbids)
 

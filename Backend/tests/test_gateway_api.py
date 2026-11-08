@@ -55,10 +55,10 @@ def table():
 @pytest.fixture
 def store(table):
     s = MandateStore(table)
-    s.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer"))
-    s.put_staffer("chiefofstaff", StafferItem(active=True, office="rep-x", role="admin"))
-    s.put_staffer("dana", StafferItem(active=True, office="rep-z", role="staffer"))
-    s.put_staffer("retired", StafferItem(active=False, office="rep-x", role="staffer"))
+    s.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer", office_role="caseworker"))
+    s.put_staffer("chiefofstaff", StafferItem(active=True, office="rep-x", role="admin", office_role="chief_of_staff"))
+    s.put_staffer("dana", StafferItem(active=True, office="rep-z", role="staffer", office_role="caseworker"))
+    s.put_staffer("retired", StafferItem(active=False, office="rep-x", role="staffer", office_role="caseworker"))
     s.put_case(
         "case-1",
         CaseItem(
@@ -175,6 +175,28 @@ def test_staffer_creates_a_session_with_facts_from_the_database(client, store):
 def test_session_office_comes_from_the_staffer_item_not_the_token(client):
     dana = StaffIdentity("dana", "sub-dana", None, frozenset({"staffer"}))
     assert new_session(client, dana)["office"] == "rep-z"
+
+
+def test_session_role_and_allowed_tools_come_from_the_staffer_item(client, store):
+    body = new_session(client)
+    assert body["role"] == "caseworker" and body["roleLabel"] == "Caseworker"
+    assert body["allowedTools"] == ["inbox_read", "case_read", "datagov_search", "web_scrape", "email_send"]
+    chief = new_session(client, CHIEF)
+    assert chief["role"] == "chief_of_staff" and "social_post" in chief["allowedTools"]
+    assert "records_bulk_export" not in chief["allowedTools"]
+
+
+def test_a_role_sent_by_the_client_is_ignored(client, store):
+    as_staff()
+    r = client.post("/api/v1/sessions", json={"role": "chief_of_staff", "officeRole": "chief_of_staff"})
+    assert r.status_code == 200 and r.json()["role"] == "caseworker"
+    assert "social_post" not in r.json()["allowedTools"]
+
+
+def test_a_staffer_with_no_role_on_file_gets_a_session_with_no_tools(client, store):
+    store.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer"))
+    body = new_session(client)
+    assert body["role"] is None and body["roleLabel"] == "No role" and body["allowedTools"] == []
 
 
 def test_each_session_gets_a_fresh_sid(client):

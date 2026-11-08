@@ -45,7 +45,7 @@ def test_email_to_an_unknown_address_is_denied(gateway, make_token, handler_spy)
     assert handler_spy.calls == []
 
 
-def test_social_post_to_the_campaign_account_is_denied(gateway, make_token, handler_spy):
+def test_social_post_to_the_campaign_account_is_denied(maya_posts, gateway, make_token, handler_spy):
     out = gateway.guarded("social_post", {"account": "campaign", "text": "Vote!"}, make_token())
     assert out.allowed is False and out.result is None
     assert out.event.policy_ids == ["forbid-campaign-post"]

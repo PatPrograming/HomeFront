@@ -264,6 +264,11 @@
   color: var(--line-strong, #c5cdd8);
 }
 
+.identity-role {
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .mandate-console .rail-toggle {
   flex-shrink: 0;
   display: inline-flex;

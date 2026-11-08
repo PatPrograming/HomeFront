@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .roles import ROLE_POLICIES
+
 NAMESPACE = "Mandate"
 
 CONTEXT_DEFAULTS: dict[str, bool | str] = {
@@ -35,6 +37,8 @@ STARTER_POLICIES: dict[str, str] = {
     "forbid-bulk-export": """forbid(principal, action == Mandate::Action::"records_bulk_export", resource);""",
     "forbid-campaign-post": """forbid(principal, action == Mandate::Action::"social_post", resource)
   when { principal.mode == "official" && context.account == "campaign" };""",
+    # One forbid per tool for the staffer's office role (roles.py, docs/ROLES.md).
+    **ROLE_POLICIES,
 }
 
 
@@ -55,10 +59,11 @@ def action(tool: str) -> dict[str, str]:
     return {"actionType": f"{NAMESPACE}::Action", "actionId": tool}
 
 
-def agent_entity(agent_id: str, office: str, mode: str) -> dict[str, Any]:
+def agent_entity(agent_id: str, office: str, mode: str, role: str) -> dict[str, Any]:
+    """`role` must come from the STAFFER item in DynamoDB; "" (no role on file) fails every role policy."""
     return {
         "identifier": {"entityType": f"{NAMESPACE}::Agent", "entityId": agent_id},
-        "attributes": {"office": _value(office), "mode": _value(mode)},
+        "attributes": {"office": _value(office), "mode": _value(mode), "role": _value(role)},
     }
 
 

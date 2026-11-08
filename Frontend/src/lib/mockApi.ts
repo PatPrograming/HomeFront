@@ -7,7 +7,7 @@
 //   POST /staff/{id}/offboard  → admin only; the agent's next call becomes a DENY and the run stops
 //   chat, review queue and autonomy routes → mockAssistant.ts
 // State lives in localStorage so a Maya tab and a Chief of Staff tab see the same fake world.
-import { TOOL_NAMES, type DecisionEvent } from "../../../packages/mandate-contracts/ts/index";
+import { ROLE_LABELS, ROLE_TOOLS, TOOL_NAMES, type DecisionEvent, type Role } from "../../../packages/mandate-contracts/ts/index";
 import sampleEvents from "../../../packages/mandate-contracts/samples/events.json";
 import { eventKey, nextCursor } from "./events";
 import { assistantRoute, emptyAssistantState, mergeAssistantState, MockError, type AssistantState } from "./mockAssistant";
@@ -103,6 +103,17 @@ export function resetMock(): void {
   localStorage.removeItem(STORE_KEY);
 }
 
+// The demo accounts' office roles, as Backend/infra/test-users.sh writes them (docs/ROLES.md).
+const MOCK_ROLES: Record<string, Role> = {
+  admin: "chief_of_staff",
+  chiefofstaff: "chief_of_staff",
+  bronco: "caseworker",
+  maya: "caseworker",
+  scuacm: "communications_director",
+  a10: "legislative_aide",
+  aws: "intern",
+};
+
 function caller(token: string | null): { username: string; groups: string[] } {
   if (!token) throw new MockError(401, "not signed in");
   return { username: String(decodeJwt(token).username), groups: groupsFromAccessToken(token) };
@@ -151,13 +162,17 @@ export async function mockRequest(method: string, path: string, body: unknown, t
     if (state.offboarded[user.username]) throw new MockError(403, "staffer is offboarded");
     for (const s of Object.values(state.sessions)) if (s.actingFor === user.username) s.stopped = true;
     const sid = crypto.randomUUID();
+    const role = MOCK_ROLES[user.username] ?? (user.groups.includes("admin") ? "chief_of_staff" : "caseworker");
     const card = {
       sid,
       agent: "agent-1",
       actingFor: user.username,
       office: OFFICE,
       mode: "official",
-      allowedTools: TOOL_NAMES.filter((t) => t !== "records_bulk_export"),
+      // Like the real broker: the role comes from the account (test-users.sh), never from the client.
+      role,
+      roleLabel: ROLE_LABELS[role],
+      allowedTools: TOOL_NAMES.filter((t) => ROLE_TOOLS[role].includes(t)),
       expiresAt: new Date(now + 60 * 60 * 1000).toISOString(), // a session lasts one hour, like the real one
     };
     state.sessions[sid] = { ...card, startedAt: now, step: 0, stopped: false };
