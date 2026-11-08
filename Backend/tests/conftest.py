@@ -117,18 +117,74 @@ def _no_real_email(monkeypatch):
     email_admin.clear_cache()
 
 
-@pytest.fixture(autouse=True)
-def _no_connection_gate(monkeypatch):
-    """Same rule as packages/identity-gateway/tests/conftest.py: tests here run without Lane I's
-    connection gate unless they install one (test_connect_prompt.py and test_draft_edit.py install a
-    double through `gateway.connections`). The gate itself is tested in
-    packages/identity-gateway/tests/test_gw_needs_connection.py and test_gw_connections_merged.py."""
+class _FakeSes:
+    def __init__(self):
+        self.sent: list[dict] = []
+
+    def send_email(self, **kwargs):
+        self.sent.append(kwargs)
+        return {"MessageId": "ses-123"}
+
+
+@pytest.fixture
+def office_ses(monkeypatch):
+    """The office has an SES sender (fake client, no AWS). Lead's ruling: an email goes through the
+    staffer's Gmail, else this sender, else "needs connection". No test staffer has Gmail, so with or
+    without Lane I's `connections` module an email that is sent goes through the `email.send` SES handler.
+    Use it in tests that need an email to actually send."""
+    from app.agent_iam import ensure_package_paths
+
+    ensure_package_paths()
+    from mcp_tools import handlers
+
+    fake = _FakeSes()
+    monkeypatch.setattr(handlers, "_ses_client", lambda quick=False: fake)
+    monkeypatch.setenv("HOMEFRONT_EMAIL_FROM", "office@example.gov")
+    return fake
+
+
+class _NeedsConnection(Exception):
+    def __init__(self, provider):
+        super().__init__(provider)
+        self.provider = provider
+
+
+@pytest.fixture
+def all_connected(monkeypatch):
+    """Every staffer has Gmail and X connected: a recording double on `gateway.connections` with Lane I's
+    signatures. For tests about something else (roles, Cedar) whose calls send under auto or a grant; it
+    behaves the same before and after Lane I merges. The gate itself is tested in
+    packages/identity-gateway/tests/test_gw_needs_connection.py and test_gw_connections_merged.py,
+    and here in test_connect_prompt.py and test_draft_edit.py."""
+    import types
+
     from app.agent_iam import ensure_package_paths
 
     ensure_package_paths()
     import identity_gateway.gateway as gw
 
-    monkeypatch.setattr(gw, "connections", None, raising=False)
+    d = types.ModuleType("identity_gateway.connections")
+    d.NeedsConnection, d.ProviderError, d.CONNECTABLE = _NeedsConnection, type("ProviderError", (Exception,), {}), ("gmail", "x")
+    d.gmail, d.x = [], []
+    d.provider_for_tool = lambda tool, args: (
+        "gmail" if tool in ("email_send", "email_send_list")
+        else "x" if tool in ("social_post", "social_reply") and (args.get("platform") or "x") == "x"
+        else None
+    )
+    d.require_connection = lambda staffer_id, provider: None
+    d.needs_connection_result = lambda exc: {"status": "needs_connection", "provider": exc.provider}
+
+    def send_gmail(staffer_id, to, subject, body, in_reply_to=None):
+        d.gmail.append((staffer_id, to))
+        return {"status": "sent", "provider": "gmail"}
+
+    def post_x(staffer_id, text, reply_to=None):
+        d.x.append((staffer_id, text))
+        return {"status": "posted", "provider": "x"}
+
+    d.send_gmail, d.post_x = send_gmail, post_x
+    monkeypatch.setattr(gw, "connections", d, raising=False)
+    return d
 
 
 # --- Agents-tab role resolver (docs/loops/agent-permissions.md, Design 6) ----------------------

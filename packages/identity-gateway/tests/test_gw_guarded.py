@@ -84,18 +84,19 @@ def test_inbox_read_returns_the_email_item(gateway, make_token, world):
     assert world.email_body in blob and "Road repair" in blob and "citizen@example.com" in blob
 
 
-def test_allowed_email_send_runs_the_mcp_tools_handler_and_is_simulated(
-    trusted_replies, gateway, make_token, handler_spy, world
-):
+def test_allowed_email_send_runs_the_mcp_tools_handler(trusted_replies, gateway, make_token, handler_spy, world, office_ses):
     out = gateway.guarded("email_send", KNOWN_ARGS["email_send"], make_token())
     assert out.allowed is True
-    assert out.result["simulated"] is True
+    assert out.result["simulated"] is False and len(office_ses.sent) == 1
     assert handler_spy.calls, "email_send did not go through an mcp_tools handler"
 
 
 @pytest.mark.parametrize("tool", ["datagov_search", "web_scrape", "social_post"])
 def test_other_allowed_tools_go_through_mcp_tools(maya_posts, trusted_replies, gateway, make_token, handler_spy, tool):
-    out = gateway.guarded(tool, KNOWN_ARGS[tool], make_token())
+    args = KNOWN_ARGS[tool]
+    if tool == "social_post":  # a share-link platform: X posts go through the connected account, not a handler
+        args = {**args, "platform": "bluesky"}
+    out = gateway.guarded(tool, args, make_token())
     assert out.allowed is True and out.result
     assert handler_spy.calls
 
@@ -369,7 +370,7 @@ def test_authorizer_error_is_a_deny(store, secret, make_token, world, events_of,
     assert e.decision == "DENY"
 
 
-def test_tool_handler_error_is_a_deny(trusted_replies, gateway, make_token, handler_spy):
+def test_tool_handler_error_is_a_deny(trusted_replies, gateway, make_token, handler_spy, office_ses):
     handler_spy.boom = True
     out = gateway.guarded("email_send", KNOWN_ARGS["email_send"], make_token())
     assert handler_spy.calls, "the handler was supposed to run and fail"

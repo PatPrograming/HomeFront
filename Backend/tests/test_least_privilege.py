@@ -147,7 +147,7 @@ def test_a_category_cannot_be_chosen_by_the_agent(client, session, gateway, stor
     assert gateway.guarded("email_send", args, token).result["status"] == "held_for_review"
 
 
-def test_grants_are_per_session_and_die_with_offboarding(client, session, gateway, store):
+def test_grants_are_per_session_and_die_with_offboarding(client, session, gateway, store, office_ses):
     as_staff()
     client.post(f"/api/v1/sessions/{SID}/grants", json={"category": "case_status"})
     assert _send(gateway).event.reason == "allowed"  # the grant works on its own session

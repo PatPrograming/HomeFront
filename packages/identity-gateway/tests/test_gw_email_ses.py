@@ -30,7 +30,14 @@ def ses(monkeypatch):
     return fake
 
 
-def test_without_a_sender_configured_the_send_is_simulated(trusted_replies, gateway, make_token, world, ses, monkeypatch):
+def test_without_a_sender_or_the_connections_module_the_send_is_simulated(
+    trusted_replies, gateway, make_token, world, ses, monkeypatch
+):
+    """A gateway deployed without Lane I's module. With the module and no Gmail, the same send is
+    "needs connection" instead (test_gw_needs_connection.py, test_gw_connections_merged.py)."""
+    import identity_gateway.gateway as gw
+
+    monkeypatch.setattr(gw, "connections", None, raising=False)
     monkeypatch.delenv("HOMEFRONT_EMAIL_FROM", raising=False)
     out = gateway.guarded("email_send", {"to": world.known_email, **ARGS}, make_token())
     assert out.allowed is True

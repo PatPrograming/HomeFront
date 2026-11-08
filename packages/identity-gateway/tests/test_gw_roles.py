@@ -332,7 +332,7 @@ def _grant_everything(store, sid, staffer_id="maya"):
 @pytest.mark.parametrize("granted", [False, True], ids=["no-grants", "every-grant"])
 @pytest.mark.parametrize("role", [*ROLES, None])
 def test_the_agent_never_gets_a_tool_its_staffers_role_lacks(
-    cedar_gateway, store, make_token, world, handler_spy, role, granted, trusted_replies
+    cedar_gateway, store, make_token, world, handler_spy, role, granted, trusted_replies, all_connected
 ):
     store.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer", office_role=role))
     if granted:
@@ -361,7 +361,7 @@ def test_a_grant_or_auto_outside_the_role_is_ignored_by_the_gateway(cedar_gatewa
     assert handler_spy.calls == [] and store.get_autonomy("maya", "social_post").level == "auto"
 
 
-def test_forbids_win_over_every_grant_for_the_chief_of_staff(cedar_gateway, store, make_token, world, handler_spy):
+def test_forbids_win_over_every_grant_for_the_chief_of_staff(cedar_gateway, store, make_token, world, handler_spy, all_connected):
     _grant_everything(store, world.chief_sid, "chiefofstaff")  # granted on the chief's own session
     token = make_token(act="chiefofstaff", sid=world.chief_sid)
     official = cedar_gateway.guarded("social_post", {"account": "official", "text": "hi"}, token)
@@ -371,6 +371,7 @@ def test_forbids_win_over_every_grant_for_the_chief_of_staff(cedar_gateway, stor
     bulk = cedar_gateway.guarded("records_bulk_export", {"query": "all"}, token)
     assert campaign.event.policy_ids == ["forbid-campaign-post"] and bulk.event.policy_ids == ["forbid-bulk-export"]
     assert not campaign.allowed and not bulk.allowed and handler_spy.calls == []
+    assert all_connected.x == [("chiefofstaff", "hi")]  # only the official post went out
 
 
 # ---- the agent's identity cannot be swapped -------------------------------------
