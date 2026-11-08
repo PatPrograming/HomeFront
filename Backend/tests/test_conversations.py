@@ -84,10 +84,8 @@ def test_a_staffer_lists_each_of_their_open_conversations(client, store):
 
 
 def test_the_newest_conversation_comes_first(client):
-    older = open_conversation(client, "first")
-    time.sleep(1.1)  # created_at has one-second resolution
-    newer = open_conversation(client, "second")
-    assert [row["sid"] for row in listed(client)] == [newer, older]
+    opened = [open_conversation(client, f"conversation {n}") for n in range(4)]  # within the same second
+    assert [row["sid"] for row in listed(client)] == opened[::-1]
 
 
 def test_the_title_is_the_first_message_trimmed(client):
@@ -98,9 +96,16 @@ def test_the_title_is_the_first_message_trimmed(client):
     assert title.startswith("Find the FEMA flood claims") and len(title) <= 60 and title == title.strip()
 
 
-def test_a_conversation_with_no_message_yet_has_a_placeholder_title(client):
-    sid = open_conversation(client)
+@pytest.mark.parametrize("first", [None, "   ", "\n\t"])
+def test_a_conversation_with_no_words_yet_has_a_placeholder_title(client, first):
+    sid = open_conversation(client, first)
     assert next(row["title"] for row in listed(client) if row["sid"] == sid) == "New conversation"
+
+
+def test_a_deactivated_staffers_conversations_are_listed_as_revoked(client, store):
+    sid = open_conversation(client, "before deactivation")
+    store.set_staffer_active("maya", False)  # deactivated without the sessions being revoked yet
+    assert next(row["status"] for row in listed(client) if row["sid"] == sid) == "revoked"
 
 
 def test_an_expired_conversation_is_listed_as_expired(client, store):

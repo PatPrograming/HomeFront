@@ -51,7 +51,8 @@ def create_session(staff: StaffIdentity = Depends(require_staff)) -> dict:
     staffer = store.get_staffer(staff.username)
     if staffer is None or not staffer.active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Staffer is not active")
-    now = int(time.time())
+    started = time.time()
+    now = int(started)
     sid = str(uuid.uuid4())
     session = SessionItem(
         status="active",
@@ -59,7 +60,7 @@ def create_session(staff: StaffIdentity = Depends(require_staff)) -> dict:
         acting_for=staff.username,
         office=staffer.office,  # office comes from the STAFFER item, not from Cognito or the client
         mode="official",
-        created_at=_iso(now),
+        created_at=datetime.fromtimestamp(started, timezone.utc).isoformat(),  # sub-second, so tabs sort newest first
     )
     store.put_session(sid, session)
     return {
@@ -79,9 +80,9 @@ TITLE_CHARS = 60
 def _title(sid: str) -> str:
     """The conversation's first message, on one line and cut to fit a tab."""
     first = get_gateway().store.first_chat_message(sid)
-    if first is None:
+    text = " ".join(first.text.split()) if first else ""
+    if not text:
         return "New conversation"
-    text = " ".join(first.text.split())
     return text if len(text) <= TITLE_CHARS else text[: TITLE_CHARS - 1].rstrip() + "…"
 
 
