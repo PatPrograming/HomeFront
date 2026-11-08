@@ -1,18 +1,20 @@
 .monitoring-console {
-  --ink: #0f1c18;
-  --ink-soft: #3a4a44;
-  --paper: #e8efe9;
-  --paper-2: #d5e2d8;
-  --panel: rgba(250, 252, 250, 0.88);
-  --line: #9eb5a6;
-  --accent: #0b6e4f;
-  --accent-2: #c45c26;
-  --deny: #8b1e1e;
-  --ok: #0b6e4f;
-  --info: #1d4e89;
-  --mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --sans: 'Source Sans 3', system-ui, sans-serif;
-  --serif: 'Source Serif 4', Georgia, serif;
+  --ink: #0f1c2e;
+  --ink-soft: #3d4a5c;
+  --paper: #f5f7fa;
+  --paper-2: #e7ebf1;
+  --panel: #ffffff;
+  --line: #dfe4eb;
+  --accent: #0a3d73;
+  --accent-2: #c62b27;
+  --deny: #b3261e;
+  --ok: #17703f;
+  --info: #004f97;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: var(--font-ui);
+  --serif: var(--font-display);
+  flex: 1;
+  background: var(--canvas);
 }
 
 .monitoring-console * {
@@ -22,7 +24,7 @@
 .monitoring-console .shell {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 1.5rem 1.25rem 3rem;
+  padding: 2.5rem 1.5rem 4rem;
 }
 
 .monitoring-console .top {
@@ -37,9 +39,10 @@
 .monitoring-console .eyebrow {
   margin: 0;
   font-size: 0.8rem;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ink-soft);
+  color: var(--red-600);
 }
 
 .monitoring-console .brand-block h1 {
@@ -66,7 +69,8 @@
   font-family: var(--mono);
   font-size: 0.75rem;
   border: 1px solid var(--line);
-  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
   background: var(--panel);
 }
 
@@ -76,7 +80,9 @@
 }
 
 .monitoring-console .flash {
+  border: 1px solid var(--line);
   border-left: 4px solid var(--info);
+  border-radius: var(--radius-sm);
   background: var(--panel);
   padding: 0.85rem 1rem;
   margin-bottom: 1rem;
@@ -99,7 +105,7 @@
 
 .monitoring-console .flash-deny {
   border-left-color: var(--deny);
-  background: #f8ecec;
+  background: #fcefee;
 }
 
 .monitoring-console .flash-info {
@@ -118,8 +124,9 @@
 .monitoring-console .panel {
   background: var(--panel);
   border: 1px solid var(--line);
-  padding: 1rem 1.1rem 1.2rem;
-  backdrop-filter: blur(6px);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem 1.4rem 1.5rem;
   animation: rise 0.55s ease-out both;
 }
 
@@ -149,7 +156,8 @@
 }
 
 .monitoring-console .panel h3 {
-  font-size: 0.95rem;
+  font-family: var(--sans);
+  font-size: 0.8rem;
   margin: 1rem 0 0.5rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -186,18 +194,18 @@
 .monitoring-console button {
   font-family: var(--sans);
   font-weight: 600;
-  border: 1px solid var(--ink);
-  background: transparent;
-  color: var(--ink);
-  padding: 0.45rem 0.75rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--blue-800);
+  padding: 0.5rem 0.9rem;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
 .monitoring-console button:hover:not(:disabled) {
-  background: var(--ink);
-  color: #f4faf6;
-  transform: translateY(-1px);
+  background: var(--blue-50);
+  border-color: var(--blue-700);
 }
 
 .monitoring-console button:disabled {
@@ -208,11 +216,13 @@
 .monitoring-console button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #f4faf6;
+  color: #fff;
 }
 
 .monitoring-console button.primary:hover:not(:disabled) {
-  background: #08553d;
+  background: var(--blue-800);
+  border-color: var(--blue-800);
+  color: #fff;
 }
 
 .monitoring-console button.danger {
@@ -222,6 +232,7 @@
 
 .monitoring-console button.danger:hover:not(:disabled) {
   background: var(--deny);
+  border-color: var(--deny);
   color: #fff;
 }
 
@@ -287,9 +298,10 @@
   margin: 0;
   max-height: 220px;
   overflow: auto;
-  background: #0f1c18;
-  color: #d7e8dd;
-  padding: 0.75rem;
+  background: var(--blue-900);
+  color: #d7e3f1;
+  border-radius: var(--radius-sm);
+  padding: 0.85rem;
   font-family: var(--mono);
   font-size: 0.75rem;
   line-height: 1.45;
@@ -311,14 +323,14 @@
 }
 
 .monitoring-console code.tech {
-  background: #f3e6dc;
-  color: #6b3410;
+  background: var(--red-50);
+  color: #8a1f1c;
   padding: 0.1rem 0.35rem;
 }
 
 .monitoring-console code.mit {
-  background: #dceee4;
-  color: #0b6e4f;
+  background: var(--blue-50);
+  color: var(--blue-700);
   padding: 0.1rem 0.35rem;
 }
 
@@ -352,7 +364,8 @@
 .monitoring-console .audit-list li {
   border-left: 3px solid var(--line);
   padding: 0.45rem 0.65rem;
-  background: rgba(255, 255, 255, 0.45);
+  background: var(--canvas);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
 .audit-list li.dec-deny,

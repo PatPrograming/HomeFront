@@ -16,6 +16,7 @@ cp .env.example .env     # fill COGNITO_* (from ./infra/deploy.sh) and DATA_GOV_
 | Path | Auth | Purpose |
 |------|------|---------|
 | `/` | public | Home / hero |
+| `/social-platform` | public | Choose platforms, then enter message, links and images |
 | `/login` | public | Sign in / sign up (Cognito) |
 | `/account` | required | Profile smoke test (`/api/v1/me`) |
 | `/monitoring` | required | Agent IAM console (Prompt 1) |

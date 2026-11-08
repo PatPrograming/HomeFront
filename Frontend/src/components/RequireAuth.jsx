@@ -6,7 +6,7 @@ export default function RequireAuth({ children }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) return <p style={{ padding: 24 }}>Loading…</p>;
+  if (loading) return <p style={{ padding: 24, color: "var(--muted)" }}>Loading…</p>;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   return children;
 }

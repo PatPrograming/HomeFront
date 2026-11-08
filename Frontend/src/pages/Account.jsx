@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Layout from "../components/Layout.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/AuthProvider.jsx";
+import "./Auth.css";
 
 // First end-to-end check: browser -> Cognito ID token -> FastAPI /api/v1/me -> DynamoDB.
 export default function Account() {
@@ -15,15 +16,19 @@ export default function Account() {
 
   return (
     <Layout>
-      <section style={{ maxWidth: 520, margin: "48px auto", display: "grid", gap: 12 }}>
-        <h1>Account</h1>
-        <p>Signed in as {user?.email}</p>
-        {error && <p role="alert" style={{ color: "crimson" }}>Backend: {error}</p>}
-        {profile && <pre>{JSON.stringify(profile, null, 2)}</pre>}
-        <button className="btn btn-outline" onClick={signOut}>
-          Sign out
-        </button>
-      </section>
+      <div className="auth">
+        <section className="auth-card auth-card-wide">
+          <h1>Account</h1>
+          <p className="auth-sub">
+            Signed in as <strong>{user?.email}</strong>
+          </p>
+          {error && <p role="alert" className="alert alert-error">Backend: {error}</p>}
+          {profile && <pre className="auth-pre">{JSON.stringify(profile, null, 2)}</pre>}
+          <button className="btn btn-outline" onClick={signOut}>
+            Sign out
+          </button>
+        </section>
+      </div>
     </Layout>
   );
 }

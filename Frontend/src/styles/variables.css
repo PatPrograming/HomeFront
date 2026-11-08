@@ -1,30 +1,40 @@
 :root {
-  /* Palette */
-  --color-blue: #004f97;
-  --color-navy: #032a4e;
-  --color-light-blue: #b0eaf7;
-  --color-light-yellow: #ffb2a1;
-  --color-yellow: #c62b27;
-  --color-salmon: #ffb2a1;
-  --color-white: #ffffff;
-  --color-black: #010101;
+  /* Brand */
+  --blue-900: #071d36;
+  --blue-800: #0b2a4a;
+  --blue-700: #0a3d73;
+  --blue-600: #004f97;
+  --blue-100: #dce8f5;
+  --blue-50: #eef4fb;
+  --red-600: #c62b27;
+  --red-700: #a82320;
+  --red-50: #fcefee;
 
-  /* Semantic */
-  --bg-gradient: linear-gradient(
-    135deg,
-    var(--color-light-yellow) 0%,
-    var(--color-light-blue) 100%
-  );
-  --navbar-gradient: linear-gradient(
-    90deg,
-    var(--color-blue) 0%,
-    var(--color-blue) 25%,
-    var(--color-light-yellow) 100%
-  );
-  --text-glow: var(--color-yellow);
+  /* Neutrals */
+  --ink: #0f1c2e;
+  --ink-soft: #3d4a5c;
+  --muted: #667286;
+  --line: #dfe4eb;
+  --line-strong: #c5cdd8;
+  --surface: #ffffff;
+  --canvas: #f5f7fa;
 
-  /* Fonts */
-  --font-heading: "Obra Letra", sans-serif;
-  --font-nav: "Atkinson Hyperlegible", sans-serif;
-  --font-body: "Times New Roman", serif;
+  /* Feedback */
+  --success: #17703f;
+  --danger: #b3261e;
+
+  /* Type */
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-ui: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Shape + depth */
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 20px;
+  --shadow-sm: 0 1px 2px rgba(15, 28, 46, 0.06);
+  --shadow: 0 1px 2px rgba(15, 28, 46, 0.05), 0 8px 24px rgba(15, 28, 46, 0.07);
+  --shadow-lg: 0 2px 4px rgba(15, 28, 46, 0.04), 0 24px 48px rgba(15, 28, 46, 0.12);
+  --focus: 0 0 0 3px rgba(0, 79, 151, 0.32);
+
+  --container: 1120px;
 }

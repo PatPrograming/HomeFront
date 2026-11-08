@@ -1,12 +1,24 @@
 .logo {
-  height: 91px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
   flex-shrink: 0;
-  display: block;
-  background: var(--color-blue);
 }
 
-.logo-img {
-  height: 100%;
-  width: auto;
-  display: block;
+.logo-mark {
+  width: 36px;
+  height: 36px;
+}
+
+.logo-word {
+  font-family: var(--font-display);
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--blue-900);
+}
+
+.logo-word span {
+  color: var(--red-600);
 }
