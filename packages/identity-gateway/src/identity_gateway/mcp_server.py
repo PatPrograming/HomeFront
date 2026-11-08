@@ -28,7 +28,7 @@ from .tokens import InvalidToken, verify_mandate_token
 
 PATH = "/mcp"
 
-server = Server("mandate-gateway")
+server = Server("homefront-gateway")
 
 
 def _bearer(headers: Any) -> str:

@@ -35,7 +35,7 @@ log = logging.getLogger("identity_gateway")
 
 Scanner = Callable[[str], GuardrailFlag]
 
-# Mandate tool name -> the existing mcp_tools handler (and ATLAS label) it reuses.
+# HomeFront tool name -> the existing mcp_tools handler (and ATLAS label) it reuses.
 LEGACY_TOOLS = {
     "datagov_search": "datagov.search",
     "web_scrape": "web.scrape",

@@ -19,7 +19,7 @@ def create_app() -> FastAPI:
     apply_datagov_env()
     app = FastAPI(
         title="HomeFront API",
-        description="Mandate: delegated agent identity, Cedar-authorized MCP tools, instant offboarding",
+        description="HomeFront: delegated agent identity, Cedar-authorized MCP tools, instant offboarding",
         version="0.2.0",
         lifespan=lifespan,  # starts the MCP endpoint's session manager
     )
@@ -36,7 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(home.router, prefix=API_PREFIX)
     app.include_router(profiles.router, prefix=API_PREFIX)
 
-    # Mandate broker and admin API (WP2)
+    # HomeFront broker and admin API (WP2)
     app.include_router(sessions.router, prefix=API_PREFIX)
     app.include_router(staff.router, prefix=API_PREFIX)
     app.include_router(events.router, prefix=API_PREFIX)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create Mandate's AWS resources in us-east-1. Safe to run again: anything that
+# Create HomeFront's AWS resources in us-east-1. Safe to run again: anything that
 # already exists is reused, nothing is deleted.
 #
 #   1. DynamoDB table `mandate` (pk/sk strings, on-demand)

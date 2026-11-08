@@ -43,7 +43,7 @@ class ToolCallRequest(BaseModel):
 
 @router.get("/tools")
 def tools_catalog() -> list[dict[str, Any]]:
-    """The seven Mandate tools with their input schemas."""
+    """The seven HomeFront tools with their input schemas."""
     return tool_schemas()
 
 
@@ -89,5 +89,5 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 # Standalone gateway (`python -m identity_gateway`); the unified app is Backend/app/main.py.
-app = FastAPI(title="Mandate Gateway", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="HomeFront Gateway", version="0.2.0", lifespan=lifespan)
 include_gateway(app)

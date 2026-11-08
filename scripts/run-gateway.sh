@@ -10,6 +10,10 @@ fi
 source .venv/bin/activate
 pip install -q -r Backend/requirements.txt
 
+# python.org Python on this Mac ships without CA certificates, so HTTPS from urllib
+# (live datagov_search / web_scrape) fails. Point OpenSSL at certifi's bundle.
+export SSL_CERT_FILE="${SSL_CERT_FILE:-$(python -c 'import certifi; print(certifi.where())')}"
+
 # Load repo-root .env without `source` (angle brackets in URLs break bash redirects).
 load_env_file() {
   local file="$1"

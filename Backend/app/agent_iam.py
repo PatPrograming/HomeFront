@@ -1,4 +1,4 @@
-"""Mount the Mandate gateway onto the HomeFront API.
+"""Mount the HomeFront gateway onto the HomeFront API.
 
 The gateway lives in `packages/identity-gateway`. This module puts its packages
 on the import path and attaches it to the host app:

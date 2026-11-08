@@ -1,6 +1,6 @@
 # identity-gateway
 
-The gateway is Mandate's enforcement point. Every tool the AI agent uses sits behind it, and
+The gateway is HomeFront's enforcement point. Every tool the AI agent uses sits behind it, and
 every call goes through one function, `guarded()` in `src/identity_gateway/gateway.py`.
 
 ## The request path
