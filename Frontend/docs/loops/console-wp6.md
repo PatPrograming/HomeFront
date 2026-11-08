@@ -1,6 +1,6 @@
 # Loop: console-wp6
 
-Status: BUILDING
+Status: DONE
 Profile: feature
 Round: 2 / 4
 Base commit: 839c456
@@ -73,6 +73,13 @@ and DENY events stream in, signs in as the Chief of Staff, offboards Maya, and s
 - Review: team-reviewer APPROVE, 0 Critical/High; Medium: no fetch timeout (a stalled API freezes the feed while it says "Live"), /account unreachable for a user with no group. Security: `security:comment` (dev-only Vitest/tinypool/esbuild advisories). Trial (full): falsifier FALSIFIED 3b, advocate PARTIAL-strong. Judge not run: the falsified item was reproduced from the code (Admin.jsx guesses "Offboarded" from the newest event; the contract sample's newest maya event is a revoked DENY), so a fix round is certain; the re-trial rules on the fixed state.
 - Gap list for next round: (1) 3b Offboard button hidden on fresh data [falsifier]; (2) fetch timeout [reviewer M1]; (3) /account for users with no group [reviewer M2]; (4) admin navbar overflows 1201–1330 px [falsifier]; (5) identity card keeps counting after revoke [falsifier]; (6) README claims a bundle-grep script that is only a loop check [falsifier + advocate]; cheap Lows: card lost on reload, mock tabs race / duplicate ids, Cognito login lands admins on /console.
 - Decision: next round because the gap list is non-empty and round 1 fixed 7 checks.
+
+### Round 2 — 2026-11-07
+- Built: round-1 gap list (commits a7b5d27, 97e025c), plus lead requests: Account reads GET /me (a7b5d27), real Cognito values in .env.example and sign-in callback at the site root, api.home() restored (1062633), product name HomeFront in UI copy (b1a3709).
+- Outcome checks: 9/9 pass at HEAD b1a3709 (scoreboards round-2.json and round-3.json), no regressions.
+- Review: fresh falsifier INCONCLUSIVE (nothing broke; 6/6 mutations killed; real Cognito and lane A/B APIs UNVERIFIED by the no-AWS rule). Judge: ACCEPT, nothing blocking; claim 10 (security verdict) marked UNBACKED only because the security report was not handed to the judge (verdict.py printed security:comment). Optional follow-ups from the judge: feed grid overflows 1001–1085 px (8-column minimums), clear mandate.card on sign-out, README says DEV is never true in vite build (wrong for --mode development; the config guard still refuses it).
+- Gap list: empty (no Critical/High).
+- Decision: DONE. Lead stopped new rounds for the integration merge.
 
 ## Decisions
 
