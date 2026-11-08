@@ -4,7 +4,7 @@ A conversation is a session. Its metadata is a separate item, `CONVO#<sid>` / `M
 staffer the session acts for, so the session item (a shared contract) is never changed by the UI.
 
 Titles: after the staffer's first message, and again after their third, a small model (Claude
-Haiku 4.5 on Bedrock) names the staffer's main goal in a few words. It sees only the staffer's own
+Haiku 5.5 on Bedrock) names the staffer's main goal in a few words. It sees only the staffer's own
 messages, never the agent's replies or email text. Anything that goes wrong falls back to the first
 words of the first message. A title the staffer typed is never replaced.
 """
@@ -22,10 +22,10 @@ from pydantic import BaseModel
 
 TITLE_WORDS = 6
 TITLE_CHARS = 40
-REFRESH_AT = (1, 3)  # the staffer's message counts that (re)name the conversation
-# Claude Haiku 4.5 through the us. cross-region inference profile; confirm with
-# `aws bedrock list-inference-profiles` and override with HOMEFRONT_TITLE_MODEL_ID if it differs.
-TITLE_MODEL_ID = os.environ.get("HOMEFRONT_TITLE_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
+REFRESH_AT = (1, 3)  # name it once there is 1 staffer message, rename once there are 3
+# Claude Haiku 5.5 through the us. cross-region inference profile (listed ACTIVE in us-east-1; lead's
+# ruling). Override with HOMEFRONT_TITLE_MODEL_ID; if a call fails the first-words title is used.
+TITLE_MODEL_ID = os.environ.get("HOMEFRONT_TITLE_MODEL_ID", "us.anthropic.claude-haiku-5-5")
 TITLE_PROMPT = (
     "You name a conversation in a constituent-services office's assistant. Read the staffer's "
     "messages and reply with only a short title (at most 6 words) for their main goal, such as "
@@ -115,7 +115,7 @@ def clean_title(text: str) -> str:
 
 
 def bedrock_title(staffer_messages: list[str], client=None) -> str:
-    """Ask Claude Haiku 4.5 for a title. Only the staffer's own messages are sent."""
+    """Ask Claude Haiku 5.5 for a title. Only the staffer's own messages are sent."""
     if client is None:
         import boto3
 
@@ -125,8 +125,10 @@ def bedrock_title(staffer_messages: list[str], client=None) -> str:
         system=[{"text": TITLE_PROMPT}],
         messages=[{"role": "user", "content": [{"text": "\n\n".join(staffer_messages)}]}],
         inferenceConfig={"maxTokens": 30},
+        # Haiku 5.5 thinks by default; off (allowed at its default effort) so the 30 tokens are the title.
+        additionalModelRequestFields={"thinking": {"type": "disabled"}},
     )
-    return response["output"]["message"]["content"][0]["text"]
+    return next(block["text"] for block in response["output"]["message"]["content"] if "text" in block)
 
 
 def title_model_from_env() -> TitleModel | None:
@@ -165,8 +167,9 @@ def refresh_title(sid: str, staffer_id: str) -> None:
     """After the staffer's 1st and 3rd message: name the conversation, unless they named it."""
     meta = get_meta(sid, staffer_id)
     mine = staffer_messages(sid)
-    if meta.title_source == "user" or meta.deleted or len(mine) not in REFRESH_AT:
-        return
+    due = max((level for level in REFRESH_AT if len(mine) >= level), default=0)
+    if meta.title_source == "user" or meta.deleted or not due or meta.title_basis >= due:
+        return  # (counting, not matching: two messages that land together don't skip a title)
     title, source = "", "auto"
     model = get_title_model()
     if model is not None:
@@ -174,8 +177,6 @@ def refresh_title(sid: str, staffer_id: str) -> None:
             title = clean_title(model(mine))
         except Exception:  # Bedrock throttled, no credentials, odd answer: the fallback covers it
             title = ""
-    if not title:
-        if meta.title_source == "auto":
-            return  # keep the model's earlier title rather than the first words
-        title, source = fallback_title(sid), "fallback"
-    put_title_if_allowed(sid, staffer_id, title, source, len(mine))
+    if not title:  # keep the model's earlier title if there is one, else the first words
+        title, source = (meta.title, "auto") if meta.title_source == "auto" else (fallback_title(sid), "fallback")
+    put_title_if_allowed(sid, staffer_id, title, source, due)  # records `due`, so a failing model isn't retried every message

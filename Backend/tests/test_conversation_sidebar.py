@@ -137,6 +137,24 @@ def test_a_staffers_rename_is_never_overwritten_by_a_refresh(client, model):
     assert row(client, sid)["title"] == "My own name"
 
 
+def test_a_reply_that_starts_with_a_reasoning_block_still_gives_the_title():
+    class FakeBedrock:
+        def converse(self, **kwargs):
+            return {"output": {"message": {"content": [{"reasoningContent": {"reasoningText": {"text": "hmm"}}},
+                                                       {"text": "Plan the town hall post"}]}}}
+
+    assert conversations.bedrock_title(["town hall"], client=FakeBedrock()) == "Plan the town hall post"
+
+
+def test_a_refresh_missed_because_messages_arrived_together_still_happens(client, model, store):
+    sid = open_conversation(client)
+    login()
+    for text in ("first", "second"):  # both stored before any title job reads the chat
+        store.put_chat_message(sid, ChatMessageItem(id=text, ts=datetime.now(timezone.utc).isoformat(), role="user", text=text))
+    conversations.refresh_title(sid, "maya")
+    assert row(client, sid)["title"] == "Reply to pothole complaints"
+
+
 def test_the_bedrock_title_model_sends_only_the_staffers_messages_to_haiku():
     calls = []
 
@@ -149,8 +167,8 @@ def test_the_bedrock_title_model_sends_only_the_staffers_messages_to_haiku():
 
     assert title == "Reply to pothole complaints"
     (call,) = calls
-    assert call["modelId"] == conversations.TITLE_MODEL_ID
-    assert "haiku-4-5" in call["modelId"]
+    assert call["modelId"] == conversations.TITLE_MODEL_ID == "us.anthropic.claude-haiku-5-5"
+    assert call["additionalModelRequestFields"] == {"thinking": {"type": "disabled"}}  # all 30 tokens go to the title
     assert call["messages"] == [{"role": "user", "content": [{"text": "fix the pothole replies"}]}]
     assert call["inferenceConfig"]["maxTokens"] <= 50
 
@@ -450,3 +468,11 @@ def test_search_matches_words_beyond_the_title(client):
     assert "zebra" not in row(client, sid)["title"].lower()
     login()
     assert [r["sid"] for r in client.get("/api/v1/sessions", params={"q": "ZEBRA"}).json()["sessions"]] == [sid]
+
+
+def test_a_failing_model_is_not_called_again_on_every_message(client, model):
+    model.error = RuntimeError("Bedrock down")
+    sid = open_conversation(client, "one")
+    for text in ("two", "three", "four", "five"):
+        say(client, sid, text)
+    assert len(model.seen) == 2  # once at the 1st message, once at the 3rd
