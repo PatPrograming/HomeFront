@@ -13,10 +13,13 @@ export interface NeedsConnection {
 // tool result can be steered by text the agent read (it must not make "Connect Gmail" start an X sign-in).
 export const CONNECTABLE: Record<string, string> = { gmail: "Gmail", x: "X" };
 
+/** True only for our own keys: `"toString" in CONNECTABLE` is true through the prototype chain. */
+export const isConnectable = (provider: string) => Object.prototype.hasOwnProperty.call(CONNECTABLE, provider);
+
 function fromObject(x: unknown): NeedsConnection | null {
   if (typeof x !== "object" || x === null) return null;
   const r = x as Record<string, unknown>;
-  if (r.status !== "needs_connection" || typeof r.provider !== "string" || !(r.provider in CONNECTABLE)) return null;
+  if (r.status !== "needs_connection" || typeof r.provider !== "string" || !isConnectable(r.provider)) return null;
   return { provider: r.provider, label: CONNECTABLE[r.provider], note: typeof r.note === "string" ? r.note : "" };
 }
 

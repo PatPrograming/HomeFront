@@ -51,6 +51,7 @@ GOOGLE_EXTRA_AUTH_PARAMS = {"access_type": "offline", "prompt": "consent"}  # of
 
 STATE_TTL_SECONDS = 600
 REFRESH_WINDOW_SECONDS = 60  # refresh an access token this close to its expiry
+REFRESH_LEASE_SECONDS = 30  # how long one refresh may hold the right to delete a row on a 400
 DEFAULT_REDIRECT_URI = "http://localhost:3000/account/connected"
 
 
@@ -376,53 +377,80 @@ class ConnectionService:
             log.warning("decrypt failed provider=%s staffer=%s", provider, staffer)
             raise NeedsConnection(provider) from e
         if tokens["expires_at"] - REFRESH_WINDOW_SECONDS <= self.clock():
-            tokens = self._refresh(staffer, provider, item, tokens)
+            tokens, ciphertext = self._refresh(staffer, provider, item, tokens)
+            item = {**item, "ciphertext": ciphertext}  # a 401 on this call must compare against the row as refreshed
         return item, tokens
 
-    def _refresh(self, staffer: str, provider: str, item: dict, tokens: dict) -> dict:
+    def _refresh(self, staffer: str, provider: str, item: dict, tokens: dict) -> tuple[dict, str]:
+        """New tokens and the ciphertext now stored. Only the refresh holding the lease may delete on a 400."""
+        holds_lease = self._claim_refresh(staffer, provider, item["ciphertext"])
         response = self._token_request(provider, {"grant_type": "refresh_token", "refresh_token": tokens["refresh_token"]})
         if response.status_code in (400, 401):  # the provider says the grant is dead
             log.warning("refresh rejected provider=%s staffer=%s status=%s", provider, staffer, response.status_code)
-            self._forget_if_unchanged(staffer, provider, item["ciphertext"])
+            # Another refresh is in flight and may be about to save a good row: leave it, it decides.
+            if not holds_lease or not self._forget_if_unchanged(staffer, provider, item["ciphertext"]):
+                raise ProviderError(f"{provider} was refreshed or removed at the same time; try again")
             self._revoke_quietly(provider, tokens)
             raise NeedsConnection(provider)
         if response.status_code != 200:  # outage or rate limit: the grant may be fine, keep it
             log.warning("refresh failed provider=%s staffer=%s status=%s", provider, staffer, response.status_code)
             raise ProviderError(f"{provider} refresh failed")
         body = response.json()
+        if "access_token" not in body or "expires_in" not in body:
+            log.warning("refresh response incomplete provider=%s staffer=%s", provider, staffer)
+            raise ProviderError(f"{provider} refresh response was incomplete")
         refreshed = {
             "access_token": body["access_token"],
             "refresh_token": body.get("refresh_token", tokens["refresh_token"]),  # Google only sends one at consent
             "expires_at": self.clock() + body["expires_in"],
         }
+        ciphertext = self._encrypt(staffer, provider, refreshed)
         try:
             self.store.table.update_item(
                 Key=_key(staffer, provider),
-                UpdateExpression="SET ciphertext = :c",
-                ConditionExpression="attribute_exists(pk)",  # a disconnect mid-refresh must stay disconnected
-                ExpressionAttributeValues={":c": self._encrypt(staffer, provider, refreshed)},
+                UpdateExpression="SET ciphertext = :new REMOVE refreshing_until",
+                # Still the row we read: a disconnect stays disconnected, a reconnect is not overwritten.
+                ConditionExpression="ciphertext = :old",
+                ExpressionAttributeValues={":new": ciphertext, ":old": item["ciphertext"]},
             )
         except self.store.table.meta.client.exceptions.ConditionalCheckFailedException as e:
-            raise NeedsConnection(provider) from e
-        return refreshed
+            if self.store.table.get_item(Key=_key(staffer, provider), ConsistentRead=True).get("Item") is None:
+                raise NeedsConnection(provider) from e
+            raise ProviderError(f"{provider} was refreshed or reconnected at the same time; try again") from e
+        return refreshed, ciphertext
 
-    def _forget_if_unchanged(self, staffer: str, provider: str, ciphertext: str) -> None:
-        """Delete the row only if it still holds what we read; otherwise a parallel refresh won."""
+    def _claim_refresh(self, staffer: str, provider: str, ciphertext: str) -> bool:
+        """Take the short lease that lets this refresh delete the row if the provider rejects it. False if another holds it."""
+        now = int(self.clock())
+        try:
+            self.store.table.update_item(
+                Key=_key(staffer, provider),
+                UpdateExpression="SET refreshing_until = :until",
+                ConditionExpression="ciphertext = :old AND (attribute_not_exists(refreshing_until) OR refreshing_until < :now)",
+                ExpressionAttributeValues={":until": now + REFRESH_LEASE_SECONDS, ":old": ciphertext, ":now": now},
+            )
+        except self.store.table.meta.client.exceptions.ConditionalCheckFailedException:
+            return False
+        return True
+
+    def _forget_if_unchanged(self, staffer: str, provider: str, ciphertext: str) -> bool:
+        """Delete the row only if it still holds what we read. False means it changed (a refresh or reconnect won)."""
         try:
             self.store.table.delete_item(
                 Key=_key(staffer, provider),
                 ConditionExpression="ciphertext = :old",
                 ExpressionAttributeValues={":old": ciphertext},
             )
-        except self.store.table.meta.client.exceptions.ConditionalCheckFailedException as e:
-            raise ProviderError(f"{provider} was refreshed or removed at the same time; try again") from e
+        except self.store.table.meta.client.exceptions.ConditionalCheckFailedException:
+            return False
+        return True
 
     def _call(self, staffer: str, provider: str, url: str, payload: dict) -> dict:
-        _, tokens = self._live_tokens(staffer, provider)
+        item, tokens = self._live_tokens(staffer, provider)
         response = self._send("POST", url, json=payload, headers={"Authorization": f"Bearer {tokens['access_token']}"})
         if response.status_code == 401:  # revoked or expired at the provider: our copy is useless
             log.warning("provider rejected token provider=%s staffer=%s", provider, staffer)
-            self._forget(staffer, provider)
+            self._forget_if_unchanged(staffer, provider, item["ciphertext"])  # keep a row a reconnect replaced
             raise NeedsConnection(provider)
         if response.status_code >= 400:
             log.warning("provider call failed provider=%s staffer=%s status=%s", provider, staffer, response.status_code)
@@ -433,14 +461,20 @@ class ConnectionService:
     def _gmail_handle(id_token: str) -> str:
         # Payload decode only, no signature check: Google's docs allow this for an id_token
         # received straight from the token endpoint over TLS.
-        payload = id_token.split(".")[1]
-        return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))["email"]
+        try:
+            payload = id_token.split(".")[1]
+            return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))["email"]
+        except (IndexError, ValueError, KeyError, TypeError) as e:
+            raise ProviderError("gmail id_token was malformed") from e
 
     def _x_handle(self, access_token: str) -> str:
         response = self._send("GET", X_ME_URL, headers={"Authorization": f"Bearer {access_token}"})
         if response.status_code != 200:
             raise ProviderError("x did not return the account name")
-        return "@" + response.json()["data"]["username"]
+        try:
+            return "@" + response.json()["data"]["username"]
+        except (ValueError, KeyError, TypeError) as e:
+            raise ProviderError("x account name was missing from the reply") from e
 
 
 # --- singleton, same pattern as get_gateway -------------------------------------------------

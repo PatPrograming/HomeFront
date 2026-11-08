@@ -118,9 +118,12 @@ The code is `src/identity_gateway/connections.py`. How it keeps tokens safe:
   cannot be decrypted.
 - Sign-in uses OAuth with PKCE. The one-time `state` is deleted the moment it is used (even if the
   check then fails), expires after 10 minutes, and only works for the staffer who started it.
-- Access tokens are refreshed when under 60 seconds from expiry. If the refresh fails or the provider
-  answers 401, we delete the saved connection and the assistant is told to ask for a new sign-in.
-- Offboarding revokes every connection of that staffer, at the provider and in DynamoDB.
+- Access tokens are refreshed when under 60 seconds from expiry. If the provider rejects the refresh
+  (400/401) or answers 401 to a send, we delete the saved connection and the assistant is told to ask for
+  a new sign-in. The delete only happens if the row is still the one we read, and for a refresh only
+  while holding a 30-second lease, so a parallel refresh or a reconnect is never wiped or overwritten.
+- Offboarding revokes every connection of that staffer, at the provider and in DynamoDB. The response
+  carries `connectionCleanupFailed: true` if any connection is still there afterwards.
 - With no KMS key or no client id/secret, a provider shows as "not set up" and nothing can connect.
 
 Environment: `CONNECTIONS_KMS_KEY_ID`, `GOOGLE_OAUTH_CLIENT_ID`/`_SECRET`, `X_OAUTH_CLIENT_ID`/`_SECRET`,

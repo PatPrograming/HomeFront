@@ -43,7 +43,7 @@ def finish_connection(body: Callback, identity: StaffIdentity = Depends(require_
         raise HTTPException(status.HTTP_409_CONFLICT, "not_set_up") from None
     except MissingPermission:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_403_FORBIDDEN,
             "missing_permission: you signed in but did not allow sending on your behalf. Connect again and tick every box.",
         ) from None
     except ProviderError:

@@ -4,7 +4,7 @@ import type { AutonomyCategory, SessionCard } from "../lib/api";
 import { turnEvents } from "../lib/agentActivity";
 import type { Chat } from "../lib/useChat";
 import AgentActivity from "./AgentActivity";
-import ConnectPrompt from "./ConnectPrompt";
+import ConnectPrompt, { isConnectable } from "./ConnectPrompt";
 
 const SUGGESTIONS = [
   "Check my email, answer what you can and show me what I need to review.",
@@ -144,7 +144,7 @@ export default function ChatPanel({
                   <span className="sr-only">Assistant: </span>
                   {i > 0 && disclosure(chat.messages[i - 1].ts, m.ts, false)}
                   <p className="bubble-text">{m.text}</p>
-                  {m.connect && <ConnectPrompt provider={m.connect} />}
+                  {m.connect && isConnectable(m.connect) && <ConnectPrompt provider={m.connect} />}
                   <time className="msg-time" dateTime={m.ts}>
                     {time(m.ts)}
                   </time>
