@@ -60,9 +60,8 @@ stops it anyway. The detector (Guardrails) is best-effort; Cedar is the guarante
 ## Run it
 
 ```bash
-# one-time setup
-/usr/local/bin/python3.12 -m venv agent/.venv
-agent/.venv/bin/pip install -r agent/requirements.txt
+# one-time setup: creates agent/.venv with Python 3.12+ and installs agent/requirements.txt
+scripts/setup-agent.sh
 
 # offline tests (no AWS, no Bedrock)
 agent/.venv/bin/python -m pytest -q agent/tests

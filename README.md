@@ -15,18 +15,89 @@ There is no route that issues an agent token on its own. How the gateway decides
 
 ATLAS data is **vendored** from [mitre-atlas/atlas-data](https://github.com/mitre-atlas/atlas-data) (Agentic AI subset). Runtime does not call MITRE's authoring API.
 
-## Quick start
+## Run it on your machine
 
-```bash
-cp .env.example .env   # once: public Cognito ids are filled in; add MANDATE_SIGNING_SECRET, AVP ids, DATA_GOV_API_KEY
+This runs the gateway and the console on your Mac against the team's AWS account. No Docker needed.
 
-chmod +x scripts/*.sh
-./scripts/run-gateway.sh    # API + /mcp on :8080
-./scripts/run-frontend.sh   # console on :3000 (VITE_MOCK_API=1 for a no-backend demo)
-```
+### Prerequisites
 
-- API docs: http://127.0.0.1:8080/docs. Everything except `/mcp` is under `/api/v1`; the frontend proxies `/api` to :8080.
-- Console pages: `/console` (staffer: start the assistant, live decisions), `/admin` (Chief of Staff: offboard, audit log), `/account` (`GET /api/v1/me`).
+- Python 3.12 or newer (`python3.12 --version`). Install it from [python.org](https://www.python.org/downloads/) or with `brew install python@3.12`.
+- Node 18 or newer (`node --version`; tested on Node 20). The console uses Vite 5.
+- AWS credentials for the team account, region `us-east-1`, in your shell. Run `aws configure` or export `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (plus `AWS_SESSION_TOKEN` for temporary keys). The gateway reads them from the shell; never put them in `.env`.
+- A console account. An admin creates it for you; there is no sign-up.
+
+### Steps
+
+Run every command from the repo root.
+
+1. Copy the env file.
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   The public Cognito ids, the AVP policy store id and the guardrail id are already filled in.
+
+2. Generate a signing secret.
+
+   ```bash
+   python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+   ```
+
+   Paste the output after `MANDATE_SIGNING_SECRET=` in `.env`.
+
+3. Optional: get a free key at [api.data.gov/signup](https://api.data.gov/signup/) and paste it after `DATA_GOV_API_KEY=` in `.env`. Without it, data.gov search returns stub results.
+
+4. Set up the agent's Python environment.
+
+   ```bash
+   scripts/setup-agent.sh
+   ```
+
+   This creates `agent/.venv` with Python 3.12+ and installs `agent/requirements.txt`.
+
+5. Copy the agent's env file.
+
+   ```bash
+   cp agent/.env.example agent/.env
+   ```
+
+6. Ask Huy privately for the agent client secret and paste it after `COGNITO_AGENT_CLIENT_SECRET=` in `agent/.env`. Never commit it or paste it in a chat channel.
+
+7. Optional: add `HOMEFRONT_AUTOSTART_AGENT=1` to `.env` so the console starts the agent on your first chat message.
+
+8. Start the gateway in one terminal.
+
+   ```bash
+   scripts/run-gateway.sh
+   ```
+
+   The first run creates `.venv` and installs `Backend/requirements.txt`, then serves the API and `/mcp` on `127.0.0.1:8080`.
+
+9. Start the console in a second terminal.
+
+   ```bash
+   scripts/run-frontend.sh
+   ```
+
+   The first run installs `Frontend/node_modules`, then serves the console on port 3000.
+
+10. Open http://localhost:3000 and sign in with the account the admin gave you.
+
+### How to tell it worked
+
+- The gateway terminal shows `Uvicorn running on http://127.0.0.1:8080`, and http://127.0.0.1:8080/docs lists the API.
+- After sign-in, http://localhost:3000/account shows your account, and `/console` loads without an error.
+
+### Troubleshooting
+
+- **Gateway returns 500 with `NoCredentialsError`:** the shell that started `scripts/run-gateway.sh` has no AWS credentials. Run `aws sts get-caller-identity` in that shell, fix the credentials, then restart the gateway.
+- **Cognito shows a redirect or `redirect_mismatch` error:** open the console at exactly `http://localhost:3000`, not `127.0.0.1:3000` or another port. Cognito only accepts that address.
+- **`Port 3000 is already in use`:** the console only runs on 3000, because Cognito accepts no other port. Find the process with `lsof -iTCP:3000 -sTCP:LISTEN`, stop it, then restart `scripts/run-frontend.sh`.
+- **`error: HomeFront needs Python 3.12 or newer`:** install Python 3.12, open a new terminal, delete any half-made `.venv` or `agent/.venv`, then rerun the script.
+
+Other useful pages: API docs at http://127.0.0.1:8080/docs (everything except `/mcp` is under `/api/v1`; the console proxies `/api` to :8080), `/console` (staffer), `/admin` (Chief of Staff: offboard, audit log), `/account` (`GET /api/v1/me`). Set `VITE_MOCK_API=1` in `.env` for a no-backend demo.
+
 - AWS resources (Cognito pool `us-east-1_MLfQpodxG`, the `mandate` DynamoDB table, the AVP policy store) are created by `Backend/infra/cognito.sh` and `Backend/infra/setup.sh`; see [`Backend/infra/README.md`](Backend/infra/README.md).
 - `infra/` holds the teammates' alternative CloudFormation stack (its own pool and `homefront-*` tables). The running app does not use it; see [`infra/README.md`](infra/README.md).
 
@@ -36,7 +107,7 @@ Copy [`.env.example`](.env.example) to `.env` at the **repo root**. Both the API
 
 ### Chat agent auto-start
 
-Set `HOMEFRONT_AUTOSTART_AGENT=1` in `.env` and restart `./scripts/run-gateway.sh`: the staffer's first chat message then starts the agent (`agent/agent.py --sid <sid> --chat`) for them, so nobody needs a terminal. It needs `agent/.venv` and `agent/.env` on the server; starts and stops print in the gateway's terminal. Off by default. Details in [`agent/README.md`](agent/README.md).
+Set `HOMEFRONT_AUTOSTART_AGENT=1` in `.env` and restart `scripts/run-gateway.sh`: the staffer's first chat message then starts the agent (`agent/agent.py --sid <sid> --chat`) for them, so nobody needs a terminal. It needs `agent/.venv` and `agent/.env` on the server; starts and stops print in the gateway's terminal. Off by default. Details in [`agent/README.md`](agent/README.md).
 
 ### Agent types and guardrails
 
