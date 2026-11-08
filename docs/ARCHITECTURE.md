@@ -158,6 +158,8 @@ Human approval for tools with `requires_hitl` (`email.send`, `social.post`, `soc
 ### `reports` (pk `agent_id`, sk `<ts>#<id>`)
 Markdown reports agents save with `report.save` (`identity_gateway/reports.py`): `report_id`, `title` (≤ 200), `body` (≤ 50 000), `trace_id`, `run_id`, `created_at`. The agent id comes from the caller's workload token, never from arguments. Listed newest-first through `GET /agents/{id}/reports`, owner-scoped like other `/agents` routes.
 
+**Social posts are share links, not API posts.** HomeFront holds no social logins. After a person approves a `social.post` or `social.reply`, the handler (`packages/mcp-tools/src/mcp_tools/share_links.py`) builds a prefilled compose URL for X, Bluesky, Reddit, Facebook or LinkedIn. The person opens it in their own signed-in browser and presses Post. The result is `status: "handed_off"`, `published: false`, and the activity log says so: HomeFront can't tell whether the post went out. X, Bluesky and Reddit carry the text; Facebook and LinkedIn carry only a link; images can't be attached to any. Instagram has no compose link and is rejected (`platform_not_supported`). The gateway builds every URL from a fixed host, and a reply target is used only if it is already on that platform's domain. For unattended posting you would need per-platform OAuth instead.
+
 `GET /status` reports which store (DynamoDB or memory) agents, the activity log, approvals and reports are using, plus any startup fallback warnings.
 
 ### Domain tables

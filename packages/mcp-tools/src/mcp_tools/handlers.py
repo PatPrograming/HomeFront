@@ -13,6 +13,8 @@ from datetime import date
 from email.utils import formataddr
 from typing import Any, Callable
 
+from . import share_links
+
 DATAGOV_SEARCH_URL = "https://api.gsa.gov/technology/datagov/v4/search"
 
 
@@ -204,29 +206,19 @@ def handle_email_send_list(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def handle_social_post(args: dict[str, Any]) -> dict[str, Any]:
-    platform = args.get("platform") or "x"
-    text = args.get("text") or ""
-    return {
-        "status": "posted",
-        "simulated": True,
-        "platform": platform,
-        "text_preview": text[:160],
-        "post_id": f"post_{_args_hash(args)}",
-    }
+    """Hand an approved post to the person as a prefilled compose link.
+
+    Nothing is published by HomeFront: no social login is held. Raises
+    ShareLinkError (a ValueError) for an unsupported platform or an unusable
+    draft, so an approved post that can't be built is recorded as failed.
+    """
+    # The mandate gateway's social_post names an office account, not a platform: default to X.
+    return share_links.build_post_link(args.get("platform") or "x", args.get("text"))
 
 
 def handle_social_reply(args: dict[str, Any]) -> dict[str, Any]:
-    platform = args.get("platform") or "x"
-    reply_to = args.get("reply_to") or "unknown"
-    text = args.get("text") or ""
-    return {
-        "status": "replied",
-        "simulated": True,
-        "platform": platform,
-        "reply_to": reply_to,
-        "text_preview": text[:160],
-        "reply_id": f"reply_{_args_hash(args)}",
-    }
+    """Hand an approved reply to the person; see handle_social_post."""
+    return share_links.build_reply_link(args.get("platform"), args.get("reply_to"), args.get("text"))
 
 
 # --- web.scrape SSRF guard ------------------------------------------------

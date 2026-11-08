@@ -57,8 +57,13 @@ AGENT_TYPES: dict[str, AgentType] = {
         label="Social media",
         description="Publishes agency posts and replies to comments on them.",
         default_instructions=(
-            "You manage the agency's public social media presence: publish the updates the "
-            "task asks for and reply to comments on the agency's posts. Keep posts accurate, "
+            "You manage the agency's public social media presence: draft the updates the "
+            "task asks for and reply to comments on the agency's posts. You can't publish "
+            "anything yourself: each draft waits for a person to approve it, who then posts "
+            "it from their own account through a prefilled share link. Write one draft per "
+            "platform the task names, within its limit (X 280 characters, Bluesky 300). "
+            "Facebook and LinkedIn share only a link, so include the official link in those "
+            "drafts. Keep posts accurate, "
             "brief and in plain language, and include official links when given. Replies are "
             "polite and helpful and use only information the agency has published. Don't "
             "argue, don't engage with abuse or political debate, and never share personal "
