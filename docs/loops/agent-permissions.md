@@ -357,6 +357,12 @@ below the form.
   ONE draft naming the platform(s) (social) or recipient/subject (email); on "make it shorter"-style follow-ups call
   `draft_revise` on that draft instead of drafting again; tell the staffer they can edit the card directly.
 - API agreed with Lane F (editable draft card) by message; Lane F owns the UI.
+- FINAL API (agreed with Lane F, supersedes the bullets above where they differ): DraftItem also has
+  `revising: bool = False`; GET items carry `platformOptions` `[{id,label}]` (one platform per draft, not a list);
+  PATCH returns 403 `{detail}` when Cedar or the role refuses a new `to`/`platform` (checked at PATCH and again at
+  approve), 422 for keys outside `editable`; new `POST /drafts/{id}/revise {instruction ≤500}` → 202
+  `{id, revising:true}`, posts "Revise draft <id>: <instruction>" as the staffer's chat message in the draft's own
+  session; the agent's `draft_revise` bumps the version and clears `revising`; 409 if not pending or already revising.
 
 ## Task Ledger
 
