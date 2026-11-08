@@ -769,6 +769,22 @@ def test_module_level_helpers_use_the_installed_service(svc, cx):
     assert cx.send_gmail("maya", "jane@example.com", "Hi", "Body")["status"] == "sent"
 
 
+def test_the_default_service_needs_only_the_table_not_the_policy_store(cx, env, staffers, monkeypatch):
+    """Building it must not build the gateway: without AVP settings that raised, and the gateway's
+    error handling turned "not connected" into "denied by policy"."""
+    import identity_gateway.gateway as gw
+
+    monkeypatch.delenv("AVP_POLICY_STORE_ID", raising=False)
+    monkeypatch.setattr(gw, "_gateway", None)
+    cx.set_connections(None)
+    try:
+        with pytest.raises(cx.NeedsConnection):
+            cx.require_connection("maya", "gmail")
+        assert gw._gateway is None
+    finally:
+        cx.set_connections(None)
+
+
 # ---- logging --------------------------------------------------------------------------------
 
 

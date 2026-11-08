@@ -501,11 +501,10 @@ def get_connections() -> ConnectionService:
     if _connections is None:
         import boto3
 
-        from .gateway import get_gateway
-
+        # The same table the gateway uses, without building the gateway (that also needs the policy store).
         config = OAuthConfig.from_env()
         cipher = KmsCipher(boto3.client("kms", region_name="us-east-1"), config.kms_key_id) if config.kms_key_id else None
-        _connections = ConnectionService(get_gateway().store, cipher, httpx.Client(timeout=10), config)
+        _connections = ConnectionService(MandateStore.from_env(), cipher, httpx.Client(timeout=10), config)
     return _connections
 
 
