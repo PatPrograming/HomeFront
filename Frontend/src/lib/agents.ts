@@ -17,8 +17,29 @@ export interface Agent {
   recipients: string[];
   // Missing on APIs older than email settings; read via emailSettingsOf().
   email_settings?: EmailSettings;
+  // Connected social accounts by platform id. Handles only; never tokens.
+  social_connections?: Record<string, SocialConnection>;
   token_version: number;
   active: boolean;
+}
+
+export interface SocialConnection {
+  connected: boolean;
+  handle: string;
+  name: string;
+  connected_at: number | null;
+}
+
+export interface SocialPlatformsInfo {
+  live: string[];
+  configured: Record<string, boolean>;
+  limits: Record<string, number>;
+  links: Record<string, Record<string, string>>;
+}
+
+export interface PublishResult {
+  queued: { platform: string; approval_id: string }[];
+  skipped: { platform: string; reason: "not_supported" | "not_connected" | "too_long" | string; message: string }[];
 }
 
 export interface EmailSettings {
@@ -157,6 +178,9 @@ export const EVENT_LABELS: Record<string, string> = {
   email_test: "Test email",
   sender_verification_requested: "Sender verification sent",
   recipients_verification_requested: "Recipient verification sent",
+  social_connected: "Social account connected",
+  social_disconnected: "Social account disconnected",
+  social_publish_requested: "Posts queued for approval",
   run_started: "Run started",
   run_finished: "Run finished",
   approval_requested: "Approval requested",
@@ -200,6 +224,8 @@ export interface Approval {
     signature: string | null;
     simulated: boolean;
   } | null;
+  // social.post only: the account it goes out from if approved now.
+  social?: { platform: string; account: string | null; simulated: boolean } | null;
   // Pending email approvals: in the SES sandbox, recipients SES would reject.
   delivery?: {
     sandbox: boolean | null;

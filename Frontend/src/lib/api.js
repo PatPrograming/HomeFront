@@ -91,6 +91,23 @@ export const api = {
   emailAccount: () => request("/email/account"),
   emailPermissions: () => request("/email/permissions"),
 
+  // Social accounts. Tokens never reach the browser: connections are { connected, handle }.
+  socialPlatforms: () => request("/social/platforms", { auth: false }),
+  // Bluesky: handle + an *app password* (not the account password); the server keeps only a session.
+  connectBluesky: (agentId, identifier, appPassword) =>
+    request(`/agents/${encodeURIComponent(agentId)}/social/bluesky/connect`, {
+      method: "POST",
+      body: { identifier, app_password: appPassword },
+    }),
+  // X: returns { authorize_url }; navigate the browser there, X sends it back to the app.
+  connectX: (agentId) => request(`/agents/${encodeURIComponent(agentId)}/social/x/connect`, { method: "POST" }),
+  disconnectSocial: (agentId, platform) =>
+    request(`/agents/${encodeURIComponent(agentId)}/social/${encodeURIComponent(platform)}`, { method: "DELETE" }),
+  // body: { platforms, message, links } -> { queued: [{platform, approval_id}], skipped: [...] }
+  // Nothing is posted until each queued approval is approved.
+  publishSocial: (agentId, body) =>
+    request(`/agents/${encodeURIComponent(agentId)}/social/publish`, { method: "POST", body }),
+
   // Agent runs (Claude on Bedrock). Poll run() until a terminal status.
   startRun: (agentId, task) =>
     request(`/agents/${encodeURIComponent(agentId)}/runs`, { method: "POST", body: { task } }),

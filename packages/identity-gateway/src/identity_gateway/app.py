@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sys
 import time
+import urllib.parse
+import uuid
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 # Allow running without editable installs by putting sibling packages on path.
@@ -27,9 +31,10 @@ from atlas_enricher.enricher import AnnotateEvent  # noqa: E402
 from atlas_enricher.router import build_router  # noqa: E402
 from mcp_tools import handlers as email_handlers  # noqa: E402
 from mcp_tools.handlers import invoke_tool, resolve_sender, ses_identity_status  # noqa: E402
+from mcp_tools import bluesky_api, x_api  # noqa: E402
 from mcp_tools.registry import get_tool, list_tools, tool_public_view  # noqa: E402
 
-from . import email_admin  # noqa: E402
+from . import email_admin, social  # noqa: E402
 
 from .agent_types import (
     AGENT_TYPES,
@@ -54,6 +59,7 @@ from .store import (
     InvalidRecipientsError,
     normalize_email,
     normalize_email_settings,
+    social_connections_view,
 )
 
 # Agents live in memory by default; the host app can swap in DynamoDB via
@@ -168,6 +174,8 @@ def _agent_view(agent: AgentRecord) -> dict[str, Any]:
         "tool_grants": sorted(agent.tool_grants),
         "recipients": list(agent.recipients),
         "email_settings": agent.email_settings.view(),
+        # Handles only; tokens never leave the gateway.
+        "social_connections": social_connections_view(agent),
         "token_version": agent.token_version,
         "active": agent.active,
     }
@@ -656,6 +664,241 @@ def verify_recipients(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[
     return out
 
 
+# --- Social accounts ---------------------------------------------------------
+# Each agent posts from the account its owner connected through the platform's own
+# consent page (X) or an app password they create in their Bluesky settings; people
+# without an account sign up on the platform first. Live: Bluesky and X. Tokens are kept on the agent record and injected by the gateway when
+# an approved post executes; they are never returned by any route.
+
+SOCIAL_POST = "social.post"
+
+
+class BlueskyConnectRequest(BaseModel):
+    """Handle (or email) plus an *app password* created at bsky.app. The password is
+    exchanged for a session and discarded; it is never stored or returned."""
+
+    identifier: str = Field(min_length=1, max_length=254)
+    app_password: str = Field(min_length=1, max_length=64)
+
+
+class PublishRequest(BaseModel):
+    platforms: list[str] = Field(min_length=1, max_length=10)
+    message: str = Field(min_length=1, max_length=5000)
+    links: list[str] = Field(default_factory=list, max_length=10)
+
+
+def _frontend_url() -> str:
+    return (os.environ.get("FRONTEND_URL") or "").strip().rstrip("/") or "http://localhost:3000"
+
+
+def _social_redirect(**params: str) -> RedirectResponse:
+    return RedirectResponse(f"{_frontend_url()}/social-platform?{urllib.parse.urlencode(params)}", status_code=303)
+
+
+@app.get("/social/platforms")
+def social_platforms() -> dict[str, Any]:
+    """Which platforms can be connected and posted to right now."""
+    return {
+        "live": list(social.LIVE_PLATFORMS),
+        "configured": {p: social.is_configured(p) for p in social.LIVE_PLATFORMS},
+        "limits": social.TEXT_LIMITS,
+        "links": {
+            "bluesky": {"signup": bluesky_api.SIGNUP_URL, "app_passwords": bluesky_api.APP_PASSWORDS_URL},
+        },
+    }
+
+
+@app.get("/agents/{agent_id}/social")
+def agent_social(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    agent = _accessible_agent(agent_id, actor)
+    return {"connections": social_connections_view(agent), "can_post": SOCIAL_POST in agent.tool_grants}
+
+
+@app.post("/agents/{agent_id}/social/x/connect")
+def connect_x(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, str]:
+    """Start the X consent flow; the browser should navigate to `authorize_url`."""
+    _accessible_agent(agent_id, actor)
+    if not x_api.configured():
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "x_not_configured",
+                "message": "X isn't set up on this server yet. Add X_CLIENT_ID (and X_CLIENT_SECRET) to .env.",
+            },
+        )
+    return {"authorize_url": social.begin_x(agent_id, actor.user_id)}
+
+
+@app.post("/agents/{agent_id}/social/bluesky/connect")
+def connect_bluesky(
+    agent_id: str, body: BlueskyConnectRequest, actor: Actor = Depends(get_actor)
+) -> dict[str, Any]:
+    """Log in to Bluesky with an app password and keep the session (not the password)."""
+    _accessible_agent(agent_id, actor)
+    if not bluesky_api.looks_like_app_password(body.app_password):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "not_an_app_password",
+                "message": (
+                    "That doesn't look like an app password (xxxx-xxxx-xxxx-xxxx). Create one at "
+                    "bsky.app > Settings > Privacy and security > App passwords. "
+                    "Never enter your main Bluesky password."
+                ),
+            },
+        )
+    try:
+        connection = social.connect_bluesky(body.identifier, body.app_password)
+    except bluesky_api.BlueskyError as exc:
+        if exc.status in (400, 401):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "bluesky_login_failed",
+                    "message": "Bluesky didn't accept that handle and app password. Check both and try again.",
+                },
+            )
+        raise HTTPException(
+            status_code=502,
+            detail={"error": "bluesky_unreachable", "message": "Couldn't reach Bluesky. Try again in a moment."},
+        )
+    try:
+        agent = store.set_social_connection(agent_id, "bluesky", connection)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    store.append_audit(
+        {
+            "type": "social_connected",
+            "decision": "info",
+            "agent_id": agent_id,
+            "actor": actor.label,
+            "detail": f"Connected Bluesky account @{connection['handle']}",
+        }
+    )
+    return _agent_view(agent)
+
+
+@app.get("/social/x/callback")
+def x_callback(
+    state: str = "", code: str = "", error: str = "", error_description: str = ""
+) -> RedirectResponse:
+    """X sends the browser here after consent. Unauthenticated by necessity: the
+    single-use `state` ties it to the user and agent that started the flow."""
+    pending = social.take_pending(state) if state else None
+    if pending is None:
+        return _social_redirect(social_error="state_expired")
+    agent = store.get_agent(pending.agent_id)
+    if agent is None:
+        return _social_redirect(social_error="unknown_agent")
+    back = {"agent": agent.agent_id}
+    if error or not code:
+        return _social_redirect(social_error="denied" if error == "access_denied" else "failed", **back)
+    try:
+        connection = social.connect_x(pending, code)
+        store.set_social_connection(agent.agent_id, "x", connection)
+    except (x_api.XApiError, KeyError):
+        return _social_redirect(social_error="failed", **back)
+    store.append_audit(
+        {
+            "type": "social_connected",
+            "decision": "info",
+            "agent_id": agent.agent_id,
+            "actor": f"user:{pending.user_id}" if pending.user_id else "anonymous",
+            "detail": f"Connected X account @{connection['handle']}",
+        }
+    )
+    return _social_redirect(connected="x", **back)
+
+
+@app.delete("/agents/{agent_id}/social/{platform}")
+def disconnect_social(agent_id: str, platform: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    agent = _accessible_agent(agent_id, actor)
+    connection = agent.social_connections.get(platform)
+    if connection is None:
+        raise HTTPException(status_code=404, detail="Not connected")
+    agent = store.remove_social_connection(agent_id, platform)
+    social.disconnect(platform, connection)  # best effort at the platform
+    store.append_audit(
+        {
+            "type": "social_disconnected",
+            "decision": "info",
+            "agent_id": agent_id,
+            "actor": actor.label,
+            "detail": f"Disconnected {platform} account @{connection.get('handle') or '?'}",
+        }
+    )
+    return _agent_view(agent)
+
+
+@app.post("/agents/{agent_id}/social/publish", status_code=202)
+def publish_social(
+    agent_id: str, body: PublishRequest, actor: Actor = Depends(get_actor)
+) -> dict[str, Any]:
+    """Queue the page's content as one approval per connected, live platform.
+    Nothing is posted until a person approves each one."""
+    agent = _accessible_agent(agent_id, actor)
+    if not agent.active:
+        raise HTTPException(status_code=403, detail="Agent is inactive")
+    if SOCIAL_POST not in agent.tool_grants or disallowed_tools(agent.kind, [SOCIAL_POST]):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "tool_not_granted",
+                "message": "This agent isn't allowed to post to social media. Grant social.post on My agents.",
+            },
+        )
+    text = social.compose_text(body.message, body.links)
+    shim = type("UiToken", (), {"token_version": agent.token_version, "session_id": f"ui_{uuid.uuid4().hex[:12]}"})()
+    queued: list[dict[str, Any]] = []
+    skipped: list[dict[str, str]] = []
+    for platform in dict.fromkeys(p.strip().lower() for p in body.platforms):
+        if platform not in social.LIVE_PLATFORMS:
+            skipped.append({"platform": platform, "reason": "not_supported", "message": "Not available yet."})
+            continue
+        if platform not in agent.social_connections:
+            skipped.append({"platform": platform, "reason": "not_connected", "message": "Connect this account first."})
+            continue
+        limit = social.TEXT_LIMITS[platform]
+        length = social.text_length(platform, text)
+        if length > limit:
+            skipped.append(
+                {
+                    "platform": platform,
+                    "reason": "too_long",
+                    "message": f"{length} characters; {platform_name(platform)} allows {limit}. Shorten the message.",
+                }
+            )
+            continue
+        result = _request_approval(agent, shim, SOCIAL_POST, {"platform": platform, "text": text}, None)
+        queued.append({"platform": platform, "approval_id": result["approval_id"]})
+    if queued:
+        store.append_audit(
+            {
+                "type": "social_publish_requested",
+                "decision": "info",
+                "agent_id": agent_id,
+                "actor": actor.label,
+                "detail": f"Queued {len(queued)} post(s) for approval: {', '.join(q['platform'] for q in queued)}",
+            }
+        )
+    return {"queued": queued, "skipped": skipped}
+
+
+def platform_name(platform: str) -> str:
+    return {"x": "X", "bluesky": "Bluesky"}.get(platform, platform)
+
+
+def _social_connection_for_run(agent: AgentRecord, platform: str) -> dict[str, Any] | None:
+    """The agent's connection with a fresh access token, or None if not connected."""
+    connection = agent.social_connections.get(platform)
+    if not connection:
+        return None
+    return social.fresh_connection(
+        platform, connection, lambda updated: store.set_social_connection(agent.agent_id, platform, updated)
+    )
+
+
+
 @app.post("/auth/token", response_model=AuthResponse)
 def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthResponse:
     agent = _accessible_agent(body.agent_id, actor)
@@ -1109,7 +1352,19 @@ def _approval_view(rec: ApprovalRecord, agent: AgentRecord | None) -> dict[str, 
     # The sender and signature the gateway adds if approved now.
     view["sender"] = _sender_preview(agent) if agent and rec.tool in EMAIL_TOOLS else None
     view["delivery"] = _delivery_check(rec, agent) if agent and rec.status == "pending" else None
+    view["social"] = _social_preview(rec, agent) if agent and rec.tool == SOCIAL_POST else None
     return view
+
+
+def _social_preview(rec: ApprovalRecord, agent: AgentRecord) -> dict[str, Any]:
+    """Which account a social post goes out from if approved now."""
+    platform = str(rec.arguments.get("platform") or "").strip().lower()
+    conn = agent.social_connections.get(platform)
+    return {
+        "platform": platform,
+        "account": f"@{conn['handle']}" if conn and conn.get("handle") else None,
+        "simulated": not conn,
+    }
 
 
 def _delivery_check(rec: ApprovalRecord, agent: AgentRecord) -> dict[str, Any] | None:
@@ -1319,6 +1574,12 @@ def approve(
     if rec.tool == EMAIL_SEND_LIST:
         run_args["recipients"] = list(agent.recipients)
     try:
+        if rec.tool == SOCIAL_POST:
+            # The account and its token come from the agent's record, never from arguments.
+            platform = str(arguments.get("platform") or "").strip().lower()
+            connection = _social_connection_for_run(agent, platform)
+            if connection:
+                run_args["connection"] = connection
         result = _run_handler(tool, rec.tool, run_args)
     except Exception as exc:  # record the failure; the approval is spent either way
         failed = store.approvals.transition(

@@ -123,6 +123,9 @@ class AgentRecord:
     # Mailing list (normalized, see normalize_recipients).
     recipients: list[str] = field(default_factory=list)
     email_settings: EmailSettings = field(default_factory=EmailSettings)
+    # Connected social accounts by platform id ("x"): handle, OAuth tokens, expiry.
+    # Holds credentials: never serialize this directly, use social_connections_view().
+    social_connections: dict[str, dict[str, Any]] = field(default_factory=dict)
     token_version: int = 1
     active: bool = True
     created_at: float = field(default_factory=time.time)
@@ -166,7 +169,21 @@ def _copy(agent: AgentRecord) -> AgentRecord:
         tool_grants=set(agent.tool_grants),
         recipients=list(agent.recipients),
         email_settings=replace(agent.email_settings),
+        social_connections={k: dict(v) for k, v in agent.social_connections.items()},
     )
+
+
+def social_connections_view(agent: AgentRecord) -> dict[str, dict[str, Any]]:
+    """What the API may show about connected accounts: never any token."""
+    return {
+        platform: {
+            "connected": True,
+            "handle": conn.get("handle") or "",
+            "name": conn.get("name") or "",
+            "connected_at": conn.get("connected_at"),
+        }
+        for platform, conn in agent.social_connections.items()
+    }
 
 
 class MemoryAgentRepository:
@@ -323,6 +340,18 @@ class GatewayStore:
     def set_email_settings(self, agent_id: str, settings: EmailSettings) -> AgentRecord:
         def apply(agent: AgentRecord) -> None:
             agent.email_settings = replace(settings)
+
+        return self._mutate(agent_id, apply)
+
+    def set_social_connection(self, agent_id: str, platform: str, connection: dict[str, Any]) -> AgentRecord:
+        def apply(agent: AgentRecord) -> None:
+            agent.social_connections[platform] = dict(connection)
+
+        return self._mutate(agent_id, apply)
+
+    def remove_social_connection(self, agent_id: str, platform: str) -> AgentRecord:
+        def apply(agent: AgentRecord) -> None:
+            agent.social_connections.pop(platform, None)
 
         return self._mutate(agent_id, apply)
 

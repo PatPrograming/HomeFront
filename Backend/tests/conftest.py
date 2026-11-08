@@ -27,6 +27,11 @@ os.environ.update(
         "HOMEFRONT_EMAIL_FROM": "",
         "HOMEFRONT_SES_REGION": "",
         "HOMEFRONT_LIVE_DATAGOV": "0",
+        # Never a real X app in tests (see apply_aws_env); tests that need one set it.
+        "X_CLIENT_ID": "",
+        "X_CLIENT_SECRET": "",
+        "X_REDIRECT_URI": "",
+        "FRONTEND_URL": "",
     }
 )
 os.environ.pop("AWS_PROFILE", None)

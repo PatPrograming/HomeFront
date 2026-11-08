@@ -88,6 +88,23 @@ function ApprovalCard({ approval, onDone }: { approval: Approval; onDone: () => 
         </p>
       )}
 
+      {approval.social && (
+        <dl className="approval-sender">
+          <dt>Posts as</dt>
+          <dd>
+            {approval.social.simulated ? (
+              <span className="muted">
+                No {approval.social.platform} account is connected: this will only be simulated, nothing is posted
+              </span>
+            ) : (
+              <>
+                {approval.social.account} <span className="muted">on {approval.social.platform}</span>
+              </>
+            )}
+          </dd>
+        </dl>
+      )}
+
       {approval.sender && (
         <dl className="approval-sender">
           <dt>From</dt>

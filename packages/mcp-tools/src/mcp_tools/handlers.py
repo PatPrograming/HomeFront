@@ -199,15 +199,75 @@ def handle_email_send_list(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _post_to_x(connection: dict[str, Any], text: str) -> dict[str, Any]:
+    from . import x_api
+
+    if x_api.post_length(text) > x_api.MAX_POST_LENGTH:
+        raise ValueError(f"X posts are limited to {x_api.MAX_POST_LENGTH} characters")
+    post = x_api.post_tweet(connection["access_token"], text)
+    handle = connection.get("handle") or ""
+    return {
+        "account": f"@{handle}" if handle else None,
+        "post_id": post["id"],
+        "url": f"https://x.com/{handle or 'i'}/status/{post['id']}",
+    }
+
+
+def _post_to_bluesky(connection: dict[str, Any], text: str) -> dict[str, Any]:
+    from . import bluesky_api
+
+    if bluesky_api.post_length(text) > bluesky_api.MAX_POST_LENGTH:
+        raise ValueError(f"Bluesky posts are limited to {bluesky_api.MAX_POST_LENGTH} characters")
+    post = bluesky_api.create_post(connection, text)
+    handle = connection.get("handle") or ""
+    return {"account": f"@{handle}" if handle else None, "post_id": post["uri"], "url": post["url"]}
+
+
+# Platforms that can post for real. Each takes (connection, text) and returns
+# {account, post_id, url}; anything else is simulated.
+LIVE_POSTERS: dict[str, Callable[[dict[str, Any], str], dict[str, Any]]] = {
+    "x": _post_to_x,
+    "bluesky": _post_to_bluesky,
+}
+
+
 def handle_social_post(args: dict[str, Any]) -> dict[str, Any]:
-    platform = args.get("platform") or "x"
+    """Post live where the agent has a connected account for the platform
+    (X and Bluesky); otherwise simulate.
+
+    `connection` is injected by the gateway from the agent's stored connection
+    (fresh access token included), never from model or reviewer arguments.
+    Errors raise, so an approved post that fails is recorded as failed.
+    """
+    platform = (args.get("platform") or "x").strip().lower()
     text = args.get("text") or ""
+    connection = args.get("connection") if isinstance(args.get("connection"), dict) else None
+    plain = {k: v for k, v in args.items() if k != "connection"}
+
+    poster = LIVE_POSTERS.get(platform)
+    if poster and connection and connection.get("access_token"):
+        if not text.strip():
+            raise ValueError("The post is empty")
+        posted = poster(connection, text)
+        return {
+            "status": "posted",
+            "simulated": False,
+            "provider": platform,
+            "platform": platform,
+            "text_preview": text[:160],
+            **posted,
+        }
+
     return {
         "status": "posted",
         "simulated": True,
         "platform": platform,
         "text_preview": text[:160],
-        "post_id": f"post_{_args_hash(args)}",
+        "post_id": f"post_{_args_hash(plain)}",
+        "hint": (
+            f"No connected {platform} account for this agent, so nothing was posted. "
+            "Connect one on the Social media page."
+        ),
     }
 
 

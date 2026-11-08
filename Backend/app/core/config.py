@@ -62,6 +62,14 @@ class Settings(BaseSettings):
     homefront_email_from: str = ""
     homefront_ses_region: str = ""
 
+    # Social accounts. X: OAuth 2.0 app from developer.x.com; the redirect URI must
+    # match the one registered there exactly. Secrets stay on the gateway.
+    x_client_id: str = ""
+    x_client_secret: str = ""
+    x_redirect_uri: str = ""
+    # Where the OAuth callback sends the browser back to.
+    frontend_url: str = ""
+
     # api.data.gov — gateway-held only; never returned to agents (AML.M0026).
     data_gov_api_key: str = ""
     # When empty, live mode auto-enables if data_gov_api_key is set.
@@ -133,6 +141,10 @@ def apply_aws_env() -> None:
         "AWS_DEFAULT_REGION": settings.resolved_aws_region,
         "HOMEFRONT_EMAIL_FROM": settings.homefront_email_from,
         "HOMEFRONT_SES_REGION": settings.homefront_ses_region,
+        "X_CLIENT_ID": settings.x_client_id,
+        "X_CLIENT_SECRET": settings.x_client_secret,
+        "X_REDIRECT_URI": settings.x_redirect_uri,
+        "FRONTEND_URL": settings.frontend_url,
     }
     for key, value in exports.items():
         if value and value.strip():

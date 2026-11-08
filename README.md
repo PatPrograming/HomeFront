@@ -38,6 +38,16 @@ chmod +x scripts/*.sh
 - Agents are owner-scoped: a signed-in user sees and manages only their own agents plus ownerless demo agents (like `agent-comms-01`). Without a login, only the demo agents are reachable  
 - Set `AGENT_STORE=dynamodb` to keep agents in the `<prefix>agents` DynamoDB table instead of memory  
 
+### Social accounts
+
+Each agent posts from an account its owner connects on **Social media** (`/social-platform`); nothing is posted until a person approves it on **Approvals**.
+
+- **Bluesky** (live, free, no server config): the org creates an *app password* at bsky.app, pastes it with their handle, and HomeFront exchanges it for a session once and discards the password. Orgs without an account sign up at bsky.app first.
+- **X** (live, off until `X_CLIENT_ID` is set): OAuth 2.0 + PKCE through X's own consent page. X's API is pay-per-use now (no free tier), so check cost before enabling it; see `.env.example`.
+- Reddit, Facebook, Instagram, LinkedIn: listed in the UI as coming soon.
+- Tokens live only on the gateway (agent record) and are injected when an approved post runs. They are never returned by the API or visible to agents or reviewers.
+- Not yet: images, replies (`social.reply` is still simulated), and encrypting tokens at rest (they are stored plainly in the agents table; use KMS before production).
+
 ### Env (one file for Backend + Frontend)
 
 Copy [`.env.example`](.env.example) → `.env` at the **repo root**. Both the API and Vite frontend load it. Vite maps `COGNITO_*` into `VITE_COGNITO_*` — secrets like `DATA_GOV_API_KEY` and AWS keys never ship to the browser.
