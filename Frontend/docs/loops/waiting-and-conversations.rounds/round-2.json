@@ -1,0 +1,77 @@
+{
+  "round": 2,
+  "at": "2026-11-08T10:18:13.521Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162",
+  "passed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5"
+  ],
+  "failed": [],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Server scorer and ranked /drafts",
+      "command": "PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/bin/python -m pytest -q Backend/tests/test_draft_rank.py",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 1622,
+      "note": "",
+      "stdoutTail": "........                                                                 [100%]\n=============================== warnings summary ===============================\n../../../.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n8 passed, 1 warning in 0.95s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Waiting list: pick any, ranked/time order, urgency badge, this/all scope, Next in panel",
+      "command": "cd Frontend && npx vitest run src/components/WaitingList.test.tsx src/lib/waiting.test.ts src/components/ReviewPanel.test.tsx 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 994,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/chat-ux-huy-60b162/Frontend\n\n ✓ src/lib/waiting.test.ts (2 tests) 9ms\n ✓ src/components/ReviewPanel.test.tsx (5 tests) 7ms\n ✓ src/components/WaitingList.test.tsx (4 tests) 14ms\n\n Test Files  3 passed (3)\n      Tests  11 passed (11)\n   Start at  02:17:19\n   Duration  319ms (transform 96ms, setup 0ms, collect 174ms, tests 29ms, environment 0ms, prepare 204ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Conversations: list, new, switch; mock lists several open sessions",
+      "command": "cd Frontend && npx vitest run src/components/ConversationList.test.tsx src/pages/ConsoleConversations.test.tsx src/lib/mockApi.test.ts 2>&1",
+      "passWhen": "stdout matches /Tests\\s+\\d+ passed/",
+      "pass": true,
+      "exit": 0,
+      "ms": 8383,
+      "note": "",
+      "stdoutTail": "   ✓ mock GET /sessions/{sid} > is 404 for another staffer and for an unknown session  364ms\n   ✓ mock chat console > holds replies, offers autonomy after 3 unchanged approvals, then sends that kind alone  1344ms\n   ✓ mock chat console > never lets a locked category send alone, and keeps another staffer out  363ms\n   ✓ mock post drafts > drafts only the post text, whether the request uses a colon or 'saying'  486ms\n   ✓ mock per-session grants > a grant sends that category alone in this session only, and offboarding closes it  1334ms\n   ✓ mock forbidden request > refuses a bulk export, naming the policy, with one DENY event and no draft  607ms\n   ✓ mock GET /sessions: several conversations > keeps earlier conversations open, lists the caller's own with title and waiting count  727ms\n   ✓ mock GET /sessions: several conversations > each conversation keeps its own chat  485ms\n   ✓ mock GET /sessions: several conversations > caps open conversations per person  724ms\n   ✓ mock GET /sessions: several conversations > ranks waiting drafts with urgency, score and reason  486ms\n\n Test Files  3 passed (3)\n      Tests  19 passed (19)\n   Start at  02:17:19\n   Duration  7.88s (transform 225ms, setup 0ms, collect 348ms, tests 7.59s, environment 3ms, prepare 149ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Backend suite",
+      "command": "PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/bin/python -m pytest -q Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 35197,
+      "note": "",
+      "stdoutTail": "........................................................................ [ 17%]\n........................................................................ [ 35%]\n........................................................................ [ 52%]\n.......................................s................................ [ 70%]\n........................................................................ [ 87%]\n......ss...........................................                      [100%]\n=============================== warnings summary ===============================\n../../../.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n408 passed, 3 skipped, 1 warning in 34.21s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C5",
+      "check": "Frontend types, build, suite",
+      "command": "cd Frontend && npx tsc --noEmit && npm run build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 10453,
+      "note": "",
+      "stdoutTail": "   ✓ mock GET /sessions/{sid} > is 404 for another staffer and for an unknown session  366ms\n   ✓ mock chat console > holds replies, offers autonomy after 3 unchanged approvals, then sends that kind alone  1348ms\n   ✓ mock chat console > never lets a locked category send alone, and keeps another staffer out  368ms\n   ✓ mock post drafts > drafts only the post text, whether the request uses a colon or 'saying'  487ms\n   ✓ mock per-session grants > a grant sends that category alone in this session only, and offboarding closes it  1336ms\n   ✓ mock forbidden request > refuses a bulk export, naming the policy, with one DENY event and no draft  607ms\n   ✓ mock GET /sessions: several conversations > keeps earlier conversations open, lists the caller's own with title and waiting count  729ms\n   ✓ mock GET /sessions: several conversations > each conversation keeps its own chat  485ms\n   ✓ mock GET /sessions: several conversations > caps open conversations per person  728ms\n   ✓ mock GET /sessions: several conversations > ranks waiting drafts with urgency, score and reason  486ms\n\n Test Files  25 passed (25)\n      Tests  113 passed (113)\n   Start at  02:18:05\n   Duration  8.07s (transform 738ms, setup 0ms, collect 2.49s, tests 8.03s, environment 3ms, prepare 2.34s)",
+      "stderrTail": ""
+    }
+  ]
+}

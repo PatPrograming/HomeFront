@@ -19,12 +19,16 @@ const draft = (id: string, sid: string, to: string): Draft => ({
   id, sid, status: "pending", tool: "email_send", category: "case_status", categoryLabel: "Case status updates",
   args: { to, subject: "Re", body: "B" }, createdAt: "2026-11-08T08:00:03Z", urgency: "medium", score: 40, reason: "r",
 });
-const drafts = [draft("d-a", "sid-a", "in-a@example.com"), draft("d-b", "sid-b", "in-b@example.com")];
+const drafts = [draft("d-a", "sid-a", "in-a@example.com"), draft("d-a2", "sid-a", "second-a@example.com"), draft("d-b", "sid-b", "in-b@example.com")];
 const messages: ChatMessage[] = [
   { id: "m1", ts: "2026-11-08T08:00:01Z", role: "user", text: "Hi" },
   { id: "m2", ts: "2026-11-08T08:00:04Z", role: "assistant", text: "Done." },
 ];
 const chatFor: string[] = [];
+// What the console hands its children, so a test can press their buttons (no DOM here).
+const captured: { onSelect?: (sid: string) => void; onNext?: () => void } = {};
+const opened: string[] = [];
+const nav = { openId: null as string | null };
 
 vi.mock("../components/Layout", () => ({ default: ({ children }: { children: unknown }) => children }));
 vi.mock("../lib/AuthProvider", () => ({ useSession: () => ({ username: "maya", groups: ["staffer"] }) }));
@@ -39,6 +43,21 @@ vi.mock("../lib/useChat", () => ({
 }));
 vi.mock("../lib/useSessions", () => ({ useSessions: () => ({ sessions, error: null, reload: async () => {} }) }));
 vi.mock("../lib/api", () => ({ api: {} }));
+vi.mock("../lib/useOpenDraft", () => ({
+  useOpenDraft: () => ({ openId: nav.openId, open: (id: string) => void opened.push(id), close: () => {} }),
+}));
+vi.mock("../components/ConversationList", () => ({
+  default: (props: { onSelect: (sid: string) => void; sessions: SessionSummary[] }) => {
+    captured.onSelect = props.onSelect;
+    return <div>{props.sessions.map((s) => s.title).join(" | ")} New conversation</div>;
+  },
+}));
+vi.mock("../components/ReviewPanel", () => ({
+  default: (props: { draft: Draft; onNext?: () => void }) => {
+    captured.onNext = props.onNext;
+    return <div>panel {props.draft.id}</div>;
+  },
+}));
 
 const { default: Console } = await import("./Console");
 
@@ -47,6 +66,8 @@ const card = (sid: string): SessionCard => ({ ...base, sid, expiresAt: new Date(
 beforeEach(() => {
   storage.clear();
   chatFor.length = 0;
+  opened.length = 0;
+  nav.openId = null;
 });
 
 describe("Console: several conversations", () => {
@@ -73,6 +94,30 @@ describe("Console: several conversations", () => {
 
   it("counts every waiting draft in the badge", () => {
     storage.set("mandate.card", JSON.stringify(card("sid-a")));
-    expect(renderToStaticMarkup(<Console />)).toContain("2 waiting");
+    expect(renderToStaticMarkup(<Console />)).toContain("3 waiting");
+  });
+});
+
+describe("Console: switching and Next", () => {
+  it("picking a conversation in the list makes this tab show it", () => {
+    storage.set("mandate.card", JSON.stringify(card("sid-b")));
+    renderToStaticMarkup(<Console />);
+    captured.onSelect!("sid-a");
+    expect(JSON.parse(storage.get("mandate.card")!)).toMatchObject({ sid: "sid-a", agent: "agent-1", office: "rep-x" });
+    const html = renderToStaticMarkup(<Console />); // what the tab shows next
+    expect(html).toContain("Reply to in-a@example.com");
+    expect(html).not.toContain("Reply to in-b@example.com");
+  });
+
+  it("Next waiting opens the following draft in the list, wrapping at the end", () => {
+    storage.set("mandate.card", JSON.stringify(card("sid-a")));
+    nav.openId = "d-a"; // this conversation has d-a and d-a2
+    renderToStaticMarkup(<Console />);
+    captured.onNext!();
+    expect(opened).toEqual(["d-a2"]);
+    nav.openId = "d-a2";
+    renderToStaticMarkup(<Console />);
+    captured.onNext!();
+    expect(opened).toEqual(["d-a2", "d-a"]);
   });
 });

@@ -83,3 +83,10 @@ def test_drafts_come_back_ranked_with_urgency_score_and_reason(client, session, 
     assert [d["id"] for d in drafts] == [urgent, calm]  # most urgent first, though it was held second
     assert drafts[0]["urgency"] == "high" and "eviction" in drafts[0]["reason"]
     assert isinstance(drafts[0]["score"], int) and drafts[0]["score"] > drafts[1]["score"]
+
+
+def test_urgent_words_count_in_vietnamese_and_spanish_too():
+    vi = rank_draft(draft(), email("Tôi cần gia hạn hộ chiếu gấp"), NOW)
+    es = rank_draft(draft(), email("Es urgente, tengo una orden de desalojo"), NOW)
+    assert "mentions 'gấp'" in vi["reason"] and vi["urgency"] == "high"
+    assert "'urgente'" in es["reason"] and es["urgency"] == "high"

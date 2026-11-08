@@ -25,8 +25,9 @@ KIND_WEIGHT = {
     "suspicious": 5,
     "newsletter": 0,
 }
+# English plus the other languages in the office's inbox (Vietnamese, Spanish), so those writers aren't ranked lower.
 URGENT_WORDS = ("urgent", "emergency", "eviction", "evicted", "medical", "hospital", "deadline", "today", "asap",
-                "immediately", "shut off", "homeless")
+                "immediately", "shut off", "homeless", "gấp", "khẩn cấp", "urgente", "emergencia", "desalojo")
 REPEAT_PHRASES = ("third time", "second time", "again", "follow up", "follow-up", "no reply", "nobody", "haven't heard",
                   "still waiting", "called back")
 URGENT_BONUS = 30

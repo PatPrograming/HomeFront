@@ -1,6 +1,6 @@
 # Loop: waiting-and-conversations
 
-Status: REVIEWING
+Status: DONE
 Profile: feature
 Round: 1 / 4
 Base commit: 4b63e5e
@@ -70,3 +70,13 @@ conversations side by side, each in its own tab if they like.
   scrollWidth = viewport.
 - Known (pre-existing, mock only): the scripted mock run loops forever per open session and the console keeps the
   newest 100 events, so an older turn's disclosure can read "no actions" after a few minutes.
+- Trial (lite) on 407dfe3: FALSIFIED on test proof. Survivors: switching conversations a no-op (F4), Next reopening
+  the same draft (F5), the mock scorer without its to==sender check (F6). Also: urgent words English-only.
+
+### Round 2 — 2026-11-08
+- Built: Console tests that press the captured ConversationList onSelect and ReviewPanel onNext (child components
+  mocked to capture props; no DOM needed); mock rankDraft tests; Vietnamese/Spanish urgent words on server + mock.
+- Hand-run mutations: F4, F5 and F6 now each fail 1 test; files restored and diff-checked.
+- Outcome checks: 5/5 (round-2.json). One earlier C4 run hit the 300 s limit; a rerun took 30.7 s with no slow test
+  (408 passed, 3 skipped), so it was machine load, not the change.
+- Decision: DONE. No second trial (cost); trial ACCEPT not claimed.

@@ -70,7 +70,7 @@ const KIND_WEIGHT: Record<string, number> = {
   sensitive: 40, case_status: 30, scheduling: 20, info_request: 15, new_conversation: 10, social_post: 10,
   staff_memo: 5, suspicious: 5, newsletter: 0,
 };
-const URGENT_WORDS = ["urgent", "emergency", "eviction", "evicted", "medical", "hospital", "deadline", "today", "asap", "immediately", "shut off", "homeless"];
+const URGENT_WORDS = ["urgent", "emergency", "eviction", "evicted", "medical", "hospital", "deadline", "today", "asap", "immediately", "shut off", "homeless", "gấp", "khẩn cấp", "urgente", "emergencia", "desalojo"];
 const REPEAT_PHRASES = ["third time", "second time", "again", "follow up", "follow-up", "no reply", "nobody", "haven't heard", "still waiting", "called back"];
 const mentions = (text: string, words: string[]) => words.filter((w) => new RegExp(`\\b${w.replace(/[-]/g, "\\$&")}\\b`).test(text));
 
