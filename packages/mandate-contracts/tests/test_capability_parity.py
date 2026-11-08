@@ -228,9 +228,10 @@ def test_each_new_cedar_file_exists(name):
     assert (PKG / "policies" / f"{name}.cedar").is_file()
 
 
-def test_there_are_21_role_policies_and_5_new_starter_policies_in_total():
-    assert len([n for n in STARTER_POLICIES if n.startswith("role-")]) == 21
-    assert len(STARTER_POLICIES) == 6 + 5 + 21
+def test_there_is_one_role_policy_per_governed_tool_and_the_starter_total_is_6_plus_5_plus_22_plus_1():
+    governed = [n for n, t in TOOLS.items() if not t.always_denied]
+    assert len([n for n in STARTER_POLICIES if n.startswith("role-")]) == len(governed) == 22
+    assert len(STARTER_POLICIES) == 6 + 5 + len(governed) + 1  # + draft-revise
 
 
 # ---- one role table --------------------------------------------------------------------------
@@ -244,7 +245,7 @@ def test_role_values_are_subsets_of_governed_tools():
 
 def test_chief_of_staff_has_every_governed_tool():
     assert set(ROLE_TOOLS["chief_of_staff"]) == set(ROLE_GOVERNED_TOOLS)
-    assert len(ROLE_TOOLS["chief_of_staff"]) == 21
+    assert len(ROLE_TOOLS["chief_of_staff"]) == len([n for n, t in TOOLS.items() if not t.always_denied])
 
 
 def test_email_send_list_is_chief_of_staff_only():
@@ -485,3 +486,93 @@ def test_autonomy_locks_the_mailing_list_category():
     except ImportError:
         pytest.skip("identity_gateway.autonomy is not importable from the contracts test environment")
     assert "mailing_list" in autonomy.LOCKED
+
+
+# ---- draft_revise (research -> one draft -> edit until satisfied) ------------------------------
+# Spec: docs/loops/agent-permissions.md "Design addendum: research -> one draft -> edit until satisfied".
+
+OPTIONAL_REVISE_FIELDS = {"subject", "body", "to", "text", "platform"}
+# Mandate tools with no registry twin: gateway-only reads, the always-denied export, and draft_revise
+# (it has no Agents-tab counterpart, so it is deliberately not in the mcp_tools registry).
+MANDATE_ONLY = {"inbox_read", "case_read", "records_bulk_export", "draft_revise"}
+
+
+def test_draft_revise_is_the_one_documented_new_mandate_only_tool():
+    """Registry parity is not weakened: the tools without a registry twin are exactly the three
+    pre-existing gateway-only ones plus draft_revise. Any other mandate-only tool fails here."""
+    registry = {_dotted_to_mandate(d) for d in TOOL_REGISTRY}
+    assert {n for n in TOOLS if n not in registry} == MANDATE_ONLY
+
+
+def test_draft_revise_is_in_TOOLS():
+    assert "draft_revise" in TOOLS
+
+
+def test_draft_revise_input_requires_only_draft_id():
+    model = TOOLS["draft_revise"].input_model
+    assert {n for n, f in model.model_fields.items() if f.is_required()} == {"draft_id"}
+    assert _fields("draft_revise") == {"draft_id", *OPTIONAL_REVISE_FIELDS}
+
+
+def test_draft_revise_input_rejects_a_missing_draft_id():
+    with pytest.raises(Exception):
+        TOOLS["draft_revise"].input_model.model_validate({"body": "shorter"})
+
+
+def test_draft_revise_input_drops_extra_keys_so_account_and_tool_cannot_be_changed():
+    parsed = TOOLS["draft_revise"].input_model.model_validate(
+        {"draft_id": "d1", "body": "b", "account": "campaign", "in_reply_to": "email-1", "tool": "email_send_list", "office": "rep-y"}
+    )
+    dumped = parsed.model_dump(exclude_none=True)
+    assert dumped == {"draft_id": "d1", "body": "b"}
+
+
+def test_draft_revise_is_not_untrusted_and_not_always_denied():
+    assert TOOLS["draft_revise"].untrusted_output is False
+    assert TOOLS["draft_revise"].always_denied is False
+    assert "draft_revise" in ROLE_GOVERNED_TOOLS
+
+
+def test_draft_revise_has_a_cedar_action_and_a_committed_starter_permit_needing_an_active_delegator():
+    assert role_policy_id("draft_revise") == "role-draft-revise"
+    text = STARTER_POLICIES["draft-revise"]
+    assert text.startswith("permit(") and 'Mandate::Action::"draft_revise"' in text
+    assert "context.delegatorActive" in text
+    assert (PKG / "policies" / "draft-revise.cedar").read_text() == text + "\n"
+
+
+@pytest.mark.parametrize("role", list(ROLE_TOOLS))
+def test_every_role_may_hold_draft_revise(role):
+    """Revising sends nothing (approval re-checks everything), so no role is denied it."""
+    assert "draft_revise" in ROLE_TOOLS[role]
+
+
+def test_draft_revise_has_plain_words_for_a_role_deny():
+    from mandate_contracts.roles import TOOL_ACTIONS
+
+    assert TOOL_ACTIONS["draft_revise"].strip() and "_" not in TOOL_ACTIONS["draft_revise"]
+
+
+def test_draft_item_version_defaults_to_1_and_round_trips():
+    from mandate_contracts.ddb import DraftItem
+
+    base = dict(
+        status="pending", sid="s", agent="a", acting_for="maya", office="rep-x", tool="email_send",
+        category="new_conversation", args={"to": "a@b.gov"}, created_at="t",
+    )
+    item = DraftItem(**base)
+    assert item.version == 1
+    assert item.revising is False  # set by the staffer's revise request, cleared by the agent's draft_revise
+    assert DraftItem(**base, revising=True).revising is True
+    assert DraftItem.model_validate(item.model_dump(mode="json", by_alias=True)).version == 1
+    assert DraftItem(**base, version=3).version == 3
+
+
+def test_Reason_includes_edited_by_staff_in_python_and_typescript():
+    from typing import get_args
+
+    from mandate_contracts import Reason
+
+    assert "edited by staff" in get_args(Reason)
+    ts = (PKG / "ts" / "index.ts").read_text()
+    assert '"edited by staff"' in re.search(r"type Reason =(.*?);", ts, re.S).group(1)
