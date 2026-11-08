@@ -25,3 +25,4 @@ python3.12 venv and `PYTHONPATH=Backend:packages/atlas-enricher/src:packages/mcp
 - `docs/AUTH.md` (in the planning folder) describes Auth.js on Next.js. `Frontend/` is a Vite React SPA, so WP1
   follows the brief instead: `staff-web` public client with code + PKCE, backend verifies the Cognito token with
   PyJWT (already a dependency) against the Cognito JWKS.
+- After the 23:00 freeze: one rename branch replaces the remaining "mandate" code identifiers with HomeFront names, tested and demo-checked before merge; live AWS names (Cognito domain/scope, guardrail) are recreated last, only if the rehearsal still passes.
