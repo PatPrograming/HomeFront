@@ -15,10 +15,8 @@ Resume prompt: "Resume /converge from docs/loops/admin-roles.md; read docs/loops
 - Integrity scan: 11 flags, all benign.
 - Advocate: PARTIAL. It ran no mutation probes because it was told to wrap up early.
 - Falsifier: FALSIFIED on one item (last admin), 7/7 mutations caught. The fix is 8d4bb4c.
-- Judge: launched on HEAD 8d4bb4c with both reports, before the lead's 85% ruling. Its verdict is
-  **pending at the time of writing**. If this line still says pending, the judge never reported, so re-run the
-  judge only (not the falsifier/advocate). Use the falsifier report in the Round 1 entry as context, and re-check
-  the last-admin scenarios A, B and C on 8d4bb4c.
+- Judge: launched on HEAD 8d4bb4c with both reports, before the lead's 85% ruling. It ruled
+  **ACCEPT** (recorded under Round 2 in the loop file). The loop is DONE; nothing is left to resume.
 - Round-2 outcome checks (`outcome.mjs --round 2`) were also running; see `admin-roles.rounds/round-2.json` if it
   exists, else re-run it.
 

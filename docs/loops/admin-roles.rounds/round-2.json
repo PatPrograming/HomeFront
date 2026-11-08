@@ -1,0 +1,116 @@
+{
+  "round": 2,
+  "at": "2026-11-08T13:24:45.022Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/admin-roles",
+  "passed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "C6",
+    "C7",
+    "C8"
+  ],
+  "failed": [],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Role table in DynamoDB reaches real Cedar: edits apply on the next call, mid-session, fail closed, forbids win",
+      "command": "scripts/offline-pytest.sh -q packages/identity-gateway/tests/test_gw_role_table.py",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 2198,
+      "note": "",
+      "stdoutTail": ".........                                                                [100%]\n9 passed in 1.42s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "People & roles API: admin only (real token check), list, assign, edit, preview words, audit, every escalation case",
+      "command": "scripts/offline-pytest.sh -q Backend/tests/test_people_roles.py",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 10714,
+      "note": "",
+      "stdoutTail": "................................................................         [100%]\n=============================== warnings summary ===============================\n.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/admin-roles/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n64 passed, 1 warning in 9.88s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Contracts: role policies read principal.roleTools and match the files; validator rejects always-denied, locked, unknown, duplicate",
+      "command": "scripts/offline-pytest.sh -q packages/mandate-contracts/tests",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 544,
+      "note": "",
+      "stdoutTail": "........................................................................ [ 40%]\n........................................................................ [ 80%]\n...................................                                      [100%]\n179 passed in 0.21s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "setup.sh updates changed role policies only with `--update-role-policies`, dry run by default",
+      "command": "scripts/offline-pytest.sh -q Backend/tests/test_setup_role_policies.py",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 26554,
+      "note": "",
+      "stdoutTail": ".........                                                                [100%]\n9 passed in 26.11s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C5",
+      "check": "Gateway and contracts suites stay green (run per package: see Decisions)",
+      "command": "scripts/offline-pytest.sh -q packages/identity-gateway/tests && scripts/offline-pytest.sh -q packages/mandate-contracts/tests packages/atlas-enricher/tests",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 75695,
+      "note": "",
+      "stdoutTail": "\ntests/test_gw_tokens.py::test_rejects_other_hmac_algorithms_even_with_the_right_secret[HS384]\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/admin-roles/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 38 bytes long, which is below the minimum recommended length of 48 bytes for SHA384. See RFC 7518 Section 3.2.\n    return self._jws.encode(\n\ntests/test_gw_tokens.py::test_rejects_other_hmac_algorithms_even_with_the_right_secret[HS512]\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/admin-roles/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 38 bytes long, which is below the minimum recommended length of 64 bytes for SHA512. See RFC 7518 Section 3.2.\n    return self._jws.encode(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n717 passed, 8 warnings in 73.51s (0:01:13)\n........................................................................ [ 39%]\n........................................................................ [ 79%]\n......................................                                   [100%]\n182 passed in 0.65s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C6",
+      "check": "Agent suite stays green",
+      "command": "scripts/offline-pytest.sh -q agent/tests packages/guardrail-scanner/tests",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 19621,
+      "note": "",
+      "stdoutTail": "  /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/contextlib.py:105: DeprecationWarning: Use `streamable_http_client` instead.\n    self.gen = func(*args, **kwds)\n\ntest_agent_loop.py::test_http_401_mid_run_stops_the_run\ntest_agent_loop.py::test_http_401_at_start_stops_cleanly\ntest_chat.py::test_serve_chat_stops_when_the_gateway_revokes_mid_turn[401]\ntest_compromised_agent.py::test_http_401_mid_run_stops_without_retrying\ntest_compromised_agent.py::test_rejected_token_at_connect_stops_with_every_call_not_done\n  /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/base_events.py:709: RuntimeWarning: coroutine 'MCPClient.stop.<locals>._set_close_event' was never awaited\n    self._ready.clear()\n  Enable tracemalloc to get traceback where the object was allocated.\n  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n103 passed, 76 warnings in 18.65s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C7",
+      "check": "Console: People page tests, typecheck, build, all tests",
+      "command": "cd Frontend && npx tsc --noEmit && npm run -s build && npx vitest run",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 8129,
+      "note": "",
+      "stdoutTail": " ✓ src/config.test.ts (2 tests) 6ms\n ✓ src/pages/NewAgent.test.tsx (15 tests) 457ms\n ✓ src/lib/mockApi.test.ts (7 tests) 5142ms\n   ✓ mock GET /sessions/{sid} > reads active, then revoked after the Chief of Staff offboards Maya  618ms\n   ✓ mock GET /sessions/{sid} > is 404 for another staffer and for an unknown session  367ms\n   ✓ mock chat console > holds replies, offers autonomy after 3 unchanged approvals, then sends that kind alone  1348ms\n   ✓ mock chat console > never lets a locked category send alone, and keeps another staffer out  364ms\n   ✓ mock post drafts > drafts only the post text, whether the request uses a colon or 'saying'  489ms\n   ✓ mock per-session grants > a grant sends that category alone in this session only, and offboarding closes it  1342ms\n   ✓ mock forbidden request > refuses a bulk export, naming the policy, with one DENY event and no draft  611ms\n\n Test Files  20 passed (20)\n      Tests  113 passed (113)\n   Start at  05:24:38\n   Duration  5.66s (transform 869ms, setup 0ms, collect 2.32s, tests 6.00s, environment 393ms, prepare 1.72s)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C8",
+      "check": "Console has the People page test",
+      "command": "cd Frontend && npx vitest run src/pages/People.test.tsx",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 824,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/admin-roles/Frontend\n\n ✓ src/pages/People.test.tsx (7 tests) 19ms\n\n Test Files  1 passed (1)\n      Tests  7 passed (7)\n   Start at  05:24:44\n   Duration  329ms (transform 65ms, setup 0ms, collect 73ms, tests 19ms, environment 0ms, prepare 54ms)",
+      "stderrTail": ""
+    }
+  ]
+}

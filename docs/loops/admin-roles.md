@@ -1,6 +1,6 @@
 # Loop: admin-roles
 
-Status: REVIEWING
+Status: DONE
 Profile: feature (authorization: full trial)
 Round: 2 / 4
 Base commit: 0799095 (Lane H, Agent-Permissions-Huy; contracts 404cdff). First built on Lane G 679f0ad (old tip a605f42), then replayed here on the lead's ruling.
@@ -106,6 +106,19 @@ At round 0, C1, C2 and C8 fail because the files do not exist. C3 and C4 fail on
 - Decision: next round. Gap 1 fixed in 8d4bb4c (`_is_working_admin`, shared with `require_people_admin`), with
   `test_an_admin_who_cannot_use_the_admin_routes_does_not_count_as_another_admin`; it fails with the new condition
   removed.
+
+### Round 2
+
+- Outcome checks at 8d4bb4c: 8/8 pass (C2 now 64). Compared with round 1: fixed [], regressed [].
+- Judge (full trial, both reports, HEAD 8d4bb4c): **ACCEPT**. It re-ran the last-admin scenarios A (promoted through
+  the tab, no STAFFER item), B (other admin offboarded through the real route), C (Cognito admin, no STAFFER item)
+  and E (Cognito admin whose STAFFER role is staffer). At HEAD each gives 409. With the fix mutated away, all four and
+  the new test fail. Every other requirement is MET; the claims audit backs all 5 claims. Advocate error noted:
+  it called the last-admin item proven from a happy-case test.
+- Gap list: empty.
+- Follow-ups for Huy (not blockers): run `setup.sh --apply --update-role-policies` after the new gateway is deployed;
+  decide whether admin routes should be scoped to the admin's own office (`ROLE#<role>` is global today).
+- Decision: DONE.
 
 ## Decisions
 
