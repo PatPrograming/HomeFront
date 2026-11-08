@@ -1,2 +1,2 @@
 forbid(principal, action == Mandate::Action::"email_send", resource)
-  unless { principal has role && ["chief_of_staff", "caseworker", "communications_director"].contains(principal.role) };
+  unless { principal has roleTools && principal.roleTools.contains("email_send") };

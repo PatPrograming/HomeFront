@@ -22,9 +22,14 @@ POLICY_TEXT = "\n".join(p.read_text() for p in POLICY_FILES)
 POLICY_NAMES = {f"policy{i}": p.stem for i, p in enumerate(POLICY_FILES)}
 
 
+def _plain_value(typed: dict):
+    kind, value = next(iter(typed.items()))
+    return [_plain_value(v) for v in value] if kind == "set" else value
+
+
 def _plain(typed: dict) -> dict:
-    """AVP typed attributes ({"string": "x"}) -> Cedar JSON values ("x")."""
-    return {k: next(iter(v.values())) for k, v in typed.items()}
+    """AVP typed attributes ({"string": "x"}, {"set": [...]}) -> Cedar JSON values ("x", [...])."""
+    return {k: _plain_value(v) for k, v in typed.items()}
 
 
 def _uid(identifier: dict) -> dict:
@@ -35,7 +40,7 @@ class CedarAuthorizer:
     """The real Cedar engine on the policy files, fed by the same contract helpers AvpAuthorizer uses."""
 
     def is_authorized(self, req: AuthzRequest, agent: dict | None = None) -> AuthzDecision:
-        agent = agent or cedar.agent_entity(req.agent_id, req.office, req.mode, req.role)
+        agent = agent or cedar.agent_entity(req.agent_id, req.office, req.mode, req.role, req.effective_role_tools)
         entities = [
             {"uid": _uid(e["identifier"]), "attrs": _plain(e["attributes"]), "parents": []}
             for e in (agent, req.resource)
@@ -122,11 +127,11 @@ def test_an_unknown_or_empty_role_is_denied_everything(role, tool):
 
 
 @pytest.mark.parametrize("tool", TOOL_NAMES)
-def test_an_agent_entity_with_no_role_attribute_is_denied_everything(tool):
-    """An old gateway that never sends `role`: the forbids' `principal has role` guard denies, with no error."""
+def test_an_agent_entity_with_no_role_tools_attribute_is_denied_everything(tool):
+    """An old gateway that never sends `roleTools`: the forbids' `principal has roleTools` guard denies, with no error."""
     req = _req(tool, "chief_of_staff")
     agent = cedar.agent_entity("agent-1", "rep-x", "official", "chief_of_staff")
-    del agent["attributes"]["role"]
+    del agent["attributes"]["roleTools"]
     assert CEDAR.is_authorized(req, agent).allowed is False
 
 

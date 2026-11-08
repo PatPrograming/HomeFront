@@ -16,6 +16,8 @@ from boto3.dynamodb.conditions import Attr, Key
 from mandate_contracts import DecisionEvent
 from mandate_contracts.ddb import (
     TABLE_NAME,
+    AdminEventItem,
+    RoleItem,
     AutonomyItem,
     CaseItem,
     ChatMessageItem,
@@ -30,8 +32,11 @@ from mandate_contracts.ddb import (
     email_key,
     event_key,
     session_key,
+    admin_event_key,
+    role_key,
     staffer_key,
 )
+from mandate_contracts.roles import effective_role_tools
 
 MAX_EVENT_DAYS = 7  # how far back a `since` cursor may reach
 
@@ -110,6 +115,64 @@ class MandateStore:
             ExpressionAttributeValues={":a": active},
             ConditionExpression=Attr("pk").exists(),  # never create a half-empty staffer
         )
+
+    def list_staffers(self) -> dict[str, StafferItem]:
+        return {
+            item["pk"].removeprefix("STAFFER#"): StafferItem.model_validate(item)
+            for item in self._scan("STAFFER#", Attr("sk").eq("META"))
+        }
+
+    def set_office_role(self, staffer_id: str, office_role: str) -> None:
+        self.table.update_item(
+            Key=staffer_key(staffer_id),
+            UpdateExpression="SET officeRole = :r",
+            ExpressionAttributeValues={":r": office_role},
+            ConditionExpression=Attr("pk").exists(),
+        )
+
+    def set_staffer_group(self, staffer_id: str, group: str) -> None:
+        """The STAFFER item's copy of the Cognito group; admin routes read it to cut a demoted admin off at once."""
+        self.table.update_item(
+            Key=staffer_key(staffer_id),
+            UpdateExpression="SET #r = :g",
+            ExpressionAttributeNames={"#r": "role"},
+            ExpressionAttributeValues={":g": group},
+            ConditionExpression=Attr("pk").exists(),
+        )
+
+    # --- office roles (admin-editable tool lists) ---------------------------
+
+    def get_role_item(self, role: str) -> RoleItem | None:
+        item = self._get(role_key(role))
+        return RoleItem.model_validate(item) if item else None
+
+    def get_role_tools(self, role: str | None) -> frozenset[str]:
+        """What Cedar gets as principal.roleTools, read fresh on every tool call."""
+        item = self.get_role_item(role) if role else None
+        return effective_role_tools(role, item.tools if item else None)
+
+    def put_role_tools(self, role: str, item: RoleItem) -> None:
+        self._put(role_key(role), item)
+
+    def put_admin_event(self, event: AdminEventItem) -> None:
+        self._put(admin_event_key(event.ts, event.id), event)
+
+    def admin_events(self, limit: int = 100) -> list[AdminEventItem]:
+        """Newest first, from the last MAX_EVENT_DAYS days."""
+        today = datetime.now(timezone.utc).date()
+        events: list[AdminEventItem] = []
+        for back in range(MAX_EVENT_DAYS + 1):
+            day = today - timedelta(days=back)
+            page = self.table.query(
+                KeyConditionExpression=Key("pk").eq(f"ADMINLOG#{day.isoformat()}"),
+                ScanIndexForward=False,
+                ConsistentRead=True,
+                Limit=limit - len(events),
+            )
+            events += [AdminEventItem.model_validate(i) for i in page.get("Items", [])]
+            if len(events) >= limit:
+                break
+        return events
 
     def revoke_sessions_for(self, staffer_id: str) -> int:
         """Mark every active session acting for this staffer as revoked; return how many."""
