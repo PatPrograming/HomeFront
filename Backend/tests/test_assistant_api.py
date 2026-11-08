@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 
 import pytest
 from identity_gateway.tokens import mint_mandate_token
@@ -23,7 +24,7 @@ def session(store):
     store.put_session(
         SID,
         SessionItem(status="active", agent="agent-1", acting_for="maya", office="rep-x", mode="official",
-                    created_at="2026-11-07T20:00:00+00:00"),
+                    created_at=datetime.now(timezone.utc).isoformat()),
     )
     store.put_email(
         CASE_EMAIL,
@@ -230,3 +231,21 @@ def test_offboarding_wipes_grants_and_the_next_call_is_denied(client, session, g
     assert client.post(f"/api/v1/sessions/{SID}/grants", json={"category": "case_status"}).status_code == 403
     assert client.post(f"/api/v1/drafts/{draft_id}/approve", json={}).status_code == 403
     assert client.get("/api/v1/agent/messages", headers=agent_headers()).status_code == 403
+
+
+def test_other_cannot_be_granted_or_set_to_auto(client, session):
+    as_staff()
+    # "other" is not an offered category at all, so both routes refuse it (404), and it is locked besides.
+    assert client.post(f"/api/v1/sessions/{SID}/grants", json={"category": "other"}).status_code == 404
+    assert client.put("/api/v1/autonomy/other", json={"level": "auto"}).status_code == 404
+
+
+def test_a_grant_ends_when_the_session_does(client, session, gateway, store):
+    """A grant on a session past its one-hour end no longer skips review, even with a live mandate token."""
+    as_staff()
+    client.post(f"/api/v1/sessions/{SID}/grants", json={"category": "case_status"})
+    assert _send(gateway).event.reason == "allowed"
+    old = store.get_session(SID).model_copy(update={"created_at": "2026-11-07T00:00:00+00:00"})
+    store.put_session(SID, old)
+    client.post(f"/api/v1/sessions/{SID}/grants", json={"category": "case_status"})  # re-grant writes the past end
+    assert _send(gateway).result["status"] == "held_for_review"

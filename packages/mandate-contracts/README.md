@@ -43,3 +43,13 @@ MANDATE_DEV_SECRET=... python -m mandate_contracts.dev
 .venv/bin/python packages/mandate-contracts/export_schemas.py
 .venv/bin/python -m pytest -q packages/mandate-contracts/tests
 ```
+
+## Held drafts and staff approvals (decision semantics)
+
+- `"held for staff review"` is recorded with `decision: "ALLOW"`: Cedar allowed the call, but the
+  gateway did **not** run it. It saved a draft for the staffer and returned `held_for_review`. Read
+  this reason as "allowed by policy, not sent".
+- `"approved by staff"` is recorded with `decision: "ALLOW"` when the staffer approves a held draft
+  and the gateway re-checks it with Cedar and sends it. If that re-check fails, the event is `DENY`.
+- An email's `kind` defaults to `"other"`, a locked category: it always needs review and can never
+  be set to send alone or granted for a session.

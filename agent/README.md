@@ -132,7 +132,8 @@ with **her own Cognito login**. Nothing else can grant:
 - A grant is a DynamoDB item `GRANT#<sid>` / `<category>`, for one session and one category. The
   gateway reads it only after Cedar allowed the call, so it can skip the review queue but never a
   `forbid` policy. Locked categories cannot be granted (403).
-- It ends with the session: a revoked or expired session is denied at step 2 before any grant is
+- It ends with the session: the item stores the session's one-hour end and the gateway ignores it
+  after that; a revoked session is denied at step 2 before any grant is
   read, and offboarding also deletes the staffer's grant items.
 - A denied call is never retried. The gateway's DENY text names the Cedar policy
   (`DENIED (denied by policy, ATLAS AML.T0053) policy: forbid-bulk-export`), and `guard.py` adds

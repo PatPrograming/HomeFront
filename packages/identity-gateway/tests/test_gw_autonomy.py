@@ -129,3 +129,31 @@ def test_should_suggest_auto(category, item, expected):
     from identity_gateway.autonomy import should_suggest_auto
 
     assert should_suggest_auto(category, item) is expected
+
+
+# --- lead's conditions for the contract change (2026-11-07) ----------------------
+
+
+def test_in_reply_to_an_email_that_does_not_exist_is_a_new_conversation(trusted_replies, gateway, make_token, world, handler_spy):
+    args = {"to": world.known_email, "in_reply_to": "email-does-not-exist", **REPLY}
+    out = gateway.guarded("email_send", args, make_token())
+
+    assert out.result["status"] == "held_for_review" and out.result["category"] == "new_conversation"
+    assert handler_spy.calls == []
+
+
+def test_the_reply_address_matches_the_sender_ignoring_case_and_spaces(trusted_replies, gateway, make_token, world, handler_spy):
+    args = {"to": f"  {world.known_email.upper()} ", "in_reply_to": world.trusted_email_id, **REPLY}
+    out = gateway.guarded("email_send", args, make_token())
+
+    assert out.event.reason == "allowed" and handler_spy.calls  # case_status, which Maya set to auto
+
+
+def test_an_email_without_a_kind_is_other_and_always_held(gateway, store, make_token, world, handler_spy):
+    store.put_email("email-plain", EmailItem(from_=world.known_email, subject="Hi", body="..."))  # no kind
+    store.put_autonomy("maya", "other", AutonomyItem(level="auto"))
+    out = gateway.guarded("email_send", {"to": world.known_email, "in_reply_to": "email-plain", **REPLY}, make_token())
+
+    assert store.get_email("email-plain").kind == "other"
+    assert out.result["status"] == "held_for_review" and out.result["category"] == "other"
+    assert out.event.decision == "ALLOW" and handler_spy.calls == []  # allowed by policy, not sent

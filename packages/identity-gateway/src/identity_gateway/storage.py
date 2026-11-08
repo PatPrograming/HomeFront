@@ -7,6 +7,7 @@ staffer offboarded a millisecond ago is already inactive on the next tool call.
 from __future__ import annotations
 
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -182,13 +183,21 @@ class MandateStore:
     # outlive it: a revoked or expired session is denied at step 2 before any grant is read, and
     # offboarding deletes the items too.
 
-    def put_grant(self, sid: str, category: str, staffer_id: str, granted_at: str) -> None:
+    def put_grant(self, sid: str, category: str, staffer_id: str, granted_at: str, expires_at: int) -> None:
+        """`expires_at` (epoch seconds) is the session's own end, so the grant dies with it."""
         self.table.put_item(
-            Item={"pk": f"GRANT#{sid}", "sk": category, "actingFor": staffer_id, "grantedAt": granted_at}
+            Item={
+                "pk": f"GRANT#{sid}",
+                "sk": category,
+                "actingFor": staffer_id,
+                "grantedAt": granted_at,
+                "expiresAt": expires_at,
+            }
         )
 
     def has_grant(self, sid: str, category: str) -> bool:
-        return self._get({"pk": f"GRANT#{sid}", "sk": category}) is not None
+        item = self._get({"pk": f"GRANT#{sid}", "sk": category})
+        return item is not None and int(item.get("expiresAt", 0)) > time.time()
 
     def grants_for(self, sid: str) -> list[str]:
         page = self.table.query(KeyConditionExpression=Key("pk").eq(f"GRANT#{sid}"), ConsistentRead=True)
