@@ -216,6 +216,12 @@ export const api = {
   // Soft delete: hidden from the staffer's lists; the office's audit record (events, drafts) is kept.
   deleteSession: (sid: string) => request<{ sid: string; deleted: true }>(`/sessions/${encodeURIComponent(sid)}`, { method: "DELETE" }),
   sessionStatus: (sid: string) => request<SessionStatus>(`/sessions/${encodeURIComponent(sid)}`),
+  // The staffer stops their own task: the session is revoked, so the agent's next tool call is denied.
+  revokeSession: (sid: string) =>
+    request<{ sid: string; status: "revoked"; alreadyRevoked: boolean }>(`/sessions/${encodeURIComponent(sid)}/revoke`, {
+      method: "POST",
+      body: {},
+    }),
   events: (cursor?: string | null) => request<EventPage>(eventsPath(cursor)),
   offboard: (stafferId: string) =>
     request<OffboardResult>(`/staff/${encodeURIComponent(stafferId)}/offboard`, { method: "POST", body: {} }),

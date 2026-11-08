@@ -1,0 +1,77 @@
+{
+  "round": 2,
+  "at": "2026-11-08T13:04:43.491Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/stop-task",
+  "passed": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5"
+  ],
+  "failed": [],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Revoke route behaviour and guards",
+      "command": "env -u AWS_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src ../../../.venv/bin/python -m pytest -q Backend/tests/test_stop_task.py",
+      "passWhen": "stdout contains 10 passed",
+      "pass": true,
+      "exit": 0,
+      "ms": 5242,
+      "note": "",
+      "stdoutTail": "..........                                                               [100%]\n=============================== warnings summary ===============================\n../../../.venv/lib/python3.12/site-packages/fastapi/testclient.py:1\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.\n    from starlette.testclient import TestClient as TestClient  # noqa\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n10 passed, 1 warning in 3.77s",
+      "stderrTail": ""
+    },
+    {
+      "id": "C2",
+      "check": "Full backend + packages suite",
+      "command": "env -u AWS_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src ../../../.venv/bin/python -m pytest -q Backend/tests packages/atlas-enricher/tests packages/mandate-contracts/tests packages/identity-gateway/tests",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 127481,
+      "note": "",
+      "stdoutTail": "test_gw_mcp.py::test_revoking_mid_task_denies_the_next_mcp_call_on_the_same_connection\ntest_gw_mcp.py::test_inactive_delegator_over_mcp_is_denied_and_untrusted_content_is_not_returned\n  /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/contextlib.py:105: DeprecationWarning: Use `streamable_http_client` instead.\n    self.gen = func(*args, **kwds)\n\ntest_gw_tokens.py::test_rejects_other_hmac_algorithms_even_with_the_right_secret[HS384]\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 38 bytes long, which is below the minimum recommended length of 48 bytes for SHA384. See RFC 7518 Section 3.2.\n    return self._jws.encode(\n\ntest_gw_tokens.py::test_rejects_other_hmac_algorithms_even_with_the_right_secret[HS512]\n  /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 38 bytes long, which is below the minimum recommended length of 64 bytes for SHA512. See RFC 7518 Section 3.2.\n    return self._jws.encode(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n832 passed, 3 skipped, 9 warnings in 125.91s (0:02:05)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "Console intercepts stop phrases, agent text never triggers",
+      "command": "npm --prefix Frontend exec -- vitest run src/pages/ConsoleStop.test.tsx src/components/ChatPanel.test.tsx",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 1980,
+      "note": "",
+      "stdoutTail": "RUN  v3.2.7 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/stop-task\n\n ✓ Frontend/src/components/ChatPanel.test.tsx (18 tests) 29ms\n ✓ Frontend/src/pages/ConsoleStop.test.tsx (11 tests) 33ms\n\n Test Files  2 passed (2)\n      Tests  29 passed (29)\n   Start at  05:04:34\n   Duration  858ms (transform 342ms, setup 0ms, collect 624ms, tests 62ms, environment 0ms, prepare 206ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "C4",
+      "check": "Frontend types",
+      "command": "npm --prefix Frontend exec -- tsc --noEmit -p Frontend",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 753,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": ""
+    },
+    {
+      "id": "C5",
+      "check": "Frontend suite",
+      "command": "npm --prefix Frontend exec -- vitest run --root Frontend",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 6901,
+      "note": "",
+      "stdoutTail": " ✓ src/config.test.ts (2 tests) 2ms\n ✓ src/lib/errors.test.ts (5 tests) 4ms\n ✓ src/lib/mockApi.test.ts (7 tests) 5162ms\n   ✓ mock GET /sessions/{sid} > reads active, then revoked after the Chief of Staff offboards Maya  616ms\n   ✓ mock GET /sessions/{sid} > is 404 for another staffer and for an unknown session  365ms\n   ✓ mock chat console > holds replies, offers autonomy after 3 unchanged approvals, then sends that kind alone  1357ms\n   ✓ mock chat console > never lets a locked category send alone, and keeps another staffer out  383ms\n   ✓ mock post drafts > drafts only the post text, whether the request uses a colon or 'saying'  488ms\n   ✓ mock per-session grants > a grant sends that category alone in this session only, and offboarding closes it  1341ms\n   ✓ mock forbidden request > refuses a bulk export, naming the policy, with one DENY event and no draft  607ms\n\n Test Files  21 passed (21)\n      Tests  118 passed (118)\n   Start at  05:04:37\n   Duration  5.95s (transform 1.29s, setup 0ms, collect 3.85s, tests 6.03s, environment 3ms, prepare 2.87s)",
+      "stderrTail": ""
+    }
+  ]
+}

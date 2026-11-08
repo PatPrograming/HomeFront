@@ -4,6 +4,7 @@ import type { AutonomyCategory, Draft, SessionCard } from "../lib/api";
 import { turnEvents } from "../lib/agentActivity";
 import { connectionMessage } from "../lib/errors";
 import { attemptSend, retryThenResend, type SendFailure } from "../lib/sendFlow";
+import { STOPPED_TEXT } from "../lib/stopTask";
 import type { Chat } from "../lib/useChat";
 import AgentActivity from "./AgentActivity";
 import ReviewCards, { draftsByReply } from "./ReviewCards";
@@ -28,6 +29,13 @@ export interface ChatActivity {
   categories: AutonomyCategory[];
   grants?: string[];
   admin: boolean;
+}
+
+/** Stop this task: revoke the session with the staffer's own login. `stopped` once it is done. */
+export interface ChatStop {
+  stopped: boolean;
+  onStop: () => Promise<void>;
+  onNewConversation: () => void;
 }
 
 /** Drafts to show as cards under the reply that made them (decided ones too), and how to open one for review. */
@@ -69,6 +77,7 @@ export default function ChatPanel({
   retryAgent,
   initialFailure = null,
   renewedAfter = null,
+  stop: stopTask,
 }: {
   chat: Chat;
   sid: string | null;
@@ -79,11 +88,13 @@ export default function ChatPanel({
   retryAgent?: () => Promise<unknown>; // "Try again": the server resets this conversation's restart count
   initialFailure?: SendFailure | null; // a send that already failed (the render tests start from one)
   renewedAfter?: string | null; // the last message before the session renewed: a divider follows it
+  stop?: ChatStop;
 }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<SendFailure | null>(initialFailure);
   const [retrying, setRetrying] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const last = chat.messages[chat.messages.length - 1];
@@ -102,9 +113,12 @@ export default function ChatPanel({
     return () => clearInterval(id);
   }, [waiting]);
 
+  // Follow the newest message; once stopped, the Stopped confirmation (and its way out) above the composer.
+  const stoppedRef = useRef<HTMLDivElement>(null);
+  const stopped = stopTask?.stopped ?? false;
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "nearest" });
-  }, [chat.messages.length]);
+    (stopped ? stoppedRef : endRef).current?.scrollIntoView({ block: "nearest" });
+  }, [chat.messages.length, stopped]);
 
   // The box grows with the text, up to a cap, like other chat apps.
   useEffect(() => {
@@ -143,6 +157,19 @@ export default function ChatPanel({
 
   function stop() {
     if (last) setStoppedFor(last.id);
+  }
+
+  async function stopThisTask() {
+    if (!stopTask || sending) return;
+    setSending(true);
+    setStopError(null);
+    try {
+      await stopTask.onStop();
+    } catch (e) {
+      setStopError(connectionMessage(e, false));
+    } finally {
+      setSending(false);
+    }
   }
 
   // Enter sends, Shift+Enter starts a new line, Escape stops waiting, as in other chat apps.
@@ -242,6 +269,14 @@ export default function ChatPanel({
             </div>
           </div>
         )}
+        {stopTask?.stopped && (
+          <div ref={stoppedRef} className="chat-task-stopped" role="status">
+            <p>{STOPPED_TEXT}</p>
+            <button type="button" className="btn-primary" onClick={stopTask.onNewConversation}>
+              Start a new conversation
+            </button>
+          </div>
+        )}
         {last?.role === "user" && stoppedFor === last.id && !disabled && (
           <p className="chat-stopped" role="status">
             Stopped waiting. If the assistant finishes anyway, its reply still shows here.
@@ -264,6 +299,19 @@ export default function ChatPanel({
       </div>
 
       <div className="composer-dock">
+        {stopTask && last?.role === "user" && !disabled && (
+          <div className="stop-task-row">
+            <button type="button" className="stop-task-btn" onClick={stopThisTask} disabled={sending}>
+              Stop this task
+            </button>
+            <span className="muted">or type “stop”. The assistant loses access right away.</span>
+          </div>
+        )}
+        {stopError && (
+          <p className="alert" role="alert">
+            Could not stop the task: {stopError}
+          </p>
+        )}
         {chat.messages.length === 0 && !disabled && (
           <div className="chat-suggestions">
             {SUGGESTIONS.map((s) => (

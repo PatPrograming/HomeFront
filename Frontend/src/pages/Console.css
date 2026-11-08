@@ -1856,6 +1856,8 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
+}
+
 /* A renewed session inside one conversation: a quiet line, not a box. */
 .chat-divider {
   display: flex;
@@ -2016,4 +2018,47 @@
   content: "·";
   margin-right: 8px;
   color: var(--line-strong, #c5cdd8);
+}
+
+/* Stop this task: the staffer revokes the running session from the chat. */
+.stop-task-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.mandate-console .stop-task-btn {
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.mandate-console .stop-task-btn:hover:not(:disabled) {
+  background: var(--red-50);
+}
+
+.chat-task-stopped {
+  scroll-margin-bottom: 160px; /* clear the sticky composer */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 12px 12px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--canvas);
+  font-size: 14px;
+}
+
+.chat-task-stopped p {
+  margin: 0;
+  color: var(--ink);
 }

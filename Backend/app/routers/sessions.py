@@ -14,9 +14,11 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from atlas_enricher import AnnotateRequest
+from atlas_enricher.enricher import AnnotateEvent
 from identity_gateway.gateway import get_gateway
 from identity_gateway.tokens import mint_mandate_token
-from mandate_contracts import TOOLS, TTL_SECONDS, MandateClaims
+from mandate_contracts import TOOLS, TTL_SECONDS, DecisionEvent, MandateClaims
 from mandate_contracts.ddb import SessionItem
 from mandate_contracts.roles import ROLE_TOOLS, role_label
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
@@ -39,6 +41,9 @@ SESSION_TTL_SECONDS = 60 * 60  # a session can mint 15-minute mandate tokens for
 def allowed_tools(office_role: str | None) -> list[str]:
     """What the console lists as allowed. Display only: Cedar's role policies are what enforce it."""
     return [name for name, spec in TOOLS.items() if not spec.always_denied and name in ROLE_TOOLS.get(office_role or "", ())]
+
+
+REVOKE_TOOL = "session_revoke"  # the audit event's tool name when a staffer stops their own task
 
 
 def _iso(epoch: float) -> str:
@@ -282,6 +287,44 @@ def delete_conversation(sid: str, staff: StaffIdentity = Depends(require_staff))
             supervisor.stop(link, "conversation deleted")
     conversations.update_meta(root, staff.username, {"deleted": True})
     return {"sid": sid, "deleted": True, "revoked": revoked}
+
+
+@router.post("/sessions/{sid}/revoke")
+def revoke_session(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dict:
+    """The staffer stops their own running task. Only the owner's Cognito login can do it (not an admin, not
+    the agent's mandate token). Same fail-closed path as offboarding, for one conversation: guarded() and the
+    mandate broker both read the session status, so the very next tool call or mint is denied."""
+    session, _ = _own_conversation(sid, staff)
+    store = get_gateway().store
+    already = session.status != "active"
+    if not already:
+        store.put_session(sid, session.model_copy(update={"status": "revoked"}))
+        _record_stop(sid, session, staff.username)
+    supervisor = get_supervisor()
+    if supervisor:  # the agent would be denied at its next call anyway; this ends the process now
+        supervisor.stop(sid, "stopped by staffer")
+    return {"sid": sid, "status": "revoked", "alreadyRevoked": already}
+
+
+def _record_stop(sid: str, session: SessionItem, staffer: str) -> None:
+    """One audit event for the stop, labelled like the gateway's own revocations."""
+    gateway = get_gateway()
+    atlas = gateway.enricher.annotate(AnnotateRequest(event=AnnotateEvent.revoke)).technique_ids
+    gateway.store.put_event(
+        DecisionEvent(
+            id=str(uuid.uuid4()),
+            ts=datetime.now(timezone.utc).isoformat(timespec="microseconds"),
+            sid=sid,
+            agent=session.agent,
+            acting_for=session.acting_for,
+            office=session.office,
+            tool=REVOKE_TOOL,
+            resource=f"stopped by {staffer}",
+            decision="DENY",
+            reason="session revoked / delegator inactive",
+            atlas=atlas,
+        )
+    )
 
 
 @router.get("/sessions/{sid}")

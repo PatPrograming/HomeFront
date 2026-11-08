@@ -9,6 +9,7 @@
 //   DELETE /sessions/{sid}     → soft delete: hidden from the lists, events and drafts kept
 //   GET  /sessions/{sid}       → { sid, status, actingFor, office, expiresAt }; own sessions, or any for an admin
 //   GET  /events?since=<key>   → contract sample events + the generated ones, same cursor rules
+//   POST /sessions/{sid}/revoke → owner only; that session reads revoked and its scripted run stops
 //   POST /staff/{id}/offboard  → admin only; the agent's next call becomes a DENY and the run stops
 //   chat, review queue and autonomy routes → mockAssistant.ts
 // State lives in localStorage so a Maya tab and a Chief of Staff tab see the same fake world.
@@ -43,6 +44,7 @@ interface MockSession {
   group?: string | null;
   archived?: boolean;
   deleted?: boolean;
+  revoked?: boolean; // the staffer stopped this task
 }
 
 // A short name from what the staffer asked first, like the server's auto title: drop polite filler, keep the
@@ -249,8 +251,15 @@ export async function mockRequest(method: string, path: string, body: unknown, t
     const s = state.sessions[decodeURIComponent(url.pathname.split("/")[2])];
     if (!s || (s.actingFor !== user.username && !user.groups.includes("admin"))) throw new MockError(404, "Unknown session");
     // Offboarding marks the staffer, so every session acting for them reads as revoked (as on the server).
-    const status = state.offboarded[s.actingFor] ? "revoked" : "active";
+    const status = state.offboarded[s.actingFor] || s.revoked ? "revoked" : "active";
     result = { sid: s.sid, status, actingFor: s.actingFor, office: s.office, expiresAt: s.expiresAt };
+  } else if (method === "POST" && /^\/sessions\/[^/]+\/revoke$/.test(url.pathname)) {
+    const s = state.sessions[decodeURIComponent(url.pathname.split("/")[2])];
+    if (!s || s.actingFor !== user.username) throw new MockError(404, "Unknown session"); // owner only, as on the server
+    advance(state, now);
+    const alreadyRevoked = Boolean(s.revoked);
+    s.revoked = s.stopped = true;
+    result = { sid: s.sid, status: "revoked", alreadyRevoked };
   } else if (method === "GET" && url.pathname === "/events") {
     advance(state, now);
     const since = url.searchParams.get("since");

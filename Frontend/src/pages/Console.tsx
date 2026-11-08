@@ -16,6 +16,7 @@ import { useSession } from "../lib/AuthProvider";
 import { sessionEvents } from "../lib/events";
 import { isAdmin } from "../lib/roles";
 import { needsNewSession, sendInSession, type StartedCard } from "../lib/chatSession";
+import { isStopPhrase } from "../lib/stopTask";
 import { useChat, type Chat } from "../lib/useChat";
 import { useEventFeed } from "../lib/useEventFeed";
 import { useReview } from "../lib/useReview";
@@ -30,6 +31,7 @@ import "./Console.css";
 // different conversations.
 const CARD_KEY = "mandate.card";
 const REVOKED = "session revoked / delegator inactive";
+const STOPPED_KEY = "mandate.stopped"; // sid of the task the staffer stopped in this tab
 const GRANTS_KEY = "mandate.grants"; // { [sid]: categories } granted with "Approve and allow for this session"
 // A session lasts an hour; the next message then starts a new one. So the conversation doesn't lose what came
 // before, this tab keeps the earlier sessions' messages (they can't change once a session has ended) under the
@@ -91,7 +93,11 @@ export default function Console() {
   const chain = [...(fromServer ?? local?.sids ?? []), ...(card ? [card.sid] : [])]; // this conversation's sessions, oldest first
   // Lane E: a continued session starts without the one-time permissions of the last one; say so once, quietly.
   const notice = (card as StartedCard | null)?.grantsReset ? "New session: one-time permissions were reset" : null;
-  const revoked = useSessionRevoked(card?.sid ?? null) || sessionEvents(feed.events, card?.sid ?? null).some((e) => e.reason === REVOKED);
+  // The task this tab stopped, kept across a reload so the page still says who stopped it.
+  const [stoppedSid, setStoppedSid] = useState<string | null>(() => sessionStorage.getItem(STOPPED_KEY));
+  const stopped = card !== null && stoppedSid === card.sid;
+  const polledRevoked = useSessionRevoked(card?.sid ?? null);
+  const revoked = stopped || polledRevoked || sessionEvents(feed.events, card?.sid ?? null).some((e) => e.reason === REVOKED);
   const events = feed.events.filter((e) => chain.includes(e.sid)); // the admin Audit log shows every session
   const chat = useChat(card?.sid ?? null);
   const review = useReview();
@@ -104,7 +110,9 @@ export default function Console() {
 
   // No "Start" button: the first message (or the first after the session expired) starts one.
   // Errors, such as the broker refusing an offboarded staffer, show under the chat box.
+  // A typed stop phrase never reaches the agent: the console revokes the session itself.
   async function send(text: string) {
+    if (card && isStopPhrase(text)) return stopTask();
     if (card && !needsNewSession(card, Date.now())) return chat.send(text);
     // The session's hour is up: keep what was said so far above the new session's messages.
     const kept: Earlier | null = card ? { sids: chain, messages: shownMessages } : null;
@@ -125,6 +133,14 @@ export default function Console() {
       showCard(next.card);
       conversations.reload();
     }
+  }
+  // Stop this task (button or typed phrase): the staffer's own login revokes the session, so the agent's next
+  // tool call is denied and its process is ended. Errors show under the chat box.
+  async function stopTask() {
+    if (!card) return;
+    await api.revokeSession(card.sid);
+    sessionStorage.setItem(STOPPED_KEY, card.sid);
+    setStoppedSid(card.sid);
   }
   function showCard(next: SessionCard | null) {
     if (next) sessionStorage.setItem(CARD_KEY, JSON.stringify(next));
@@ -244,7 +260,7 @@ export default function Console() {
               <div>
                 <h1>Your assistant</h1>
                 {card ? (
-                  <IdentityLine card={card} revoked={revoked} task={row?.title} />
+                  <IdentityLine card={card} revoked={revoked} task={row?.title} stopped={stopped} />
                 ) : (
                   <p className="identity-line">It acts for you, with only the tools your office allows.</p>
                 )}
@@ -331,7 +347,7 @@ export default function Console() {
               </p>
             )}
 
-            {card && revoked && (
+            {card && revoked && !stopped && (
               <p className="revoked-banner" role="status">
                 <span>This conversation's session was revoked. The assistant can do nothing more in it.</span>
                 <button type="button" className="btn-primary" onClick={newConversation}>
@@ -345,6 +361,7 @@ export default function Console() {
               chat={chatWithSession}
               sid={card?.sid ?? null}
               disabled={revoked}
+              stop={card ? { stopped, onStop: stopTask, onNewConversation: newConversation } : undefined}
               activity={{ card, events, categories: review.categories, grants: card ? grants[card.sid] ?? [] : [], admin }}
               review={{ drafts: chatDrafts, onOpen: openReview, onChanged: review.reload }}
               onNewConversation={newConversation}
@@ -378,7 +395,7 @@ export default function Console() {
               <p className="muted">Visible to admins only. Staff see the plain-words summary in the chat.</p>
             </div>
             <AgentAccess />
-            {card && <IdentityCard card={card} revoked={revoked} />}
+            {card && <IdentityCard card={card} revoked={revoked} stopped={stopped} />}
             <section className="panel" aria-labelledby="feed-title">
               <div className="panel-head">
                 <h2 id="feed-title">Live decisions</h2>
