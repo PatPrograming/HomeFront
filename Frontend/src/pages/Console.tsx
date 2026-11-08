@@ -96,7 +96,11 @@ export default function Console() {
   // The task this tab stopped, kept across a reload so the page still says who stopped it.
   const [stoppedSid, setStoppedSid] = useState<string | null>(() => sessionStorage.getItem(STOPPED_KEY));
   const stopped = card !== null && stoppedSid === card.sid;
-  const polledRevoked = useSessionRevoked(card?.sid ?? null);
+  // The approved plan's tools per session: once set, the activity list shows only those.
+  const [planTools, setPlanTools] = useState<Record<string, SessionCard["planTools"]>>({});
+  const polledRevoked = useSessionRevoked(card?.sid ?? null, 2000, (s) =>
+    setPlanTools((prev) => (JSON.stringify(prev[s.sid]) === JSON.stringify(s.planTools ?? null) ? prev : { ...prev, [s.sid]: s.planTools ?? null })),
+  );
   // The broker refused to continue this conversation because its session was revoked (code `revoked`).
   const [refusedSid, setRefusedSid] = useState<string | null>(null);
   const revoked = stopped || polledRevoked || (card !== null && refusedSid === card.sid) || sessionEvents(feed.events, card?.sid ?? null).some((e) => e.reason === REVOKED);
@@ -373,7 +377,7 @@ export default function Console() {
               sid={card?.sid ?? null}
               disabled={revoked}
               stop={card ? { stopped, onStop: stopTask, onNewConversation: newConversation } : undefined}
-              activity={{ card, events, categories: review.categories, grants: card ? grants[card.sid] ?? [] : [], admin }}
+              activity={{ card: card && { ...card, planTools: planTools[card.sid] ?? card.planTools }, events, categories: review.categories, grants: card ? grants[card.sid] ?? [] : [], admin }}
               review={{ drafts: chatDrafts, onOpen: openReview, onChanged: review.reload }}
               onNewConversation={newConversation}
               retryAgent={card ? () => api.retryAgent(card.sid) : undefined}

@@ -63,6 +63,7 @@ export type Reason =
   | "edited by staff"
   | "needs connection"
   | "handed off to X"
+  | "not in the approved plan"
   | "AWS credentials expired on the server"
   | "server lacks AWS permission"
   | "permission service unavailable"

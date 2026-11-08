@@ -173,6 +173,14 @@ class Gateway:
                     claims, tool, resource, "DENY", "session revoked / delegator inactive", auth_protocol=auth_protocol
                 )
 
+            # 2b. Task scope. Once the staffer approves a plan, the session may use only that plan's tools,
+            #     whatever else the role allows. Checked before Cedar; it only narrows, never widens.
+            plan_tools = self.store.plan_tools(claims.sid)
+            if plan_tools is not None and tool not in plan_tools:
+                return self._record(
+                    claims, tool, resource, "DENY", "not in the approved plan", auth_protocol=auth_protocol
+                )
+
             # 3. Facts for Cedar. The agent's office and mode come from the session;
             #    a case's office comes from the CASE item. Tool input only says *which* case.
             case = self.store.get_case(params.case_id) if tool == "case_read" else None

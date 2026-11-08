@@ -302,6 +302,15 @@ class MandateStore:
             return False
         return True
 
+    def set_plan_tools(self, sid: str, tools: list[str]) -> None:
+        """The approved plan's tools become the session's limit; a later approved plan replaces them."""
+        self.table.put_item(Item={"pk": f"PLANSCOPE#{sid}", "sk": "CURRENT", "tools": tools})
+
+    def plan_tools(self, sid: str) -> list[str] | None:
+        """The approved plan's tools for this session, or None before any plan is approved."""
+        item = self._get({"pk": f"PLANSCOPE#{sid}", "sk": "CURRENT"})
+        return None if item is None else list(item.get("tools", []))
+
     def chat_since(self, sid: str, after: str | None) -> tuple[list[ChatMessageItem], str | None]:
         """Messages after the cursor (a sort key `<ts>#<id>`), oldest first, and the new cursor."""
         condition = Key("pk").eq(f"CHAT#{sid}")

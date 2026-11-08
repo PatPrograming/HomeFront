@@ -38,7 +38,7 @@ export function permissionLines(
   card: SessionCard,
   categories: AutonomyCategory[],
   grants: string[] = [],
-): { allowed: string[]; never: string[] } {
+): { allowed: string[]; never: string[]; outsidePlan: string[]; limited: boolean } {
   const open = categories.filter((c) => !c.locked);
   const always = open.filter((c) => c.level === "auto");
   const granted = open.filter((c) => c.level !== "auto" && grants.includes(c.category));
@@ -48,9 +48,15 @@ export function permissionLines(
     if (tool === "social_post" && alone.includes("social_post")) return "Post on the official account";
     return toolLabel(tool);
   };
+  // An approved plan narrows the session to its tools; the role's other tools are "not part of this task".
+  const limited = card.planTools != null;
+  const inScope = limited ? card.allowedTools.filter((t) => card.planTools!.includes(t)) : card.allowedTools;
   return {
+    limited,
+    outsidePlan: limited ? card.allowedTools.filter((t) => !inScope.includes(t)).map(toolLabel) : [],
     allowed: [
-      ...card.allowedTools.map(label),
+      ...(limited ? ["Limited to the approved plan"] : []),
+      ...inScope.map(label),
       ...always.map((c) => `Sends ${c.label.toLowerCase()} without asking`),
       ...granted.map((c) => `Sends ${c.label.toLowerCase()} without asking (this session only)`),
     ],
@@ -72,6 +78,7 @@ const SERVER_TROUBLE: Record<string, string> = {
 export function describeEvent(e: DecisionEvent, roleLabel?: string): { text: string; blocked: boolean } {
   const what = e.resource ?? "";
   if (e.reason === "session revoked / delegator inactive") return { text: "Blocked: your access was removed", blocked: true };
+  if (e.reason === "not in the approved plan") return { text: `Blocked: ${lower(toolLabel(e.tool))} (not in the approved plan)`, blocked: true };
   if (e.decision === "DENY" && e.policyIds.some((p) => p.startsWith("role-"))) {
     const role = roleLabel && roleLabel !== "No role" ? `the ${roleLabel} role` : "your office role (none is on file)";
     return { text: `Blocked: ${lower(toolLabel(e.tool))} (not part of ${role})`, blocked: true };

@@ -23,6 +23,7 @@ Reason = Literal[
     "cancelled by staff",  # the staffer cancelled the assistant's proposed plan before it acted
     "edited by staff",  # the staffer changed a held draft's wording or recipient before approving
     "needs connection",  # Cedar allowed it, but the staffer has not connected the Gmail or X account yet
+    "not in the approved plan",  # the staffer approved a plan for this session and this tool is not part of it
     "handed off to X",  # Cedar allowed an X post with no connected account; X's compose page opened for the staffer to post
     # Fail-closed DENYs where the check itself could not run (no Cedar decision was made):
     "AWS credentials expired on the server",

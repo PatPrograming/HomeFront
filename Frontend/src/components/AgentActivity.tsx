@@ -22,7 +22,7 @@ export default function AgentActivity({
   working: boolean;
   admin: boolean;
 }) {
-  const { allowed, never } = permissionLines(card, categories, grants);
+  const { allowed, never, outsidePlan } = permissionLines(card, categories, grants);
   const blocked = events.filter((e) => e.decision === "DENY").length;
 
   return (
@@ -64,6 +64,16 @@ export default function AgentActivity({
             <li key={a}>{a}</li>
           ))}
         </ul>
+        {outsidePlan.length > 0 && (
+          <>
+            <p className="activity-label">Not part of this task</p>
+            <ul className="activity-list is-never">
+              {outsidePlan.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          </>
+        )}
         {never.length > 0 && (
           <>
             <p className="activity-label">Never allowed</p>

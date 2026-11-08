@@ -347,6 +347,8 @@ def read_session(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dic
         "actingFor": session.acting_for,
         "office": session.office,
         "expiresAt": _iso(_created_epoch(session.created_at) + SESSION_TTL_SECONDS),
+        # Once a plan is approved, the session is limited to its tools (the gateway enforces it); else None.
+        "planTools": store.plan_tools(sid),
     }
 
 

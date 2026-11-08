@@ -31,6 +31,8 @@ export interface SessionCard {
   roleLabel?: string;
   /** ISO string, or epoch seconds / milliseconds. */
   expiresAt: string | number;
+  /** Set once the staffer approves a plan: the session may then use only these tools (the gateway enforces it). */
+  planTools?: ToolName[] | null;
 }
 
 /** GET /sessions/{sid}: the session's live status, so the card can show a revocation. */
@@ -40,6 +42,7 @@ export interface SessionStatus {
   actingFor: string;
   office: string;
   expiresAt: string | number;
+  planTools?: ToolName[] | null;
 }
 
 /** POST /staff/{id}/offboard */

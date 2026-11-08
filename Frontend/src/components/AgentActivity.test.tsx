@@ -31,6 +31,16 @@ describe("AgentActivity: the inline 'what is it doing' disclosure", () => {
     expect(html).toContain("Blocked: export all constituent records (never allowed)");
   });
 
+  it("after a plan is approved, shows only the plan's tools and the rest under 'Not part of this task'", () => {
+    const planned: SessionCard = { ...card, allowedTools: ["inbox_read", "web_scrape", "social_post"], planTools: ["web_scrape", "social_post"] };
+    const html = renderToStaticMarkup(<AgentActivity card={planned} events={[]} categories={[]} working={false} admin={false} />);
+    expect(html).toContain("Limited to the approved plan");
+    const [mayDo, rest] = html.split("Not part of this task");
+    expect(rest).toBeDefined();
+    expect(mayDo).not.toContain("Read your inbox");
+    expect(rest).toContain("Read your inbox");
+  });
+
   it("never shows a staffer policy ids, ATLAS ids, the session id or the technical link", () => {
     const html = render(false);
     for (const secret of ["forbid-bulk-export", "read-tools", "AML.", "sid-secret-1", "Technical details", "agent-1"]) expect(html).not.toContain(secret);

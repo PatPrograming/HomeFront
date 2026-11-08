@@ -53,3 +53,35 @@ def test_cancel_posts_cancelled_and_is_audited(client, session, gateway):
     events = gateway.store.events_since(None)[0]
     assert any(e.tool == "plan_decide" and e.reason == "cancelled by staff" for e in events)
 
+
+
+def test_approving_a_plan_limits_the_session_to_its_tools(client, session, gateway, store):
+    from mandate_contracts.ddb import StafferItem
+
+    store.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer",
+                                          office_role="communications_director"))
+    steps = [{"agent": "research", "purpose": "find facts", "tools": ["web_scrape"]},
+             {"agent": "social", "purpose": "one X post", "tools": ["social_post"]}]
+    token = agent_headers()["Authorization"].removeprefix("Bearer ")
+    # Before approval: today's behaviour, the inbox is readable.
+    assert gateway.guarded("inbox_read", {"email_id": "missing"}, token).event.reason != "not in the approved plan"
+    as_staff()
+    assert client.get(f"/api/v1/sessions/{SID}").json()["planTools"] is None
+
+    plan_id = _propose(client, steps)["plan_id"]
+    as_staff()
+    decided = client.post(f"/api/v1/sessions/{SID}/plans/{plan_id}", json={"decision": "approve"}).json()
+    assert decided["planTools"] == ["web_scrape", "social_post"]
+    assert client.get(f"/api/v1/sessions/{SID}").json()["planTools"] == ["web_scrape", "social_post"]
+
+    denied = gateway.guarded("inbox_read", {"email_id": "missing"}, token)
+    assert (denied.event.decision, denied.event.reason) == ("DENY", "not in the approved plan")
+    posted = gateway.guarded("social_post", {"account": "official", "text": "Town hall Tuesday"}, token)
+    assert posted.event.reason != "not in the approved plan"
+
+
+def test_a_cancelled_plan_does_not_limit_the_session(client, session, store):
+    plan_id = _propose(client)["plan_id"]
+    as_staff()
+    client.post(f"/api/v1/sessions/{SID}/plans/{plan_id}", json={"decision": "cancel"})
+    assert store.plan_tools(SID) is None

@@ -60,6 +60,32 @@ describe("agentActivity: plain words for staff", () => {
     expect(lines.never).not.toContain("Read your inbox");
   });
 
+  it("once a plan is approved, lists only the plan's tools and puts the rest under 'Not part of this task'", () => {
+    const card = {
+      allowedTools: ["inbox_read", "web_scrape", "social_post", "email_send"],
+      planTools: ["web_scrape", "social_post"],
+    } as unknown as SessionCard;
+    const lines = permissionLines(card, []);
+    expect(lines.limited).toBe(true);
+    expect(lines.allowed).toEqual(["Limited to the approved plan", toolLabel("web_scrape"), toolLabel("social_post")]);
+    expect(lines.outsidePlan).toEqual([toolLabel("inbox_read"), toolLabel("email_send")]);
+    expect(lines.allowed).not.toContain("Read your inbox");
+  });
+
+  it("before any plan is approved, lists the whole role as today", () => {
+    const card = { allowedTools: ["inbox_read", "web_scrape"] } as unknown as SessionCard;
+    const lines = permissionLines(card, []);
+    expect(lines.limited).toBe(false);
+    expect(lines.allowed).toEqual(["Read your inbox", toolLabel("web_scrape")]);
+    expect(lines.outsidePlan).toEqual([]);
+  });
+
+  it("names a plan-scope denial in plain words", () => {
+    expect(describeEvent(ev({ decision: "DENY", reason: "not in the approved plan", tool: "inbox_read" })).text).toBe(
+      "Blocked: read your inbox (not in the approved plan)",
+    );
+  });
+
   it("counts 'Approve and allow for this session' grants, so it never claims every reply waits for review", () => {
     const card = { allowedTools: ["inbox_read", "email_send"] } as unknown as SessionCard;
     const cats = [{ category: "case_status", label: "Case status updates", level: "review", locked: false }] as AutonomyCategory[];

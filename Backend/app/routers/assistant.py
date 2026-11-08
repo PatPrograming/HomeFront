@@ -561,8 +561,9 @@ def agent_propose_plan(body: PlanIn, claims: MandateClaims = Depends(require_age
         text="To do this I'll use these helper agents. Approve the plan and I'll start; nothing is sent without your review.",
         plan=plan,
     )
+    tools = list(dict.fromkeys(t["name"] for step in steps for t in step["tools"]))  # already within the role
     store.put_plan(claims.sid, plan_id, {"status": "pending", "actingFor": claims.act, "msgTs": message.ts,
-                                          "msgId": message.id})
+                                          "msgId": message.id, "tools": tools})
     store.put_chat_message(claims.sid, message)
     return {"status": "awaiting_approval", "plan_id": plan_id, "steps": steps}
 
@@ -587,7 +588,9 @@ def decide_plan(sid: str, plan_id: str, body: PlanDecisionIn, staff: StaffIdenti
     claims = MandateClaims(sub=session.agent, act=staff.username, office=session.office, mode="official", sid=sid,
                            iat=now, exp=now)
     approved = body.decision == "approve"
+    if approved:  # from now on the gateway denies every tool outside this plan, in this session
+        store.set_plan_tools(sid, list(item.get("tools", [])))
     get_gateway()._record(claims, "plan_decide", f"plan {plan_id}", "ALLOW" if approved else "DENY",
                           "approved by staff" if approved else "cancelled by staff")
     _post(sid, "user", "Approved the plan." if approved else "Cancelled the plan.")
-    return {"id": plan_id, "status": new_status}
+    return {"id": plan_id, "status": new_status, "planTools": store.plan_tools(sid)}
