@@ -235,7 +235,8 @@ class Gateway:
                     self.store.get_autonomy(claims.act, category).level == "auto"
                     or self.store.has_grant(claims.sid, category)
                 )
-                if category in LOCKED or not allowed_alone:
+                x_post = tool == "social_post" and getattr(params, "platform", "x") == "x"  # always a draft for X
+                if category in LOCKED or not allowed_alone or x_post:
                     held = self._hold(claims, tool, category, params)
                     return self._record(
                         claims,
@@ -322,6 +323,12 @@ class Gateway:
         # Marked sent before it runs, so a double click can never send it twice.
         if not self.store.decide_draft(draft_id, sent):
             raise DraftAlreadyDecided(draft_id)
+        if tool == "social_post" and getattr(params, "platform", "x") == "x":
+            # X posts are never sent by the server: the approved draft opens on X's compose page and
+            # the staffer presses Post there.
+            link = share_links.build_post_link("x", params.text)
+            result = {"status": "share_link", "url": link["share_url"], "handoff": True}
+            return self._record(claims, tool, resource, "ALLOW", "handed off to X", decision.policy_ids, result=result)
         try:
             result = self._run(tool, params, None, claims)
         except ConnectionMissing as missing:
