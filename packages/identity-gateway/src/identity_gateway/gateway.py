@@ -342,6 +342,10 @@ def _default_scan() -> Scanner:
     return scan
 
 
+class GatewayNotConfigured(RuntimeError):
+    """The gateway's AWS settings are missing (signing secret, AVP policy store)."""
+
+
 def get_gateway() -> Gateway:
     """The gateway built from env (DynamoDB table, AVP store, signing secret)."""
     global _gateway
@@ -349,7 +353,10 @@ def get_gateway() -> Gateway:
         from .authz import AvpAuthorizer
         from .tokens import signing_secret
 
-        _gateway = Gateway(MandateStore.from_env(), AvpAuthorizer.from_env(), signing_secret(), _default_scan())
+        try:
+            _gateway = Gateway(MandateStore.from_env(), AvpAuthorizer.from_env(), signing_secret(), _default_scan())
+        except RuntimeError as exc:  # a missing setting, not a bug: callers can answer 503 with the reason
+            raise GatewayNotConfigured(str(exc)) from exc
     return _gateway
 
 

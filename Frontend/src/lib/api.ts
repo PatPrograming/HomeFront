@@ -2,7 +2,6 @@ import { getAccessToken } from "./auth";
 import { eventsPath, type EventPage } from "./events";
 import { MOCK } from "./mode";
 import type { ToolName } from "../../../packages/mandate-contracts/ts/index";
-import type { EmailPayload, SocialPayload } from "./agentPayload";
 
 // Every backend call goes through this file. All routes live under /api/v1. In dev, Vite proxies /api to
 // FastAPI (:8080). In production set VITE_API_BASE to the deployed API origin + /api/v1.
@@ -183,11 +182,6 @@ export const api = {
     request<AutonomyCategory>(`/autonomy/${encodeURIComponent(category)}`, { method: "PUT", body: { level } }),
   snoozeAutonomy: (category: string) =>
     request<AutonomyCategory>(`/autonomy/${encodeURIComponent(category)}/snooze`, { method: "POST", body: {} }),
-
-  // Email / Social Platform forms: settings for the AI agent (lib/agentPayload.ts). Sent with the Cognito
-  // token when signed in. The backend route is not built yet, so this answers 404 for now.
-  submitAgentRequest: (body: SocialPayload | EmailPayload) =>
-    request<unknown>("/agent-requests", { method: "POST", body }),
 
   // Public home-page copy (no token)
   home: () => request<HomeContent>("/home", { auth: false }),
