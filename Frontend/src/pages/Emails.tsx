@@ -1,8 +1,24 @@
-import { useState } from "react";
 import Layout from "../components/Layout";
 import Stepper from "../components/Stepper/Stepper";
+import DraftControls from "../components/DraftControls/DraftControls";
+import SubmitOverlay from "../components/SubmitOverlay/SubmitOverlay";
+import { useFormDraft } from "../lib/useFormDraft";
+import { useFormSubmit } from "../lib/useFormSubmit";
 import "./SocialPlatform.css";
 import "./Emails.css";
+
+type Updater<V> = V | ((prev: V) => V);
+
+// Q1-Q3 step 1 (multi, multi, single), Q4 step 2 (integer kept as a string for the input),
+// Q5 step 3 (single) and Q6 free-text restrictions.
+const INITIAL = {
+  mailboxes: [] as string[],
+  mailPlatforms: [] as string[],
+  mailType: "",
+  perDay: "",
+  agentAction: "",
+  restrictions: "",
+};
 
 const MAILBOXES = ["Public inbox", "Press", "FOIA", "Program-specific", "GovDelivery lists"];
 const PLATFORMS = ["Microsoft 365/GCC", "Google Workspace", "GovDelivery", "Other"];
@@ -22,7 +38,7 @@ interface OptionGroupProps {
 }
 
 // Accessible checkbox / radio card group.
-function OptionGroup({ legend, hint, options, type, name, isOn, onChange }: OptionGroupProps) {
+export function OptionGroup({ legend, hint, options, type, name, isOn, onChange }: OptionGroupProps) {
   return (
     <fieldset className="field">
       <legend className="field-label">{legend}</legend>
@@ -58,22 +74,22 @@ function OptionGroup({ legend, hint, options, type, name, isOn, onChange }: Opti
 const toggle = (list: string[], v: string) =>
   list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
 
-// Three-section email survey. Everything is local UI state for now.
+// Three-section email survey. Answers live in useFormDraft (optionally saved per tab).
 export default function Emails() {
-  const [step, setStep] = useState(1);
-  const [mailboxes, setMailboxes] = useState<string[]>([]); // Q1 (multi)
-  const [mailPlatforms, setMailPlatforms] = useState<string[]>([]); // Q2 (multi)
-  const [mailType, setMailType] = useState(""); // Q3 (single)
-  const [perDay, setPerDay] = useState(""); // Q4 (integer, kept as string for input)
-  const [agentAction, setAgentAction] = useState(""); // Q5 (single)
-  // Q6: free-text restrictions for the built-in AI agent.
-  // TODO: pass this to the backend as an agent restriction.
-  const [restrictions, setRestrictions] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  const draft = useFormDraft("emails", INITIAL);
+  const { step, values, setField } = draft;
+  const { mailboxes, mailPlatforms, mailType, perDay, agentAction, restrictions } = values;
+  const setMailboxes = (v: Updater<string[]>) => setField("mailboxes", v);
+  const setMailPlatforms = (v: Updater<string[]>) => setField("mailPlatforms", v);
+  const setMailType = (v: string) => setField("mailType", v);
+  const setPerDay = (v: string) => setField("perDay", v);
+  const setAgentAction = (v: string) => setField("agentAction", v);
+  // TODO: pass restrictions to the backend as an agent restriction.
+  const setRestrictions = (v: string) => setField("restrictions", v);
+  const { state: submitState, submit, dismiss } = useFormSubmit("emails", draft.forget);
 
   const goTo = (n: number) => {
-    setStep(n);
-    setSubmitted(false);
+    draft.setStep(n);
     window.scrollTo({ top: 0 });
   };
 
@@ -127,6 +143,8 @@ export default function Emails() {
               />
             </div>
 
+            <DraftControls savedAt={draft.savedAt} onSave={draft.save} onDelete={draft.clear} />
+
             <div className="sp-actions">
               <p className="sp-count" aria-live="polite">
                 {step1Valid ? "Ready to continue" : "Answer all three questions to continue"}
@@ -161,6 +179,8 @@ export default function Emails() {
               </div>
             </div>
 
+            <DraftControls savedAt={draft.savedAt} onSave={draft.save} onDelete={draft.clear} />
+
             <div className="em-nav">
               <button type="button" className="btn btn-outline" onClick={() => goTo(1)}>Back</button>
               <button type="button" className="btn btn-primary" disabled={!step2Valid} onClick={() => goTo(3)}>
@@ -176,7 +196,7 @@ export default function Emails() {
             aria-labelledby="em-title-3"
             onSubmit={(e) => {
               e.preventDefault();
-              if (step3Valid) setSubmitted(true);
+              if (step3Valid) void submit(values);
             }}
           >
             <h1 id="em-title-3" className="sp-title">Agent restrictions</h1>
@@ -215,17 +235,16 @@ export default function Emails() {
               </div>
             </div>
 
-            {submitted && (
-              <p role="status" className="sp-count">Your email settings have been saved locally.</p>
-            )}
+            <DraftControls savedAt={draft.savedAt} onSave={draft.save} onDelete={draft.clear} />
 
             <div className="em-nav">
               <button type="button" className="btn btn-outline" onClick={() => goTo(2)}>Back</button>
-              <button type="submit" className="btn btn-primary" disabled={!step3Valid}>Submit</button>
+              <button type="submit" className="btn btn-primary" disabled={!step3Valid || submitState.status === "saving"}>Submit</button>
             </div>
           </form>
         )}
       </div>
+      <SubmitOverlay state={submitState} onClose={dismiss} />
     </Layout>
   );
 }

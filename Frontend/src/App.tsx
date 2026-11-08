@@ -24,9 +24,9 @@ export default function App() {
           <Route
             path="/account"
             element={
-              <RequireAuth>
+              /*<RequireAuth>*/
                 <Account />
-              </RequireAuth>
+              /*</RequireAuth>*/
             }
           />
           <Route

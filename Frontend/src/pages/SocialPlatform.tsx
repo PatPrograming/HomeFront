@@ -2,7 +2,15 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Layout from "../components/Layout";
 import Stepper from "../components/Stepper/Stepper";
 import PlatformIcon, { PLATFORMS, type PlatformId } from "../components/PlatformIcons/PlatformIcons";
+import { OptionGroup } from "./Emails";
+import DraftControls from "../components/DraftControls/DraftControls";
+import SubmitOverlay from "../components/SubmitOverlay/SubmitOverlay";
+import { useFormDraft } from "../lib/useFormDraft";
+import { useFormSubmit } from "../lib/useFormSubmit";
 import "./SocialPlatform.css";
+import "./Emails.css";
+
+const SOCIAL_ACTIONS = ["Draft", "Post/comment", "Only summarize"];
 
 interface ImageItem {
   id: string;
@@ -13,19 +21,37 @@ interface ImageItem {
 const brandVars = (color: string) =>
   ({ "--brand": color, "--glyph-cut": color }) as CSSProperties;
 
-const STEPS = ["Select platforms", "Add content"];
+const STEPS = ["Select platforms", "Add content", "Agent restrictions"];
 
-// Two-stage flow: (1) pick the platforms the agency is active on, (2) provide the message,
-// links and images. Everything is local UI state for now.
+type Updater<V> = V | ((prev: V) => V);
+
+// Answers that can be saved as a draft. Images are File objects, so they stay in plain state
+// (they can't be stored in sessionStorage) and are not part of a saved draft.
+const INITIAL = {
+  selected: [] as PlatformId[],
+  message: "",
+  links: [""],
+  agentAction: "",
+  restrictions: "",
+};
+
+// Three-stage flow: (1) pick the platforms the agency is active on, (2) provide the message,
+// links and images, (3) set agent restrictions.
 export default function SocialPlatform() {
-  const [step, setStep] = useState(1);
-  const [selected, setSelected] = useState<PlatformId[]>([]);
-  const [message, setMessage] = useState("");
-  const [links, setLinks] = useState([""]);
+  const draft = useFormDraft("social", INITIAL);
+  const { step, values, setField } = draft;
+  const { selected, message, links, agentAction, restrictions } = values;
+  const setSelected = (v: Updater<PlatformId[]>) => setField("selected", v);
+  const setMessage = (v: string) => setField("message", v);
+  const setLinks = (v: Updater<string[]>) => setField("links", v);
+  const setAgentAction = (v: string) => setField("agentAction", v);
+  // TODO: pass restrictions to the backend as an agent restriction.
+  const setRestrictions = (v: string) => setField("restrictions", v);
   const [images, setImages] = useState<ImageItem[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const imagesRef = useRef(images);
   imagesRef.current = images;
+  const { state: submitState, submit, dismiss } = useFormSubmit("social", draft.forget);
 
   // Release object URLs for any previews still around on unmount.
   useEffect(() => () => imagesRef.current.forEach((i) => URL.revokeObjectURL(i.url)), []);
@@ -34,8 +60,14 @@ export default function SocialPlatform() {
     setSelected((cur) => (cur.includes(id) ? cur.filter((p) => p !== id) : [...cur, id]));
 
   const goTo = (n: number) => {
-    setStep(n);
+    draft.setStep(n);
     window.scrollTo({ top: 0 });
+  };
+
+  const deleteResponse = () => {
+    images.forEach((i) => URL.revokeObjectURL(i.url));
+    setImages([]);
+    draft.clear();
   };
 
   const setLink = (i: number, value: string) => setLinks((cur) => cur.map((l, idx) => (idx === i ? value : l)));
@@ -106,6 +138,8 @@ export default function SocialPlatform() {
               })}
             </fieldset>
 
+            <DraftControls savedAt={draft.savedAt} onSave={draft.save} onDelete={deleteResponse} />
+
             <div className="sp-actions">
               <p className="sp-count" aria-live="polite">
                 {selected.length === 0
@@ -125,11 +159,72 @@ export default function SocialPlatform() {
               </button>
             </div>
           </section>
+        ) : step === 3 ? (
+          <form
+            className="content-main"
+            aria-labelledby="sp-title-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (agentAction !== "") {
+                void submit({
+                  ...values,
+                  // Image files can't be stored in the form record; send just their names.
+                  imageNames: images.map((i) => i.file.name),
+                });
+              }
+            }}
+          >
+            <h1 id="sp-title-3" className="sp-title">Agent restrictions</h1>
+            <p className="sp-sub">Define what the agent may do on social platforms.</p>
+
+            <div className="card">
+              <OptionGroup
+                legend="Should the agent draft, post/comment, or only summarize new updates?"
+                hint="Select one."
+                options={SOCIAL_ACTIONS}
+                type="radio"
+                name="social-agent-action"
+                isOn={(o) => agentAction === o}
+                onChange={setAgentAction}
+              />
+            </div>
+
+            <div className="card">
+              <div className="field">
+                <label className="field-label" htmlFor="restrictions">
+                  Are there topics the agent must never answer or other restrictions?
+                </label>
+                <p className="field-hint" id="restrictions-hint">
+                  These will be applied as restrictions to the AI agent. Optional.
+                </p>
+                <textarea
+                  id="restrictions"
+                  className="textarea"
+                  rows={6}
+                  aria-describedby="restrictions-hint"
+                  placeholder="e.g. Never comment on pending litigation or give legal advice…"
+                  value={restrictions}
+                  onChange={(e) => setRestrictions(e.target.value)}
+                />
+                <span className="field-count">{restrictions.length} characters</span>
+              </div>
+            </div>
+
+            <DraftControls savedAt={draft.savedAt} onSave={draft.save} onDelete={deleteResponse} />
+
+            <div className="em-nav">
+              <button type="button" className="btn btn-outline" onClick={() => goTo(2)}>Back</button>
+              <button type="submit" className="btn btn-primary" disabled={agentAction === "" || submitState.status === "saving"}>Submit</button>
+            </div>
+          </form>
         ) : (
           <form
             className="content"
             aria-labelledby="sp-title-2"
-            onSubmit={(e) => e.preventDefault()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (message.trim()) goTo(3);
+            }}
           >
             <div className="content-main">
               <h1 id="sp-title-2" className="sp-title">What does the public need to know?</h1>
@@ -169,7 +264,7 @@ export default function SocialPlatform() {
                           className="input"
                           aria-label={`Link ${i + 1}`}
                           placeholder="https://www.agency.gov/update"
-                          value={link}
+                          value= {link} /*{link.length > 8 && link.startsWith("https://") ? link : `https://${link}`} to be included handling backend data.*/
                           onChange={(e) => setLink(i, e.target.value)}
                         />
                         <button
@@ -245,6 +340,8 @@ export default function SocialPlatform() {
                   />
                 </div>
               </div>
+
+              <DraftControls savedAt={draft.savedAt} onSave={draft.save} onDelete={deleteResponse} />
             </div>
 
             <aside className="summary" aria-label="Selected platforms">
@@ -274,6 +371,7 @@ export default function SocialPlatform() {
           </form>
         )}
       </div>
+      <SubmitOverlay state={submitState} onClose={dismiss} />
     </Layout>
   );
 }
