@@ -20,7 +20,7 @@ describe("ReviewPanel: approving an X post with no X connected", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     const onClose = vi.fn();
     render(<ReviewPanel draft={post} locked={true} onDone={async () => {}} onClose={onClose} />);
-    fireEvent.click(screen.getByRole("button", { name: "Approve and post" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve and open on X" }));
     const link = await screen.findByRole("link", { name: "Open on X" });
     expect(link.getAttribute("href")).toBe(URL);
     expect(open).toHaveBeenCalledWith(URL, "_blank", "noopener");

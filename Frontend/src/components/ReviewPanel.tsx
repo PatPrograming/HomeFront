@@ -153,7 +153,7 @@ export default function ReviewPanel({
         )}
         <div className="draft-actions">
           <button type="button" className="btn-primary" disabled={busy || !!shareUrl} onClick={() => decide(() => api.approveDraft(draft.id, edits, draft.version), "sent")}>
-            {isEmail ? "Approve and send" : "Approve and post"}
+            {isEmail ? "Approve and send" : draft.tool === "social_post" && (draft.platform ?? "x") === "x" ? "Approve and open on X" : "Approve and post"}
           </button>
           {draft.sid && !locked && (
             <button

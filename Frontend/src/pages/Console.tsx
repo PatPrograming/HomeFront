@@ -190,7 +190,22 @@ export default function Console() {
   const reviewing = useOpenDraft();
   const openDraft = review.drafts.find((d) => d.id === reviewing.openId) ?? null; // a draft decided elsewhere closes
   // Drafts decided in this tab keep their card in the chat, marked Sent or Rejected.
-  const [decided, setDecided] = useState<Record<string, Draft>>({});
+  const [decided, setDecidedState] = useState<Record<string, Draft>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("homefront.decided") ?? "{}") as Record<string, Draft>;
+    } catch {
+      return {};
+    }
+  });
+  // Kept across reloads, so a sent X post keeps its Open on X link.
+  const setDecided = (next: Record<string, Draft>) => {
+    setDecidedState(next);
+    try {
+      localStorage.setItem("homefront.decided", JSON.stringify(next));
+    } catch {
+      /* storage blocked: the card still shows until reload */
+    }
+  };
   const chatDrafts = [...mine, ...Object.values(decided).filter((d) => d.sid !== undefined && chain.includes(d.sid) && !mine.some((p) => p.id === d.id))].sort(
     (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id), // a decided card keeps its place
   );

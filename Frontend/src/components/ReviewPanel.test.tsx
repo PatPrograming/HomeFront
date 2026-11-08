@@ -42,7 +42,7 @@ describe("ReviewPanel: one draft, opened from the chat", () => {
     const post: Draft = { ...email, id: "d2", tool: "social_post", category: "social_post", categoryLabel: "Posts", args: { account: "official", text: "Town hall" } };
     const html = render(post);
     expect(isReadOnly(inputTag(html, "@official"))).toBe(true);
-    expect(html).toContain("Approve and post");
+    expect(html).toContain("Approve and open on X");
   });
 });
 

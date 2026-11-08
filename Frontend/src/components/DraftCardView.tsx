@@ -99,7 +99,7 @@ export function DraftCardView(p: DraftCardViewProps) {
           <p className="draft-card-text">{d.tool === "email_send" ? d.args.body : d.args.text}</p>
           {d.tool === "social_post" && d.status === "sent" && (d.platform ?? "x") === "x" && (
             <a className="btn btn-primary" href={`https://x.com/intent/post?text=${encodeURIComponent(d.args.text ?? "")}`} target="_blank" rel="noopener noreferrer">
-              Open on X
+              Open on X and post
             </a>
           )}
         </div>
@@ -135,7 +135,7 @@ export function DraftCardView(p: DraftCardViewProps) {
               </button>
             )}
             <button type="button" className="btn-primary" onClick={() => p.onOpen(d.id)} aria-label={`Review: ${draftTitle(d)}`}>
-              Review and send
+              {d.tool === "social_post" && (d.platform ?? "x") === "x" ? "Review, then open on X to post" : "Review and send"}
             </button>
           </div>
         </footer>
