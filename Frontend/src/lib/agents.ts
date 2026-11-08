@@ -15,8 +15,31 @@ export interface Agent {
   tool_grants: string[];
   // Mailing list: the only addresses email tools can reach.
   recipients: string[];
+  // Missing on APIs older than email settings; read via emailSettingsOf().
+  email_settings?: EmailSettings;
   token_version: number;
   active: boolean;
+}
+
+export interface EmailSettings {
+  from_email: string;
+  from_name: string;
+  reply_to: string;
+  signature: string;
+}
+
+export const EMPTY_EMAIL_SETTINGS: EmailSettings = { from_email: "", from_name: "", reply_to: "", signature: "" };
+
+export const emailSettingsOf = (agent: Agent): EmailSettings => ({
+  ...EMPTY_EMAIL_SETTINGS,
+  ...(agent.email_settings ?? {}),
+});
+
+export interface EmailVerification {
+  from_email: string | null;
+  source: "agent" | "env" | null;
+  verified: boolean | null;
+  reason: string;
 }
 
 export interface AgentType {
@@ -52,7 +75,7 @@ const TOOL_ACTIONS: Record<string, string> = {
 export const toolAction = (tool: string) => TOOL_ACTIONS[tool] || `use ${tool}`;
 
 export const EMAIL_TOOLS = ["email.send", "email.send_list"];
-export const sendsEmail = (agent: Agent) => agent.tool_grants.some((t) => EMAIL_TOOLS.includes(t));
+export const sendsEmail = (agent: Agent) => (agent.tool_grants ?? []).some((t) => EMAIL_TOOLS.includes(t));
 
 export function typeAllows(type: AgentType | undefined, tool: string): boolean {
   if (!type) return false;
@@ -130,6 +153,10 @@ export const EVENT_LABELS: Record<string, string> = {
   grants_replaced: "Tools replaced",
   grant_denied: "Grant blocked",
   recipients_updated: "Mailing list changed",
+  email_settings_updated: "Email setup changed",
+  email_test: "Test email",
+  sender_verification_requested: "Sender verification sent",
+  recipients_verification_requested: "Recipient verification sent",
   run_started: "Run started",
   run_finished: "Run finished",
   approval_requested: "Approval requested",
@@ -165,4 +192,90 @@ export interface Approval {
   input_schema: { properties?: Record<string, { description?: string }> } | null;
   // email.send_list only: who it goes to if approved now.
   recipients: string[] | null;
+  // Email tools only: the sender and signature the gateway adds when sending.
+  sender?: {
+    from: string | null;
+    from_source: "agent" | "env" | null;
+    reply_to: string | null;
+    signature: string | null;
+    simulated: boolean;
+  } | null;
+  // Pending email approvals: in the SES sandbox, recipients SES would reject.
+  delivery?: {
+    sandbox: boolean | null;
+    // null = couldn't tell
+    unverified: string[] | null;
+    recipient_count?: number;
+    reason: string | null;
+  } | null;
+}
+
+export interface EmailAccount {
+  sandbox: boolean | null;
+  sending_enabled: boolean | null;
+  max_24h: number | null;
+  max_rate: number | null;
+  sent_last_24h: number | null;
+  region?: string;
+  console_url?: string;
+  reason: string | null;
+}
+
+export interface EmailPermissions {
+  send: boolean | null;
+  create_identity: boolean | null;
+  principal?: string | null;
+  reason: string | null;
+}
+
+export type RecipientStatus = "verified" | "pending" | "failed" | "not_requested" | null;
+
+export interface RecipientVerification {
+  available: boolean;
+  reason: string | null;
+  total: number;
+  verified: number;
+  recipients: { address: string; status: RecipientStatus }[];
+}
+
+export interface TestEmailResult {
+  ok: boolean;
+  to: string;
+  from: string;
+  message_id: string | null;
+  error: string | null;
+  error_code: string | null;
+}
+
+export type RunStatus = "queued" | "running" | "completed" | "max_steps" | "revoked" | "refused" | "failed";
+
+export const TERMINAL_RUN_STATUSES: RunStatus[] = ["completed", "max_steps", "revoked", "refused", "failed"];
+
+export interface RunStep {
+  type: "tool_call" | "model_fallback" | string;
+  tool?: string;
+  input?: Record<string, unknown>;
+  decision?: "allow" | "deny" | "pending_approval" | string;
+  error?: string;
+  message?: string;
+  result_preview?: string;
+  approval_id?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface Run {
+  run_id: string;
+  agent_id: string;
+  task: string;
+  model: string;
+  status: RunStatus;
+  output: string | null;
+  error: string | null;
+  steps: RunStep[];
+  model_turns: number;
+  usage: { input_tokens: number; output_tokens: number };
+  created_at: number;
+  started_at: number | null;
+  finished_at: number | null;
 }

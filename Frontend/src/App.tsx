@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { AuthProvider } from "./lib/AuthProvider";
 import RequireAuth from "./components/RequireAuth";
 import Home from "./pages/Home";
@@ -11,6 +11,12 @@ import NewAgent from "./pages/NewAgent";
 import Activity from "./pages/Activity";
 import Approvals from "./pages/Approvals";
 import SocialPlatform from "./pages/SocialPlatform";
+
+// /agents/<id>/email: open that agent's Email setup on My agents.
+function AgentEmailRedirect() {
+  const { agentId = "" } = useParams();
+  return <Navigate replace to={`/agents?edit=${encodeURIComponent(agentId)}&section=email`} />;
+}
 
 export default function App() {
   return (
@@ -42,6 +48,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <NewAgent />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/agents/:agentId/email"
+            element={
+              <RequireAuth>
+                <AgentEmailRedirect />
               </RequireAuth>
             }
           />

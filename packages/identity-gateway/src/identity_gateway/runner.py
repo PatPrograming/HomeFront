@@ -36,6 +36,9 @@ RunStatus = Literal[
     "failed",  # API or runtime error
 ]
 
+# How much of a tool result / deny message a run step keeps for the UI.
+STEP_PREVIEW = 400
+
 # Tool names the API accepts can't contain dots; map registry names.
 def api_tool_name(gateway_name: str) -> str:
     return gateway_name.replace(".", "_")
@@ -67,6 +70,15 @@ def _mailing_list_note(agent: AgentRecord) -> str:
             "\n- Your mailing list is empty, so email can't be sent to anyone. Say so "
             "instead of trying."
         )
+    settings = agent.email_settings
+    sender_note = ""
+    if settings.from_name:
+        sender_note += f"\n- Your emails are sent as \"{settings.from_name}\"."
+    if settings.signature:
+        sender_note += (
+            "\n- A signature is added to every email automatically. Don't write your own "
+            "sign-off or signature block."
+        )
     shown = agent.recipients[:PROMPT_RECIPIENT_LIMIT]
     more = len(agent.recipients) - len(shown)
     listed = ", ".join(shown) + (f" and {more} more" if more > 0 else "")
@@ -74,7 +86,7 @@ def _mailing_list_note(agent: AgentRecord) -> str:
         f"\n- Email can only go to your mailing list ({len(agent.recipients)} addresses: "
         f"{listed}). email_send sends to one of them; email_send_list sends one email "
         "to all of them. Any other address is refused."
-    )
+    ) + sender_note
 
 
 def system_prompt(agent: AgentRecord) -> str:
@@ -321,6 +333,7 @@ class AgentRunner:
                     if out.get("approval_id"):
                         step["approval_id"] = out["approval_id"]
                     content, is_error = json.dumps(out.get("result"), default=str), False
+                    step["result_preview"] = content[:STEP_PREVIEW]
                 except HTTPException as exc:
                     detail = exc.detail if isinstance(exc.detail, dict) else {"message": exc.detail}
                     step.update(
@@ -328,6 +341,8 @@ class AgentRunner:
                         error=detail.get("error") or f"http_{exc.status_code}",
                         audit_id=detail.get("audit_id"),
                     )
+                    if detail.get("message"):
+                        step["message"] = str(detail["message"])[:STEP_PREVIEW]
                     content = json.dumps(
                         {"error": step["error"], "message": detail.get("message")}, default=str
                     )

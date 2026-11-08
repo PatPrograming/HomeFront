@@ -73,6 +73,30 @@ export const api = {
   // Replaces the agent's whole mailing list (the only addresses it may email).
   setRecipients: (agentId, emails) =>
     request(`/agents/${encodeURIComponent(agentId)}/recipients`, { method: "PUT", body: { emails } }),
+  // body: { from_email, from_name, reply_to, signature } ("" clears a field)
+  setEmailSettings: (agentId, body) =>
+    request(`/agents/${encodeURIComponent(agentId)}/email-settings`, { method: "PUT", body }),
+  // { from_email, source, verified: true | false | null, reason }
+  emailVerification: (agentId) => request(`/agents/${encodeURIComponent(agentId)}/email-settings/verification`),
+  // SES: CreateEmailIdentity for the sender (AWS emails it a verification link).
+  verifySender: (agentId) =>
+    request(`/agents/${encodeURIComponent(agentId)}/email-settings/verify-sender`, { method: "POST" }),
+  // A real SES send to one listed address (or the sender itself), no approval step.
+  sendTestEmail: (agentId, to) =>
+    request(`/agents/${encodeURIComponent(agentId)}/email-settings/test`, { method: "POST", body: { to } }),
+  recipientVerification: (agentId) => request(`/agents/${encodeURIComponent(agentId)}/recipients/verification`),
+  // Up to 10 verification emails per call; call again while `remaining` > 0.
+  verifyRecipients: (agentId) =>
+    request(`/agents/${encodeURIComponent(agentId)}/recipients/verify`, { method: "POST" }),
+  emailAccount: () => request("/email/account"),
+  emailPermissions: () => request("/email/permissions"),
+
+  // Agent runs (Claude on Bedrock). Poll run() until a terminal status.
+  startRun: (agentId, task) =>
+    request(`/agents/${encodeURIComponent(agentId)}/runs`, { method: "POST", body: { task } }),
+  runs: (agentId) => request(`/agents/${encodeURIComponent(agentId)}/runs`),
+  run: (agentId, runId) =>
+    request(`/agents/${encodeURIComponent(agentId)}/runs/${encodeURIComponent(runId)}`),
   replaceGrants: (agentId, tools) =>
     request(`/agents/${encodeURIComponent(agentId)}/grants`, { method: "PUT", body: { tools } }),
   // filters: { agent_id, trace_id, decision, type } (any subset)
