@@ -17,7 +17,7 @@ from typing import Any
 
 from botocore.exceptions import ClientError
 
-from .store import AgentRecord, DuplicateAgentError, demo_agent
+from .store import AgentRecord, DuplicateAgentError, EmailSettings, demo_agent
 
 
 def _iso(ts: float) -> str:
@@ -37,6 +37,7 @@ def agent_to_item(agent: AgentRecord) -> dict[str, Any]:
         # A list, not a string set: DynamoDB rejects empty sets.
         "tool_grants": sorted(agent.tool_grants),
         "recipients": list(agent.recipients),
+        "email_settings": agent.email_settings.view(),
         "token_version": agent.token_version,
         "active": agent.active,
         "created_at": _iso(agent.created_at),
@@ -58,6 +59,8 @@ def agent_from_item(item: dict[str, Any]) -> AgentRecord:
         max_steps=int(item["max_steps"]),
         tool_grants=set(item.get("tool_grants") or []),
         recipients=list(item.get("recipients") or []),
+        # Rows written before email settings existed have none.
+        email_settings=EmailSettings.from_dict(item.get("email_settings")),
         token_version=int(item["token_version"]),
         active=bool(item["active"]),
         created_at=datetime.fromisoformat(created).timestamp() if created else 0.0,

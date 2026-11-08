@@ -22,9 +22,16 @@ os.environ.update(
         "AGENT_ADMIN_REQUIRES_LOGIN": "false",
         "BEDROCK_REGION": "",
         "AWS_BEARER_TOKEN_BEDROCK": "",
+        # Never a real sender in tests: apply_aws_env() only fills unset keys,
+        # so these blanks keep a developer .env's sender out.
+        "HOMEFRONT_EMAIL_FROM": "",
+        "HOMEFRONT_SES_REGION": "",
+        "HOMEFRONT_LIVE_DATAGOV": "0",
     }
 )
 os.environ.pop("AWS_PROFILE", None)
+
+import pytest  # noqa: E402
 
 import jwt  # noqa: E402
 from moto import mock_aws  # noqa: E402
@@ -52,3 +59,31 @@ create_tables()
 def pytest_unconfigure(config):
     if _aws:
         _aws.stop()
+
+
+class _NoAws:
+    """Stand-in AWS client: every call fails as if there were no credentials."""
+
+    def __getattr__(self, name):
+        def fail(*_args, **_kwargs):
+            from botocore.exceptions import NoCredentialsError
+
+            raise NoCredentialsError()
+
+        return fail
+
+
+@pytest.fixture(autouse=True)
+def _no_real_email(monkeypatch):
+    """No test can reach real SES/IAM/STS, whatever .env says. Tests that need
+    them patch handlers._ses_client / email_admin._aws_client themselves."""
+    from mcp_tools import handlers
+    from identity_gateway import email_admin
+
+    monkeypatch.delenv("HOMEFRONT_EMAIL_FROM", raising=False)
+    monkeypatch.setattr(handlers, "_ses_client", lambda quick=False: _NoAws())
+    monkeypatch.setattr(email_admin, "_aws_client", lambda service: _NoAws())
+    monkeypatch.setattr(email_admin, "_sleep", lambda _s: None)
+    email_admin.clear_cache()
+    yield
+    email_admin.clear_cache()

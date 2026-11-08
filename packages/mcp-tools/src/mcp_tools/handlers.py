@@ -6,6 +6,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+from email.utils import formataddr
 from typing import Any, Callable
 
 DATAGOV_SEARCH_URL = "https://api.gsa.gov/technology/datagov/v4/search"
@@ -20,90 +21,163 @@ def _email_sender() -> str:
     return (os.environ.get("HOMEFRONT_EMAIL_FROM") or "").strip()
 
 
+SIMULATED_HINT = (
+    "Set a sender email in the agent's Email setup (or HOMEFRONT_EMAIL_FROM in the "
+    "repo-root .env) to send real email."
+)
+
+
+def resolve_sender(sender: dict[str, Any] | None) -> dict[str, Any]:
+    """Effective sender for a send: the agent's settings, else HOMEFRONT_EMAIL_FROM.
+
+    `sender` is injected by the gateway from the agent's stored email settings;
+    it is never taken from model or reviewer arguments.
+    """
+    sender = sender if isinstance(sender, dict) else {}
+    agent_from = str(sender.get("from_email") or "").strip()
+    from_email = agent_from or _email_sender()
+    from_name = str(sender.get("from_name") or "").strip()
+    return {
+        "from_email": from_email,
+        "from_name": from_name,
+        # formataddr RFC 2047-encodes non-ASCII names, which SES accepts.
+        "from_header": formataddr((from_name, from_email)) if from_email and from_name else from_email,
+        "reply_to": str(sender.get("reply_to") or "").strip(),
+        "signature": str(sender.get("signature") or "").strip(),
+        "source": "agent" if agent_from else ("env" if from_email else None),
+    }
+
+
+def compose_body(body: str, signature: str) -> str:
+    """The body as sent: the gateway appends the signature after a blank line."""
+    if not signature:
+        return body
+    return f"{body.rstrip()}\n\n{signature}"
+
+
 def handle_email_send(args: dict[str, Any]) -> dict[str, Any]:
-    """Send via Amazon SES when HOMEFRONT_EMAIL_FROM is set; otherwise simulate.
+    """Send via Amazon SES when a sender is configured; otherwise simulate.
 
     Errors raise, so an approved send that fails is recorded as failed rather
     than reported as sent.
     """
     to = (args.get("to") or "").strip()
     subject = args.get("subject") or "(no subject)"
-    body = args.get("body") or ""
+    sender = resolve_sender(args.get("sender"))
+    body = compose_body(args.get("body") or "", sender["signature"])
     if not to or "@" not in to:
         raise ValueError(f"Invalid recipient address: {to!r}")
 
-    sender = _email_sender()
-    if not sender:
-        return {
-            "status": "simulated",
-            "simulated": True,
-            "to": to,
-            "subject": subject,
-            "body_preview": body[:120],
-            "message_id": f"msg_{_args_hash(args)}",
-            "hint": "Set HOMEFRONT_EMAIL_FROM (an SES-verified address) in the repo-root .env to send real email.",
-        }
-
-    message_id = _ses_send(_ses_client(), sender, to, subject, body)
-    return {
-        "status": "sent",
-        "simulated": False,
-        "provider": "ses",
-        "from": sender,
+    base = {
         "to": to,
         "subject": subject,
         "body_preview": body[:120],
-        "message_id": message_id,
+        "from": sender["from_header"] or None,
+        "reply_to": sender["reply_to"] or None,
     }
+    if not sender["from_email"]:
+        return {
+            **base,
+            "status": "simulated",
+            "simulated": True,
+            "message_id": f"msg_{_args_hash({k: v for k, v in args.items() if k != 'sender'})}",
+            "hint": SIMULATED_HINT,
+        }
+
+    message_id = _ses_send(_ses_client(), sender, to, subject, body)
+    return {**base, "status": "sent", "simulated": False, "provider": "ses", "message_id": message_id}
 
 
-def _ses_client() -> Any:
+def _ses_region() -> str | None:
+    return os.environ.get("HOMEFRONT_SES_REGION") or os.environ.get("AWS_REGION")
+
+
+def _ses_client(quick: bool = False) -> Any:
     import boto3  # lazy: only needed for live sends
     from botocore.config import Config
 
-    region = os.environ.get("HOMEFRONT_SES_REGION") or os.environ.get("AWS_REGION")
-    # Adaptive retries ride out SES's per-second send rate on list sends.
-    return boto3.client(
-        "sesv2", region_name=region, config=Config(retries={"mode": "adaptive", "max_attempts": 10})
-    )
+    if quick:  # status checks: fail fast instead of retrying
+        config = Config(retries={"max_attempts": 1}, connect_timeout=3, read_timeout=5)
+    else:  # adaptive retries ride out SES's per-second send rate on list sends
+        config = Config(retries={"mode": "adaptive", "max_attempts": 10})
+    return boto3.client("sesv2", region_name=_ses_region(), config=config)
 
 
-def _ses_send(ses: Any, sender: str, to: str, subject: str, body: str) -> str | None:
-    resp = ses.send_email(
-        FromEmailAddress=sender,
-        Destination={"ToAddresses": [to]},
-        Content={
+def _ses_send(ses: Any, sender: dict[str, Any], to: str, subject: str, body: str) -> str | None:
+    """`sender` is resolve_sender()'s result; `body` already carries the signature."""
+    request: dict[str, Any] = {
+        "FromEmailAddress": sender["from_header"],
+        "Destination": {"ToAddresses": [to]},
+        "Content": {
             "Simple": {
                 "Subject": {"Data": subject, "Charset": "UTF-8"},
                 "Body": {"Text": {"Data": body, "Charset": "UTF-8"}},
             }
         },
-    )
-    return resp.get("MessageId")
+    }
+    if sender.get("reply_to"):
+        request["ReplyToAddresses"] = [sender["reply_to"]]
+    return ses.send_email(**request).get("MessageId")
+
+
+def ses_identity_status(address: str) -> dict[str, Any]:
+    """Whether SES can send as `address` (the address or its domain is verified).
+
+    Returns {"verified": True|False|None, "reason": str}; None means it couldn't
+    be checked (no credentials, no permission, network). Never raises.
+    """
+    address = (address or "").strip().lower()
+    if "@" not in address:
+        return {"verified": None, "reason": "No sender email is set."}
+    domain = address.rsplit("@", 1)[1]
+    try:
+        ses = _ses_client(quick=True)
+        for identity in (address, domain):
+            try:
+                info = ses.get_email_identity(EmailIdentity=identity)
+            except Exception as exc:
+                if _aws_error_code(exc) == "NotFoundException":
+                    continue
+                raise
+            if info.get("VerifiedForSendingStatus"):
+                return {"verified": True, "identity": identity, "reason": f"{identity} is verified in SES."}
+        return {
+            "verified": False,
+            "reason": f"Neither {address} nor {domain} is verified in SES ({_ses_region() or 'default region'}).",
+        }
+    except Exception as exc:
+        return {"verified": None, "reason": f"Couldn't check SES: {type(exc).__name__}"}
+
+
+def _aws_error_code(exc: Exception) -> str | None:
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        return (response.get("Error") or {}).get("Code")
+    return None
 
 
 def handle_email_send_list(args: dict[str, Any]) -> dict[str, Any]:
-    """Send one copy per recipient. `recipients` is filled in by the gateway from
-    the agent's mailing list at execution time; it is not a model-supplied argument.
+    """Send one copy per recipient. `recipients` and `sender` are filled in by the
+    gateway from the agent's record at execution time, never from arguments.
 
     Raises only if every send fails; partial failures are listed in the result.
     """
     recipients = [r for r in (args.get("recipients") or []) if isinstance(r, str) and r]
     subject = args.get("subject") or "(no subject)"
-    body = args.get("body") or ""
+    sender = resolve_sender(args.get("sender"))
+    body = compose_body(args.get("body") or "", sender["signature"])
     if not recipients:
         raise ValueError("The mailing list is empty")
 
-    base = {"subject": subject, "body_preview": body[:120], "recipient_count": len(recipients)}
-    sender = _email_sender()
-    if not sender:
-        return {
-            **base,
-            "status": "simulated",
-            "simulated": True,
-            "sent": 0,
-            "hint": "Set HOMEFRONT_EMAIL_FROM (an SES-verified address) in the repo-root .env to send real email.",
-        }
+    base = {
+        "subject": subject,
+        "body_preview": body[:120],
+        "recipient_count": len(recipients),
+        "from": sender["from_header"] or None,
+        "reply_to": sender["reply_to"] or None,
+    }
+    if not sender["from_email"]:
+        return {**base, "status": "simulated", "simulated": True, "sent": 0, "hint": SIMULATED_HINT}
 
     ses = _ses_client()
     sent, failed = 0, []
@@ -120,7 +194,6 @@ def handle_email_send_list(args: dict[str, Any]) -> dict[str, Any]:
         "status": "sent" if not failed else "partially_sent",
         "simulated": False,
         "provider": "ses",
-        "from": sender,
         "sent": sent,
         "failed": failed,
     }
