@@ -1,8 +1,8 @@
 # Loop: cognito-wp1
 
-Status: REVIEWING                  <!-- PLANNING | AWAITING_APPROVAL | BUILDING | REVIEWING | DONE | STUCK | CAPPED -->
+Status: STOPPED (lead)             <!-- PLANNING | AWAITING_APPROVAL | BUILDING | REVIEWING | DONE | STUCK | CAPPED -->
 Profile: feature (trial depth: full, because this is auth)
-Round: 2 / 4
+Round: 3 / 4
 Base commit: 839c456
 Branch: claude/cognito-huy-5d029b
 
@@ -313,7 +313,13 @@ T3 and T4 share a file, so they run in sequence.
 ### Round 2 — 2026-11-07
 - Built: T10 tests (821c39f), T11 script (a906704), certifi CA fix found by the live done-check (20d922c), README (6fa145a). Live: temp passwords reset; real client_credentials token verified by the backend against the real JWKS.
 - Outcome checks: 9/9 pass; fixed [], regressed [] (scoreboard: cognito-wp1.rounds/round-2.json).
-- Review / trial: running.
+- Review: team-reviewer APPROVE (0 Critical/High/Medium). Trial: advocate STRONG; falsifier FALSIFIED one point (mandate-agent default auth flows) → fixed in round 3.
+
+### Round 3 — 2026-11-07
+- Built: mandate-agent `--explicit-auth-flows ALLOW_REFRESH_TOKEN_AUTH` + new check C10 (2bae187); HomeFront rename in prose, reviewer Lows (986068e); live agent client updated with Huy's approval. Huy set permanent user passwords himself.
+- Outcome checks: 10/10 pass (scoreboard: cognito-wp1.rounds/round-3.json).
+- Trial (full): falsifier INCONCLUSIVE (nothing broken; real-AWS path forbidden to run); advocate STRONG; judge INSUFFICIENT EVIDENCE: every requirement MET except real-run idempotency/creation (1b/1c real half) UNSETTLED, because the live evidence is builder-reported only. No Critical/High finding, no integrity violation, no contradicted claim. Judge's "to fix": with Huy's approval, re-run cognito.sh for real against the kept pool and show only `admin-add-user-to-group` lines (no `create-*`), plus the client_credentials curl.
+- Decision: STOPPED by the lead (integration merge planning) before a confirming real run; no code fix needed.
 
 ## Decisions
 
