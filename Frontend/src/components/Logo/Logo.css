@@ -9,6 +9,11 @@
 .logo-mark {
   width: 36px;
   height: 36px;
+  box-sizing: border-box;
+  padding: 6px;
+  border-radius: 9px;
+  background: var(--blue-800);
+  object-fit: contain;
 }
 
 .logo-word {
