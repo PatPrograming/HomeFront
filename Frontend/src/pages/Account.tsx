@@ -4,12 +4,25 @@ import { api } from "../lib/api.js";
 import { useAuth } from "../lib/AuthProvider";
 import "./Auth.css";
 
+type Profile = {
+  id: string;
+  username?: string | null;
+  full_name?: string | null;
+  avatar_url?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export default function Account() {
   const { user, signOut } = useAuth();
-  const [error, setError] = useState(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.me().catch((e) => setError(e.message));
+    api
+      .me()
+      .then(setProfile)
+      .catch((e) => setError(e.message));
   }, []);
 
   return (
@@ -20,7 +33,33 @@ export default function Account() {
           <p className="auth-sub">
             Signed in as <strong>{user?.email}</strong>
           </p>
-          {error && <p role="alert" className="alert alert-error">Backend: {error}</p>}
+          {error && (
+            <p role="alert" className="alert alert-error">
+              Backend: {error}
+            </p>
+          )}
+          {profile && (
+            <dl className="auth-details">
+              {profile.full_name && (
+                <>
+                  <dt>Name</dt>
+                  <dd>{profile.full_name}</dd>
+                </>
+              )}
+              {profile.username && (
+                <>
+                  <dt>Username</dt>
+                  <dd>{profile.username}</dd>
+                </>
+              )}
+              {profile.created_at && (
+                <>
+                  <dt>Member since</dt>
+                  <dd>{new Date(profile.created_at).toLocaleDateString()}</dd>
+                </>
+              )}
+            </dl>
+          )}
           <button className="btn btn-outline" onClick={signOut}>
             Sign out
           </button>

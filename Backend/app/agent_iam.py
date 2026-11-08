@@ -36,7 +36,9 @@ _PACKAGE_SRC = [
 ]
 
 # Gateway paths that manage agents rather than act as one.
-_ADMIN_PREFIXES = ("/agents", "/auth/token", "/audit")
+# /approvals is user-only on purpose: an agent's workload token can never
+# approve its own request.
+_ADMIN_PREFIXES = ("/agents", "/auth/token", "/audit", "/approvals")
 # Served by the host app's own router instead.
 _SKIP_PATHS = {"/health"}
 
@@ -86,24 +88,7 @@ def include_agent_iam(host_app: FastAPI, prefix: str = "") -> None:
     configure_bedrock_runner()
 
     if get_settings().agent_store == "dynamodb":
-        import logging
-
-        from botocore.exceptions import BotoCoreError, ClientError
-
-        from identity_gateway.dynamo_repo import DynamoAgentRepository, seed_demo_agent
-
-        from app.core.dynamodb import table
-
-        try:
-            repo = DynamoAgentRepository(table("agents"))
-            seed_demo_agent(repo)  # replaces the SQL migration's seed row
-            store.use_agent_repository(repo)
-        except (ClientError, BotoCoreError) as exc:
-            logging.getLogger(__name__).warning(
-                "DynamoDB agent store unavailable (%s); falling back to in-memory agents. "
-                "Fix AWS credentials, run ./scripts/run-dynamodb-local.sh, or set AGENT_STORE=memory.",
-                exc,
-            )
+        use_dynamodb_stores(store)
 
     # The gateway nests the ATLAS router, so it isn't in agent_app.routes; mount it directly.
     host_app.include_router(build_router(enricher), prefix=prefix)
@@ -119,6 +104,61 @@ def include_agent_iam(host_app: FastAPI, prefix: str = "") -> None:
     host_app.include_router(
         admin_router, prefix=prefix, dependencies=[Depends(require_agent_admin)]
     )
+
+
+def _aws_reason(exc: Exception) -> str:
+    """Short, ARN-free reason for a storage warning shown by GET /status."""
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        return (response.get("Error") or {}).get("Code") or type(exc).__name__
+    return type(exc).__name__
+
+
+def use_dynamodb_stores(store) -> None:
+    """Switch agents and the activity log to DynamoDB. Each falls back to memory
+    on its own if its table can't be reached; GET /status reports which."""
+    import logging
+
+    from boto3.dynamodb.conditions import Key
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    from identity_gateway.approvals import DynamoApprovalRepository
+    from identity_gateway.audit import DynamoAuditRepository
+    from identity_gateway.dynamo_repo import DynamoAgentRepository, seed_demo_agent
+
+    from app.core.dynamodb import table, table_name
+
+    log = logging.getLogger(__name__)
+    hint = "Fix AWS credentials, run ./scripts/run-dynamodb-local.sh, or set AGENT_STORE=memory."
+
+    try:
+        repo = DynamoAgentRepository(table("agents"))
+        seed_demo_agent(repo)  # replaces the SQL migration's seed row
+        store.use_agent_repository(repo)
+    except (ClientError, BotoCoreError) as exc:
+        msg = f"Agents are in memory only: {table_name('agents')} unavailable ({_aws_reason(exc)})"
+        store.storage_warnings.append(msg)
+        log.warning("%s; full error: %s. %s", msg, exc, hint)
+
+    try:
+        audit_table = table("audit")
+        # Probe with Query (in BackendDataPolicy) so a missing table fails now,
+        # not on the first event.
+        audit_table.query(KeyConditionExpression=Key("agent_id").eq("_probe"), Limit=1)
+        store.use_audit_repository(DynamoAuditRepository(audit_table))
+    except (ClientError, BotoCoreError) as exc:
+        msg = f"Activity log is in memory only: {table_name('audit')} unavailable ({_aws_reason(exc)})"
+        store.storage_warnings.append(msg)
+        log.warning("%s; full error: %s. %s", msg, exc, hint)
+
+    try:
+        approvals_table = table("approvals")
+        approvals_table.get_item(Key={"id": "_probe"})  # GetItem is in BackendDataPolicy
+        store.use_approval_repository(DynamoApprovalRepository(approvals_table))
+    except (ClientError, BotoCoreError) as exc:
+        msg = f"Approvals are in memory only: {table_name('approvals')} unavailable ({_aws_reason(exc)})"
+        store.storage_warnings.append(msg)
+        log.warning("%s; full error: %s. %s", msg, exc, hint)
 
 
 def configure_bedrock_runner() -> None:

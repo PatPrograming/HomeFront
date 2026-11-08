@@ -16,17 +16,113 @@ def _args_hash(args: dict[str, Any]) -> str:
     return hashlib.sha256(blob).hexdigest()[:16]
 
 
+def _email_sender() -> str:
+    return (os.environ.get("HOMEFRONT_EMAIL_FROM") or "").strip()
+
+
 def handle_email_send(args: dict[str, Any]) -> dict[str, Any]:
-    to = args.get("to") or "citizen@example.gov"
+    """Send via Amazon SES when HOMEFRONT_EMAIL_FROM is set; otherwise simulate.
+
+    Errors raise, so an approved send that fails is recorded as failed rather
+    than reported as sent.
+    """
+    to = (args.get("to") or "").strip()
     subject = args.get("subject") or "(no subject)"
     body = args.get("body") or ""
+    if not to or "@" not in to:
+        raise ValueError(f"Invalid recipient address: {to!r}")
+
+    sender = _email_sender()
+    if not sender:
+        return {
+            "status": "simulated",
+            "simulated": True,
+            "to": to,
+            "subject": subject,
+            "body_preview": body[:120],
+            "message_id": f"msg_{_args_hash(args)}",
+            "hint": "Set HOMEFRONT_EMAIL_FROM (an SES-verified address) in the repo-root .env to send real email.",
+        }
+
+    message_id = _ses_send(_ses_client(), sender, to, subject, body)
     return {
         "status": "sent",
-        "simulated": True,
+        "simulated": False,
+        "provider": "ses",
+        "from": sender,
         "to": to,
         "subject": subject,
         "body_preview": body[:120],
-        "message_id": f"msg_{_args_hash(args)}",
+        "message_id": message_id,
+    }
+
+
+def _ses_client() -> Any:
+    import boto3  # lazy: only needed for live sends
+    from botocore.config import Config
+
+    region = os.environ.get("HOMEFRONT_SES_REGION") or os.environ.get("AWS_REGION")
+    # Adaptive retries ride out SES's per-second send rate on list sends.
+    return boto3.client(
+        "sesv2", region_name=region, config=Config(retries={"mode": "adaptive", "max_attempts": 10})
+    )
+
+
+def _ses_send(ses: Any, sender: str, to: str, subject: str, body: str) -> str | None:
+    resp = ses.send_email(
+        FromEmailAddress=sender,
+        Destination={"ToAddresses": [to]},
+        Content={
+            "Simple": {
+                "Subject": {"Data": subject, "Charset": "UTF-8"},
+                "Body": {"Text": {"Data": body, "Charset": "UTF-8"}},
+            }
+        },
+    )
+    return resp.get("MessageId")
+
+
+def handle_email_send_list(args: dict[str, Any]) -> dict[str, Any]:
+    """Send one copy per recipient. `recipients` is filled in by the gateway from
+    the agent's mailing list at execution time; it is not a model-supplied argument.
+
+    Raises only if every send fails; partial failures are listed in the result.
+    """
+    recipients = [r for r in (args.get("recipients") or []) if isinstance(r, str) and r]
+    subject = args.get("subject") or "(no subject)"
+    body = args.get("body") or ""
+    if not recipients:
+        raise ValueError("The mailing list is empty")
+
+    base = {"subject": subject, "body_preview": body[:120], "recipient_count": len(recipients)}
+    sender = _email_sender()
+    if not sender:
+        return {
+            **base,
+            "status": "simulated",
+            "simulated": True,
+            "sent": 0,
+            "hint": "Set HOMEFRONT_EMAIL_FROM (an SES-verified address) in the repo-root .env to send real email.",
+        }
+
+    ses = _ses_client()
+    sent, failed = 0, []
+    for to in recipients:
+        try:
+            _ses_send(ses, sender, to, subject, body)
+            sent += 1
+        except Exception as exc:  # keep going; report per-address failures
+            failed.append({"to": to, "error": f"{type(exc).__name__}: {exc}"[:300]})
+    if not sent:
+        raise RuntimeError(f"All {len(recipients)} sends failed; first error: {failed[0]['error']}")
+    return {
+        **base,
+        "status": "sent" if not failed else "partially_sent",
+        "simulated": False,
+        "provider": "ses",
+        "from": sender,
+        "sent": sent,
+        "failed": failed,
     }
 
 
@@ -233,6 +329,7 @@ def handle_datagov_search(args: dict[str, Any]) -> dict[str, Any]:
 
 HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "email.send": handle_email_send,
+    "email.send_list": handle_email_send_list,
     "social.post": handle_social_post,
     "social.reply": handle_social_reply,
     "web.scrape": handle_web_scrape,

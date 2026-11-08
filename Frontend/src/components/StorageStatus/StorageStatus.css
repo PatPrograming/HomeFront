@@ -1,0 +1,51 @@
+.storage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--success);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 14px;
+}
+
+.storage strong::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  vertical-align: 1px;
+}
+
+.storage span {
+  color: var(--ink-soft);
+}
+
+.storage ul {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--danger);
+}
+
+.storage-bad {
+  border-left-color: var(--danger);
+  background: var(--red-50);
+}
+
+.storage-bad strong::before {
+  background: var(--danger);
+}
+
+.storage.is-compact {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-left-width: 1px;
+  border-radius: 999px;
+  font-size: 12px;
+}

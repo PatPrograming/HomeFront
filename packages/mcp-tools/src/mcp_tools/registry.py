@@ -43,6 +43,21 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
             body={"type": "string", "description": "Plain-text email body."},
         ),
     ),
+    "email.send_list": ToolDefinition(
+        name="email.send_list",
+        description=(
+            "Send one email to every address on this agent's mailing list. Each "
+            "recipient gets their own copy and can't see the others."
+        ),
+        risk_level="high",
+        atlas_techniques=["AML.T0086", "AML.T0048"],
+        atlas_mitigations=["AML.M0028", "AML.M0029", "AML.M0024"],
+        requires_hitl=True,
+        input_schema=_schema(
+            subject={"type": "string", "description": "Subject line."},
+            body={"type": "string", "description": "Plain-text email body."},
+        ),
+    ),
     "social.post": ToolDefinition(
         name="social.post",
         description="Publish a social media post.",
