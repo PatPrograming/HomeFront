@@ -56,6 +56,7 @@ def test_backend_policy_covers_every_table_and_operation_used():
         "dynamodb:UpdateItem",
         "dynamodb:DeleteItem",
         "dynamodb:Scan",
+        "dynamodb:Query",
         "dynamodb:ConditionCheckItem",
     }
 

@@ -13,6 +13,10 @@ Tables (names are <DYNAMODB_TABLE_PREFIX><name>):
 - profiles   pk id        one row per Cognito user (`sub`)
 - usernames  pk username  reservation row; makes profile usernames unique
 - agents     pk id        agent definitions (packages/identity-gateway/unported/dynamo_repo.py, not wired in)
+- audit      pk agent_id  activity log, sk "<ts>#<id>", 90-day TTL on expires_at
+                          (packages/identity-gateway/unported/audit.py, not wired in)
+- approvals  pk id        human approvals for high-risk tool calls
+                          (packages/identity-gateway/unported/approvals.py, not wired in)
 """
 from __future__ import annotations
 
@@ -33,6 +37,20 @@ TABLES: dict[str, dict[str, Any]] = {
         "AttributeDefinitions": [{"AttributeName": "username", "AttributeType": "S"}],
     },
     "agents": {
+        "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
+        "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
+    },
+    "audit": {
+        "KeySchema": [
+            {"AttributeName": "agent_id", "KeyType": "HASH"},
+            {"AttributeName": "sk", "KeyType": "RANGE"},
+        ],
+        "AttributeDefinitions": [
+            {"AttributeName": "agent_id", "AttributeType": "S"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+        ],
+    },
+    "approvals": {
         "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
         "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
     },

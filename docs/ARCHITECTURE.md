@@ -67,7 +67,7 @@ flowchart LR
 - Every DynamoDB read and write is keyed by that verified `sub` (profiles) or checked against the agent's `owner_id` (agents). This replaces Supabase RLS.
 
 ### 4.4 Database (DynamoDB)
-- Three tables, named `<DYNAMODB_TABLE_PREFIX><name>`: `profiles`, `usernames`, `agents` (§6).
+- Five tables, named `<DYNAMODB_TABLE_PREFIX><name>`: `profiles`, `usernames`, `agents`, `audit`, `approvals` (§6).
 - Key schemas are defined once in `Backend/app/core/dynamodb.py` and mirrored in the CloudFormation template; `Backend/tests/test_infra.py` fails if they drift.
 - Browsers never talk to DynamoDB. The `BackendDataPolicy` IAM policy (stack output) grants the backend access to these three tables only.
 - Local development: DynamoDB Local via `scripts/run-dynamodb-local.sh`.
@@ -122,6 +122,7 @@ User-defined agents. Read and written by the gateway (`AGENT_STORE=dynamodb`). R
 |---------------|---------|-------------------------------------------------------------|
 | id            | S       | `^[a-z0-9][a-z0-9-]{2,63}$` (used in URLs)                  |
 | owner_id      | S/NULL  | Cognito `sub`. null = shared demo agent                     |
+| kind          | S       | `email` / `social` / `research` / `custom`. Fixed at creation; missing = `custom` |
 | name / agency | S       | 1–80 / 1–120 chars                                          |
 | instructions  | S       | ≤ 8000 chars. The agent's purpose and system prompt         |
 | model         | S/NULL  | null = runner default                                       |
@@ -131,11 +132,21 @@ User-defined agents. Read and written by the gateway (`AGENT_STORE=dynamodb`). R
 | active        | BOOL    | Inactive agents can't get tokens or run                     |
 | created_at / updated_at | S | ISO 8601 UTC                                      |
 
+**Agent types** (`packages/identity-gateway/src/identity_gateway/agent_types.py`, public catalog at `GET /agent-types`): each kind supplies default instructions, tools and `max_steps` for fields left out of `POST /agents`, plus a tool ceiling. Email: `email.send`, `datagov.search`. Social: `social.post`, `social.reply`. Research: `web.scrape`, `datagov.search`, never an outbound tool, because it reads untrusted content. `custom` has no ceiling. Granting a tool outside the ceiling returns `403 tool_not_allowed_for_kind` and is audited as `grant_denied`. `/mcp/call` checks the ceiling again, so a grant written straight to the table is still blocked.
+
 The field limits are enforced by the API's request models (DynamoDB has no check constraints). The demo agent `agent-comms-01` is seeded at startup if missing.
 
 **API access** (`/agents*`, `/auth/token`, `/audit`): a signed-in user gets their own agents plus ownerless demo agents, and new agents are owned by the creator. Anonymous callers (only when `AGENT_ADMIN_REQUIRES_LOGIN=false`) get ownerless agents only. Other users' agents return `404`. An invalid user token is always `401`.
 
-Workload tokens, agent runs and the audit log are still in memory.
+Workload tokens and agent run records are still in memory.
+
+### `audit` (pk `agent_id`, sk `<ts>#<id>`)
+The activity log: one item per gateway decision or agent change (`identity_gateway/audit.py`). Each event has a `trace_id` (the run id, or the workload-token session id for manual MCP calls), an `actor` (`user:<sub>`, `agent:<id>` or `anonymous`), a `decision` and compact ATLAS ids. Queried newest-first per agent through `GET /audit?agent_id=&trace_id=&decision=&type=`. Items expire after 90 days (`expires_at` TTL). A failed write is kept in memory and counted in `GET /status`.
+
+### `approvals` (pk `id`)
+Human approval for tools with `requires_hitl` (`email.send`, `social.post`, `social.reply`; `identity_gateway/approvals.py`, ATLAS AML.M0029). The gateway does not run these tools on a call: it stores a `pending` approval and returns `pending_approval` to the agent. A signed-in user approves (optionally editing the arguments, which must still match the tool schema) or rejects through `/approvals/{id}/approve|reject`. Approval re-checks the grant, the agent type and `active`, so a revoke after the request blocks it. Status leaves `pending` exactly once (conditional write), so a request can't be sent twice; requests expire after 24 hours. `/approvals` is a user-only route: an agent's workload token can't approve its own request.
+
+`GET /status` reports which store (DynamoDB or memory) agents, the activity log and approvals are using, plus any startup fallback warnings.
 
 ### Domain tables
 TODO: list HomeFront's own tables. Add each to `TABLES` in `Backend/app/core/dynamodb.py` **and** the CloudFormation template (plus the IAM policy). Every item that belongs to a user should carry the owner's `sub`, and every access should check it.

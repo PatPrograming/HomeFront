@@ -5,10 +5,12 @@ import "./Hero.css";
 
 interface HeroProps {
   mission: string[];
+  buttons?: string[];
 }
 
-export default function Hero({ mission }: HeroProps) {
+export default function Hero({ mission, buttons }: HeroProps) {
   const { session } = useAuth();
+  const primaryLabel = buttons?.[0] || "Start a communication";
   return (
     <section className="hero">
       <div className="container hero-grid">
@@ -24,7 +26,7 @@ export default function Hero({ mission }: HeroProps) {
           </p>
           <div className="hero-buttons">
             <Link className="btn btn-primary" to="/social-platform">
-              Start a communication
+              {primaryLabel}
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
                 <path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
