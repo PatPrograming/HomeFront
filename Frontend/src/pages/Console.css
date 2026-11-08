@@ -1979,3 +1979,19 @@
 .review-cards {
   max-width: 640px;
 }
+
+.session-notice {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.identity-task {
+  color: var(--ink-soft);
+}
+
+.identity-task::before {
+  content: "·";
+  margin-right: 8px;
+  color: var(--line-strong, #c5cdd8);
+}

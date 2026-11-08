@@ -69,13 +69,17 @@ const DEFAULT_PROMOTE_AFTER = 3;
 const MIN_UNCHANGED_SHARE = 0.9;
 
 // What the staffer may change in a draft, and where a post can go (the server decides both in Lane H's API).
-const EDITABLE: Record<Draft["tool"], string[]> = { email_send: ["subject", "body"], social_post: ["text", "platforms"] };
+// Lane H's shape: a new recipient is checked when saved (only constituents on file here, like Cedar's
+// recipientKnown); a post goes to one platform.
+const EDITABLE: Record<Draft["tool"], string[]> = { email_send: ["subject", "body", "to"], social_post: ["text", "platform"] };
 const PLATFORMS = [
   { id: "x", label: "X" },
   { id: "bluesky", label: "Bluesky" },
-  { id: "facebook", label: "Facebook" },
   { id: "linkedin", label: "LinkedIn" },
+  { id: "facebook", label: "Facebook" },
 ];
+const staleVersion = (draft: StoredDraft) =>
+  Object.assign(new MockError(409, "This draft changed"), { data: { error: "stale_version", draft } });
 const REVISE_MS = 1500;
 
 // The scripted agent's revision: "shorter" keeps the first sentence or two; anything else is noted at the end.
@@ -221,7 +225,7 @@ function outbound(
   state.drafts[id] = {
     id, status: "pending", tool, category, categoryLabel: LABELS[category], args,
     createdAt: new Date(now).toISOString(), actingFor: session.actingFor, sid: session.sid,
-    version: 1, ...(tool === "social_post" ? { platforms: ["x"] } : {}),
+    version: 1, ...(tool === "social_post" ? { platform: "x" } : { recipient: args.to }),
   };
   events.push(event(session, tool, resource, "held for staff review", now));
   return "held";
@@ -367,12 +371,18 @@ export function assistantRoute(
       draft.revising = { instruction, at: now };
       return { id: draft.id, revising: true };
     }
-    const patch = (body ?? {}) as Record<string, unknown>;
+    const { expectedVersion, ...patch } = (body ?? {}) as Record<string, unknown>;
+    if (expectedVersion !== undefined && expectedVersion !== (draft.version ?? 1)) throw staleVersion(draft);
     const refused = Object.keys(patch).filter((k) => !EDITABLE[draft.tool].includes(k));
-    if (refused.length) throw new MockError(403, `You can't change ${refused.join(", ")} here`);
+    if (refused.length) throw new MockError(422, `You can't change ${refused.join(", ")} here`);
+    if (patch.to !== undefined && ![...inbox.values()].some((e) => e.from.toLowerCase() === String(patch.to).toLowerCase())) {
+      throw new MockError(403, "That address isn't a constituent on file, so the office's policy won't send to it");
+    }
+    if (patch.platform !== undefined && !PLATFORMS.some((o) => o.id === patch.platform)) throw new MockError(422, "Unknown platform");
     for (const [k, v] of Object.entries(patch)) {
-      if (k === "platforms") draft.platforms = (v as string[]).filter((p) => PLATFORMS.some((o) => o.id === p));
+      if (k === "platform") draft.platform = String(v);
       else draft.args[k] = String(v);
+      if (k === "to") draft.recipient = String(v);
     }
     draft.version = (draft.version ?? 1) + 1;
     return { ...draft, revising: false };
@@ -389,7 +399,8 @@ export function assistantRoute(
       s.rejected += 1;
       return { id: draft.id, status: "rejected" };
     }
-    const edits = (body ?? {}) as DraftEdits;
+    const { expectedVersion, ...edits } = (body ?? {}) as DraftEdits & { expectedVersion?: number };
+    if (expectedVersion !== undefined && expectedVersion !== (draft.version ?? 1)) throw staleVersion(draft);
     const changed = Object.entries(edits).filter(([k, v]) => v !== undefined && draft.args[k] !== v);
     Object.assign(draft.args, edits);
     draft.status = "sent";

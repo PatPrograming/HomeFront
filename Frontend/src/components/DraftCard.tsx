@@ -3,6 +3,13 @@ import { api, type Draft, type DraftPatch } from "../lib/api";
 import { connectionMessage } from "../lib/errors";
 import { DraftCardView } from "./DraftCardView";
 
+// Lane H answers 409 {error: "stale_version", draft} when the draft changed since this card loaded it.
+export function staleMessage(e: unknown): string | null {
+  const data = (e as { status?: number; data?: { error?: string; detail?: { error?: string } } }).data;
+  const stale = (e as { status?: number }).status === 409 && (data?.error ?? data?.detail?.error) === "stale_version";
+  return stale ? "This draft changed while you were editing; the latest version is shown." : null;
+}
+
 // The draft card's state: whether it is being edited, the unsaved edits and the staffer's change request. Saving
 // is a PATCH of the changed fields; a change request asks the agent for the next version. Both reload the drafts.
 export default function DraftCard({ draft, onOpen, onChanged }: { draft: Draft; onOpen: (id: string) => void; onChanged: () => Promise<void> }) {
@@ -20,7 +27,13 @@ export default function DraftCard({ draft, onOpen, onChanged }: { draft: Draft; 
       after();
       await onChanged();
     } catch (e) {
-      setError(connectionMessage(e, false));
+      const stale = staleMessage(e);
+      setError(stale ?? connectionMessage(e, false));
+      if (stale) {
+        setEditing(false);
+        setEdits({});
+        await onChanged(); // show the latest version
+      }
     } finally {
       setBusy(false);
     }
@@ -42,7 +55,7 @@ export default function DraftCard({ draft, onOpen, onChanged }: { draft: Draft; 
       onChange={(patch) => setEdits({ ...edits, ...patch })}
       onSave={async (changes) => {
         if (!Object.keys(changes).length) return setEditing(false);
-        await run(() => api.updateDraft(draft.id, changes), () => {
+        await run(() => api.updateDraft(draft.id, { ...changes, expectedVersion: draft.version }), () => {
           setEditing(false);
           setEdits({});
         });

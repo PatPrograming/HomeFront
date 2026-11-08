@@ -1,6 +1,6 @@
 # Loop: console-round-6
 
-Status: REVIEWING
+Status: DONE
 Profile: feature
 Round: 1 / 4
 Base commit: 13659a0
@@ -88,3 +88,19 @@ that takes the full width with sending rules one click away.
   "Email agent: Read email email-3"; identity "Your assistant acts for you, office rep-x"; Sending rules popover at
   1280 and full-screen sheet at 375; chat column 860 px; no sideways scroll at 375.
 - Open: the renewed session still lists as its own conversation in the sidebar until Lane E chains sessions.
+- Trial (lite) on 7cb80b5: INCONCLUSIVE, nothing falsified; 10/10 mutations killed. Unverified: browser renewal and
+  revise (both run by Lane F in the browser before the trial), 375 px popover (screenshotted), popover focus (not
+  moved: fixed below), Lane H's real routes. Also: history only in this tab (fixed below with Lane E's `earlier`).
+
+### Round 2 — 2026-11-08 (the lanes' final APIs)
+- Lane E continuation: `POST /sessions {continues}`; 409 still_active keeps the old sid, already_continued uses the
+  newest (from GET /sessions `earlier`), 403/404 start a fresh conversation; the listing's `earlier` loads older
+  sessions' messages from the server (`useEarlier`), so any tab shows them; `waitingDrafts` read as `waiting`;
+  `grantsReset` shows "New session: one-time permissions were reset". This tab's history stays as the fallback.
+- Lane H drafts: one `platform` per draft (radio picker), `recipient`, `editable` incl. "to" for email (server
+  checks it), "Change requested…" while `revising`, `expectedVersion` on PATCH and approve, 409 stale_version reloads
+  and says why, approve `needs_connection` shows "Connect <label>" and sends nothing (`approveOutcome`).
+- Trial points: Sending rules focuses its close button on open; the identity line adds "Working on: <title>".
+- Outcome checks: 5/5 (round-2.json); 180 frontend tests. Browser (mock, :3227): LinkedIn picked → "Draft 2 · Post
+  on LinkedIn"; "make it shorter" → "Change requested…" → "Draft 3"; popover focus + Escape; identity line task.
+- Decision: DONE. No second trial (cost).

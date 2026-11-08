@@ -14,12 +14,13 @@ import { useOpenDraft } from "../lib/useOpenDraft";
 import { useSession } from "../lib/AuthProvider";
 import { sessionEvents } from "../lib/events";
 import { isAdmin } from "../lib/roles";
-import { needsNewSession, sendInSession } from "../lib/chatSession";
+import { needsNewSession, sendInSession, type StartedCard } from "../lib/chatSession";
 import { useChat, type Chat } from "../lib/useChat";
 import { useEventFeed } from "../lib/useEventFeed";
 import { useReview } from "../lib/useReview";
 import { useSessionRevoked } from "../lib/useSessionRevoked";
 import { useSessions } from "../lib/useSessions";
+import { useEarlier } from "../lib/useEarlier";
 import { useToggle } from "../lib/useToggle";
 import { sortDrafts, type WaitingOrder } from "../lib/waiting";
 import "./Console.css";
@@ -56,6 +57,12 @@ function loadGrants(): Record<string, string[]> {
   }
 }
 
+// A listing row carries the session's card fields; keep only those.
+function toCard(row: SessionSummary): SessionCard {
+  const { title: _t, status: _s, waiting: _w, createdAt: _c, pinned: _p, group: _g, archived: _a, earlier: _e, ...card } = row;
+  return card;
+}
+
 // Only the same signed-in user gets their saved card back.
 function loadCard(username: string): SessionCard | null {
   try {
@@ -72,13 +79,20 @@ export default function Console() {
   const session = useSession();
   const [card, setCard] = useState<SessionCard | null>(() => loadCard(session.username));
   const feed = useEventFeed({ limit: 100 });
+  const conversations = useSessions();
   const [history, setHistory] = useState(loadHistory);
-  const earlier = card ? history[card.sid] : undefined;
-  const chain = [...(earlier?.sids ?? []), ...(card ? [card.sid] : [])]; // this conversation's sessions, oldest first
+  // The conversation's earlier sessions: from the server's listing (Lane E's `earlier`), else this tab's history.
+  const row = card ? conversations.sessions.find((s) => s.sid === card.sid) : undefined;
+  const fromServer = row?.earlier?.length ? [...row.earlier].reverse() : null; // oldest first
+  const local = card ? history[card.sid] : undefined;
+  const serverMessages = useEarlier(fromServer ?? []);
+  const earlierMessages = fromServer ? serverMessages : (local?.messages ?? []);
+  const chain = [...(fromServer ?? local?.sids ?? []), ...(card ? [card.sid] : [])]; // this conversation's sessions, oldest first
+  // Lane E: a continued session starts without the one-time permissions of the last one; say so once, quietly.
+  const notice = (card as StartedCard | null)?.grantsReset ? "New session: one-time permissions were reset" : null;
   const revoked = useSessionRevoked(card?.sid ?? null) || sessionEvents(feed.events, card?.sid ?? null).some((e) => e.reason === REVOKED);
   const events = feed.events.filter((e) => chain.includes(e.sid)); // the admin Audit log shows every session
   const chat = useChat(card?.sid ?? null);
-  const conversations = useSessions();
   const review = useReview();
   const reloadReview = review.reload;
 
@@ -93,7 +107,14 @@ export default function Console() {
     if (card && !needsNewSession(card, Date.now())) return chat.send(text);
     // The session's hour is up: keep what was said so far above the new session's messages.
     const kept: Earlier | null = card ? { sids: chain, messages: shownMessages } : null;
-    const next = await sendInSession(card, text, Date.now(), api);
+    const next = await sendInSession(card, text, Date.now(), {
+      startSession: api.startSession,
+      sendMessage: api.sendMessage,
+      findContinuation: async (oldSid) => {
+        const newest = (await api.listSessions()).sessions.find((s) => s.earlier?.includes(oldSid));
+        return newest ? toCard(newest) : null;
+      },
+    });
     if (next.card.sid !== card?.sid) {
       if (kept?.messages.length) {
         const all = { ...history, [next.card.sid]: kept };
@@ -113,8 +134,7 @@ export default function Console() {
   }
   // Switching conversations shows that session's chat, drafts and identity line (the listing carries its card).
   function selectConversation(picked: SessionSummary) {
-    const { title: _t, status: _s, waiting: _w, createdAt: _c, pinned: _p, group: _g, archived: _a, ...next } = picked;
-    showCard(next);
+    showCard(toCard(picked));
   }
   // A revoked session stays on screen as proof; this lets the staffer leave it and start over (the broker
   // still refuses if they are offboarded).
@@ -124,7 +144,7 @@ export default function Console() {
   function newConversation() {
     showCard(null);
   }
-  const shownMessages = [...(earlier?.messages ?? []), ...chat.messages];
+  const shownMessages = [...earlierMessages, ...chat.messages];
   const chatWithSession: Chat = { ...chat, messages: shownMessages, send };
   const locked = new Set(review.categories.filter((c) => c.locked).map((c) => c.category));
   const admin = isAdmin(session);
@@ -172,6 +192,11 @@ export default function Console() {
     setGrants(next);
   }
 
+  // The Sending rules popover takes the focus when it opens (its close button), for keyboard and screen readers.
+  useEffect(() => {
+    if (railOpen) document.querySelector<HTMLElement>('#sending-rules [aria-label="Close sending rules"]')?.focus();
+  }, [railOpen]);
+
   // The review panel and the settings drawer close on Escape, like other dialogs (the composer uses Escape first,
   // to stop waiting).
   const reviewOpen = openDraft !== null;
@@ -218,7 +243,7 @@ export default function Console() {
               <div>
                 <h1>Your assistant</h1>
                 {card ? (
-                  <IdentityLine card={card} revoked={revoked} />
+                  <IdentityLine card={card} revoked={revoked} task={row?.title} />
                 ) : (
                   <p className="identity-line">It acts for you, with only the tools your office allows.</p>
                 )}
@@ -299,6 +324,12 @@ export default function Console() {
               </div>
             </header>
 
+            {notice && !revoked && (
+              <p className="session-notice" role="status">
+                {notice}
+              </p>
+            )}
+
             {card && revoked && (
               <p className="revoked-banner" role="status">
                 <span>This conversation's session was revoked. The assistant can do nothing more in it.</span>
@@ -309,7 +340,7 @@ export default function Console() {
             )}
 
             <ChatPanel
-              renewedAfter={earlier?.messages[earlier.messages.length - 1]?.id ?? null}
+              renewedAfter={earlierMessages[earlierMessages.length - 1]?.id ?? null}
               chat={chatWithSession}
               sid={card?.sid ?? null}
               disabled={revoked}

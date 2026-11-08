@@ -257,10 +257,35 @@ describe("mock draft edits (Lane H's routes)", () => {
 
   it("saves the staffer's edits as the next version, and refuses the recipient", async () => {
     const d = await heldReply();
-    expect(d).toMatchObject({ version: 1, revising: false, editable: ["subject", "body"] });
+    expect(d).toMatchObject({ version: 1, revising: false, editable: ["subject", "body", "to"] });
     await mockRequest("PATCH", `/drafts/${d.id}`, { body: "Thanks, we are on it." }, MAYA);
     expect((await drafts()).find((x) => x.id === d.id)).toMatchObject({ version: 2, args: { body: "Thanks, we are on it." } });
     await expect(mockRequest("PATCH", `/drafts/${d.id}`, { to: "someone@else.example" }, MAYA)).rejects.toMatchObject({ status: 403 });
+    vi.useRealTimers();
+  });
+
+  it("only the version on screen can be edited or approved", async () => {
+    const d = await heldReply();
+    await expect(mockRequest("PATCH", `/drafts/${d.id}`, { body: "x", expectedVersion: 7 }, MAYA)).rejects.toMatchObject({
+      status: 409, data: { error: "stale_version" },
+    });
+    await mockRequest("PATCH", `/drafts/${d.id}`, { body: "x", expectedVersion: 1 }, MAYA);
+    await expect(mockRequest("POST", `/drafts/${d.id}/approve`, { expectedVersion: 1 }, MAYA)).rejects.toMatchObject({ status: 409 });
+    await expect(mockRequest("POST", `/drafts/${d.id}/approve`, { expectedVersion: 2 }, MAYA)).resolves.toMatchObject({ status: "sent" });
+    vi.useRealTimers();
+  });
+
+  it("a post goes to one platform the server supports", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const a = (await mockRequest("POST", "/sessions", {}, MAYA)) as { sid: string };
+    await mockRequest("POST", `/sessions/${a.sid}/messages`, { text: "Post on the official account: Town hall Tuesday" }, MAYA);
+    vi.advanceTimersByTime(2000);
+    await mockRequest("GET", `/sessions/${a.sid}/messages`, undefined, MAYA);
+    const post = ((await drafts()) as (D & { platform: string })[]).find((x) => x.editable.includes("platform"))!;
+    expect(post.platform).toBe("x");
+    await mockRequest("PATCH", `/drafts/${post.id}`, { platform: "bluesky" }, MAYA);
+    expect(((await drafts()) as (D & { platform: string })[]).find((x) => x.id === post.id)!.platform).toBe("bluesky");
+    await expect(mockRequest("PATCH", `/drafts/${post.id}`, { platform: "reddit" }, MAYA)).rejects.toMatchObject({ status: 422 });
     vi.useRealTimers();
   });
 

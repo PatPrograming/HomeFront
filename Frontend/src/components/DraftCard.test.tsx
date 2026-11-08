@@ -15,8 +15,8 @@ const email: Draft = {
 };
 const post: Draft = {
   ...email, id: "p1", tool: "social_post", category: "social_post", categoryLabel: "Posts on the official account",
-  args: { account: "official", text: "Pandemic update: vaccines at the library." }, version: 1, editable: ["text", "platforms"],
-  platforms: ["x"], platformOptions: [{ id: "x", label: "X" }, { id: "bluesky", label: "Bluesky" }],
+  args: { account: "official", text: "Pandemic update: vaccines at the library.", platform: "x" }, version: 1, editable: ["text", "platform"],
+  platform: "x", recipient: null, platformOptions: [{ id: "x", label: "X" }, { id: "bluesky", label: "Bluesky" }],
 };
 const props = (over: Partial<DraftCardViewProps> = {}): DraftCardViewProps => ({
   draft: email, editing: false, edits: {}, instruction: "", busy: false, error: null,
@@ -60,14 +60,15 @@ describe("DraftCardView: the draft in the chat", () => {
     expect(onChange).toHaveBeenCalledWith({ body: "Shorter." });
   });
 
-  it("platform chips toggle for a post", () => {
+  it("a post goes to one platform: the picker selects exactly one", () => {
     const onChange = vi.fn();
     const tree = DraftCardView(props({ draft: post, editing: true, onChange }));
     const html = renderToStaticMarkup(<>{tree}</>);
-    expect(html).toMatch(/aria-pressed="true"[^>]*>X</);
-    expect(html).toMatch(/aria-pressed="false"[^>]*>Bluesky</);
+    expect(html).toContain('role="radiogroup"');
+    expect(html).toMatch(/role="radio"[^>]*aria-checked="true"[^>]*>X</);
+    expect(html).toMatch(/role="radio"[^>]*aria-checked="false"[^>]*>Bluesky</);
     btn(tree, "Bluesky").props.onClick!();
-    expect(onChange).toHaveBeenCalledWith({ platforms: ["x", "bluesky"] });
+    expect(onChange).toHaveBeenCalledWith({ platform: "bluesky" });
   });
 
   it("Save edits sends the edits; asking for a change sends the instruction", () => {
@@ -82,7 +83,7 @@ describe("DraftCardView: the draft in the chat", () => {
 
   it("while the agent revises, the card says so and can't be edited", () => {
     const html = renderToStaticMarkup(<DraftCardView {...props({ draft: { ...email, revising: true } })} />);
-    expect(html).toContain("Revising…");
+    expect(html).toContain("Change requested…");
     expect(html).not.toContain(">Edit<");
   });
 });
@@ -107,11 +108,34 @@ describe("DraftCard: edits and revisions reach the server", () => {
     await view.onSave({});
     expect(api.updateDraft).not.toHaveBeenCalled(); // nothing changed: nothing to save
     await view.onSave({ body: "Shorter." });
-    expect(api.updateDraft).toHaveBeenCalledWith("e1", { body: "Shorter." });
+    expect(api.updateDraft).toHaveBeenCalledWith("e1", { body: "Shorter.", expectedVersion: 2 }); // only edit the version you saw
     await view.onRevise("   ");
     expect(api.reviseDraft).not.toHaveBeenCalled(); // no instruction: nothing to ask
     await view.onRevise("make it shorter");
     expect(api.reviseDraft).toHaveBeenCalledWith("e1", "make it shorter");
     expect(onChanged).toHaveBeenCalledTimes(2); // the card reloads after each
+  });
+});
+
+describe("DraftCard: someone else changed the draft first", () => {
+  it("a stale version reloads the drafts and says why", async () => {
+    vi.resetModules();
+    let view: DraftCardViewProps | undefined;
+    vi.doMock("./DraftCardView", () => ({
+      DraftCardView: (p: DraftCardViewProps) => {
+        view = p;
+        return null;
+      },
+    }));
+    const stale = Object.assign(new Error("conflict"), { status: 409, data: { error: "stale_version", draft: { ...email, version: 3 } } });
+    vi.doMock("../lib/api", () => ({ api: { ...api, updateDraft: vi.fn(async () => Promise.reject(stale)) } }));
+    const { staleMessage } = await import("./DraftCard");
+    expect(staleMessage(stale)).toBe("This draft changed while you were editing; the latest version is shown.");
+    expect(staleMessage(new Error("other"))).toBeNull();
+    const { default: DraftCard } = await import("./DraftCard");
+    const onChanged = vi.fn(async () => {});
+    renderToStaticMarkup(<DraftCard draft={email} onOpen={() => {}} onChanged={onChanged} />);
+    await view!.onSave({ body: "x" });
+    expect(onChanged).toHaveBeenCalled(); // reloaded to the latest version
   });
 });

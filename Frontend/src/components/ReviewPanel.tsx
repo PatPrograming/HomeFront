@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type Draft, type DraftEdits } from "../lib/api";
+import { api, type ApproveResult, type Draft, type DraftEdits } from "../lib/api";
+import { approveOutcome } from "../lib/approve";
+import { staleMessage } from "./DraftCard";
 import { connectionMessage } from "../lib/errors";
 import { draftTitle } from "./DraftCardView";
 
@@ -32,6 +34,7 @@ export default function ReviewPanel({
   const [edits, setEdits] = useState<DraftEdits>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connect, setConnect] = useState<{ label: string; url: string; note: string } | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const isEmail = draft.tool === "email_send";
   const title = draftTitle(draft);
@@ -46,13 +49,20 @@ export default function ReviewPanel({
   async function decide(action: () => Promise<unknown>, status: "sent" | "rejected") {
     setBusy(true);
     setError(null);
+    setConnect(null);
     try {
-      await action();
+      const result = await action();
+      // Lane I: a platform that isn't connected yet; nothing was sent, so the draft stays open here.
+      const outcome = status === "sent" && result ? approveOutcome(result as ApproveResult) : { done: true as const };
+      if (!outcome.done) {
+        setConnect(outcome.connect);
+        return;
+      }
       onDecided?.(status);
       await onDone();
       onClose();
     } catch (e) {
-      setError(connectionMessage(e, false));
+      setError(staleMessage(e) ? "This draft changed since you opened it. Close it and open it again to see the latest version." : connectionMessage(e, false));
     } finally {
       setBusy(false);
     }
@@ -106,13 +116,18 @@ export default function ReviewPanel({
       </div>
 
       <footer className="review-panel-actions">
+        {connect && (
+          <p className="alert" role="status">
+            {connect.note} <a href={connect.url}>Connect {connect.label}</a>
+          </p>
+        )}
         {error && (
           <p className="alert" role="alert">
             {error}
           </p>
         )}
         <div className="draft-actions">
-          <button type="button" className="btn-primary" disabled={busy} onClick={() => decide(() => api.approveDraft(draft.id, edits), "sent")}>
+          <button type="button" className="btn-primary" disabled={busy} onClick={() => decide(() => api.approveDraft(draft.id, edits, draft.version), "sent")}>
             {isEmail ? "Approve and send" : "Approve and post"}
           </button>
           {draft.sid && !locked && (
@@ -125,7 +140,7 @@ export default function ReviewPanel({
                 decide(async () => {
                   await api.grant(draft.sid!, draft.category);
                   onGrant?.(draft.sid!, draft.category);
-                  await api.approveDraft(draft.id, edits);
+                  return api.approveDraft(draft.id, edits, draft.version);
                 }, "sent")
               }
             >

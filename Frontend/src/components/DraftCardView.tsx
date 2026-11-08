@@ -19,10 +19,11 @@ const DONE: Record<Draft["status"], string> = { pending: "needs your review", se
 // Without the server's list, the text is editable and the recipient or account is not.
 const DEFAULT_EDITABLE: Record<Draft["tool"], string[]> = { email_send: ["subject", "body"], social_post: ["text"] };
 
-const platformNames = (d: Draft, ids: string[]) =>
-  ids.map((id) => d.platformOptions?.find((p) => p.id === id)?.label ?? id).join(", ");
+const platformName = (d: Draft, id: string) => d.platformOptions?.find((p) => p.id === id)?.label ?? id;
 export const draftTitle = (d: Draft) =>
-  d.tool === "email_send" ? `Reply to ${d.args.to}` : `Post on ${d.platforms?.length ? platformNames(d, d.platforms) : `@${d.args.account}`}`;
+  d.tool === "email_send"
+    ? `Reply to ${d.recipient ?? d.args.to}`
+    : `Post on ${d.platform ? platformName(d, d.platform) : `@${d.args.account}`}`;
 
 // A held draft in the chat, like an artifact: the version, where it goes, the text; edit it in place or ask the
 // agent for a change; approve it through the review panel. Markup only (no hooks), so a test can press its buttons.
@@ -30,7 +31,7 @@ export function DraftCardView(p: DraftCardViewProps) {
   const d = p.draft;
   const editable = new Set(d.editable ?? DEFAULT_EDITABLE[d.tool]);
   const value = (field: "subject" | "body" | "text" | "to") => p.edits[field] ?? d.args[field] ?? "";
-  const platforms = p.edits.platforms ?? d.platforms ?? [];
+  const platform = p.edits.platform ?? d.platform ?? null;
   const pending = d.status === "pending";
   const locked = !pending || d.revising || p.busy;
 
@@ -40,7 +41,7 @@ export function DraftCardView(p: DraftCardViewProps) {
         <span className="draft-version">Draft {d.version ?? 1}</span>
         <span className="draft-card-title">{draftTitle(d)}</span>
         <span className="draft-card-meta">
-          {d.categoryLabel} · {d.revising ? "Revising…" : DONE[d.status]}
+          {d.categoryLabel} · {d.revising ? "Change requested…" : DONE[d.status]}
         </span>
       </header>
 
@@ -66,16 +67,14 @@ export function DraftCardView(p: DraftCardViewProps) {
             <>
               <div className="draft-field">
                 <span className="muted">Post on</span>
-                <div className="platform-chips" role="group" aria-label="Platforms">
-                  {(d.platformOptions ?? []).map((o) => {
-                    const on = platforms.includes(o.id);
-                    return (
-                      <button key={o.id} type="button" className="platform-chip" aria-pressed={on} disabled={!editable.has("platforms")}
-                        onClick={() => p.onChange({ platforms: on ? platforms.filter((x) => x !== o.id) : [...platforms, o.id] })}>
-                        {o.label}
-                      </button>
-                    );
-                  })}
+                {/* One draft goes to one platform, so approving can never half-post; another platform is another draft. */}
+                <div className="platform-chips" role="radiogroup" aria-label="Platform">
+                  {(d.platformOptions ?? []).map((o) => (
+                    <button key={o.id} type="button" role="radio" className="platform-chip" aria-checked={platform === o.id}
+                      disabled={!editable.has("platform")} onClick={() => p.onChange({ platform: o.id })}>
+                      {o.label}
+                    </button>
+                  ))}
                 </div>
               </div>
               <label className="draft-field">
@@ -95,7 +94,7 @@ export function DraftCardView(p: DraftCardViewProps) {
         </div>
       ) : (
         <div className="draft-card-body">
-          {d.tool === "email_send" && <p className="draft-card-to">To {d.args.to}</p>}
+          {d.tool === "email_send" && <p className="draft-card-to">To {d.recipient ?? d.args.to}</p>}
           {d.tool === "email_send" && <p className="draft-card-subject">{d.args.subject}</p>}
           <p className="draft-card-text">{d.tool === "email_send" ? d.args.body : d.args.text}</p>
         </div>
