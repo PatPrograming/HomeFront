@@ -86,13 +86,24 @@ def include_agent_iam(host_app: FastAPI, prefix: str = "") -> None:
     configure_bedrock_runner()
 
     if get_settings().agent_store == "dynamodb":
+        import logging
+
+        from botocore.exceptions import BotoCoreError, ClientError
+
         from identity_gateway.dynamo_repo import DynamoAgentRepository, seed_demo_agent
 
         from app.core.dynamodb import table
 
-        repo = DynamoAgentRepository(table("agents"))
-        seed_demo_agent(repo)  # replaces the SQL migration's seed row
-        store.use_agent_repository(repo)
+        try:
+            repo = DynamoAgentRepository(table("agents"))
+            seed_demo_agent(repo)  # replaces the SQL migration's seed row
+            store.use_agent_repository(repo)
+        except (ClientError, BotoCoreError) as exc:
+            logging.getLogger(__name__).warning(
+                "DynamoDB agent store unavailable (%s); falling back to in-memory agents. "
+                "Fix AWS credentials, run ./scripts/run-dynamodb-local.sh, or set AGENT_STORE=memory.",
+                exc,
+            )
 
     # The gateway nests the ATLAS router, so it isn't in agent_app.routes; mount it directly.
     host_app.include_router(build_router(enricher), prefix=prefix)
