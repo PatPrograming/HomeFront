@@ -181,6 +181,7 @@ def test_a_second_patch_with_the_new_version_succeeds(client, session, gateway):
 
 def test_patching_a_social_drafts_text_and_platform(client, session, store):
     """The session names the platform the staffer wants; both the wording and the platform are theirs to change."""
+    _as_comms(store)  # a caseworker may not post on social, so the platform edit is a communications director's
     draft_id = put_social(store, platform="bluesky")
     as_staff()
     response = client.patch(

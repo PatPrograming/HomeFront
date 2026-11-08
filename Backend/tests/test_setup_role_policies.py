@@ -11,14 +11,15 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "Backend" / "infra" / "setup.sh"
-STARTER = ["case-read-same-office", "email-send-known-recipient", "forbid-bulk-export", "forbid-campaign-post",
-           "read-tools", "social-post-official"]
+STARTER = ["case-read-same-office", "draft-revise", "email-send-known-recipient", "forbid-bulk-export",
+           "forbid-campaign-post", "read-tools", "social-post-official"]
+# draft-revise is a starter permit setup.sh creates without the flag: every role holds draft_revise anyway.
 # Starter policies added with the agent-permissions change. setup.sh never updates a policy, so each is a
 # new file: the forbid is safe to add anywhere (it only takes power away); the permits give an assistant
 # new reach, so they come with the office-role policies.
 NEW_FORBID = "forbid-campaign-reply"
 NEW_PERMITS = ["research-tools", "email-send-list-office", "social-reply-official", "report-save"]
-ROLE = ["role-bls-series", "role-case-read", "role-census-query", "role-datagov-search", "role-eia-query",
+ROLE = ["role-bls-series", "role-case-read", "role-census-query", "role-datagov-search", "role-draft-revise", "role-eia-query",
         "role-email-send-list", "role-email-send", "role-epa-search", "role-fcc-search", "role-fec-search",
         "role-inbox-read", "role-nasa-search", "role-noaa-climate", "role-nps-parks", "role-openfda-search",
         "role-report-save", "role-sam-entity-lookup", "role-social-post", "role-social-reply",
@@ -89,13 +90,13 @@ def fake(tmp_path):
     return Fake()
 
 
-EXISTING = {name: f"avp-{name}" for name in STARTER}
+EXISTING = {name: f"avp-{name}" for name in STARTER if name != "draft-revise"}  # a store from before draft-revise
 GOOD = [_staffer("maya", "caseworker"), _staffer("chiefofstaff", "chief_of_staff")]
 
 
 def test_the_contracts_ship_the_expected_policy_files():
     names = sorted(p.stem for p in (ROOT / "packages" / "mandate-contracts" / "policies").glob("*.cedar"))
-    assert len(names) == 32
+    assert len(names) == 34
     assert names == ALL
 
 
@@ -103,20 +104,21 @@ def test_without_the_flag_no_role_policy_is_added(fake):
     fake.setup(dict(EXISTING), GOOD)
     result = fake.run("--apply")
     assert result.returncode == 0, result.stderr
-    # Only the new forbid is created; the 4 new permits wait for the flag, like the role forbids.
+    # STARTER already holds draft-revise; the new forbid is created; the 4 new permits wait for the flag, like the role forbids.
     assert sorted(fake.state()["policies"]) == sorted([*STARTER, NEW_FORBID])
     assert f"created: {NEW_FORBID}" in result.stdout
+    assert "created: draft-revise" in result.stdout and "skipped: draft-revise" not in result.stdout
     for name in NEW_PERMITS:
         assert f"skipped: {name}" in result.stdout, name
         assert f"created: {name}" not in result.stdout
     assert ["dynamodb", "scan"] not in fake.state()["calls"]
-    assert result.stdout.count("skipped: role-") == 21
+    assert result.stdout.count("skipped: role-") == 22
 
 
-def test_with_the_flag_and_every_role_on_file_all_32_policies_exist_once(fake):
+def test_with_the_flag_and_every_role_on_file_all_34_policies_exist_once(fake):
     fake.setup(dict(EXISTING), GOOD)
     assert fake.run("--apply", "--with-role-policies").returncode == 0
-    assert sorted(fake.state()["policies"]) == ALL and len(ALL) == 32
+    assert sorted(fake.state()["policies"]) == ALL and len(ALL) == 34
     assert fake.env_names() == ALL
     again = fake.run("--apply", "--with-role-policies")  # idempotent
     assert again.returncode == 0 and "created:" not in again.stdout
@@ -129,7 +131,7 @@ def test_a_staffer_without_a_valid_role_stops_before_any_role_policy(fake, bad):
     assert result.returncode != 0
     assert bad["pk"]["S"].removeprefix("STAFFER#") in result.stderr
     assert "test-users.sh --apply" in result.stderr
-    assert sorted(fake.state()["policies"]) == STARTER
+    assert sorted(fake.state()["policies"]) == sorted(EXISTING)  # nothing added
     assert ["verifiedpermissions", "create-policy"] not in fake.state()["calls"]
 
 
