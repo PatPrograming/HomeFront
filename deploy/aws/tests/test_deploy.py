@@ -85,6 +85,7 @@ def test_task_role_grants_only_the_listed_actions():
         "dynamodb:Query", "dynamodb:Scan", "dynamodb:DescribeTable",
         "verifiedpermissions:IsAuthorized",
         "sts:AssumeRole",
+        "bedrock:InvokeModel",
         "bedrock:ApplyGuardrail",
     }
     for s in statements("homefront-gateway"):
@@ -107,9 +108,16 @@ def test_each_statement_is_pinned_to_its_resource():
 
 
 def test_the_gateway_and_the_agents_do_not_share_an_identity():
-    # The gateway can't call a model at all; only homefront-agent (assumed per agent) can.
+    # The gateway calls only Haiku 5.5 (conversation titles); the agents' Sonnet 5 is homefront-agent's.
     every_action = text(RES["TaskRole"]["Properties"]["Policies"])
-    assert "bedrock:InvokeModel" not in every_action
+    assert "InvokeModelWithResponseStream" not in every_action and "sonnet" not in every_action
+    (titles,) = [st for st in statements("homefront-gateway") if "bedrock:InvokeModel" in as_list(st["Action"])]
+    assert titles["Sid"] == "ConversationTitlesHaikuOnly" and titles["Action"] == "bedrock:InvokeModel"
+    resources = [r["Fn::Sub"] for r in titles["Resource"]]
+    assert resources == [
+        "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-5-5*",
+        "arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.claude-haiku-5-5*",
+    ]
     assert RES["TaskRole"]["Properties"]["RoleName"] == "homefront-gateway-task"
     env = {v["Name"]: v["Value"] for v in CONTAINER["Environment"]}
     assert env["HOMEFRONT_AGENT_ROLE_ARN"] == {"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AgentRoleName}"}

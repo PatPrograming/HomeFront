@@ -17,7 +17,7 @@ browser ──HTTPS──> CloudFront ──┬── /            ──> S3 bu
 - **CloudFront** serves the console and forwards `/api` and `/mcp` to the gateway, so the console calls the API on its
   own origin. The load balancer is internal: the only way in from the internet is CloudFront.
 - **Two identities, never shared.** The gateway runs as the task role `homefront-gateway-task`, which replaces the
-  developer's Workshop Studio keys and cannot call a model. For each agent, the gateway assumes the Bedrock-only role
+  developer's Workshop Studio keys and can call only Haiku 5.5 (for chat titles). For each agent, the gateway assumes the Bedrock-only role
   `homefront-agent` and gives the child process only those temporary credentials (`HOMEFRONT_AGENT_ROLE_ARN`).
 - **Secrets Manager** holds one secret, `homefront/runtime`. ECS injects it as environment variables when the task
   starts. CloudFormation generates the mandate signing key inside AWS; nobody ever sees it.
@@ -38,13 +38,14 @@ browser ──HTTPS──> CloudFront ──┬── /            ──> S3 bu
 `bedrock:InvokeModelWithResponseStream` on the Sonnet 5 and Haiku 5.5 inference profiles, and `bedrock:ApplyGuardrail`
 on `l74ju5pcrcdg`. Nothing else.
 
-`homefront-gateway-task` (this stack):
+`homefront-gateway-task` (this stack; it cannot call Sonnet 5):
 
 | Service | Actions | Only on |
 |---|---|---|
 | DynamoDB | item reads and writes, `Query`, `Scan`, `DescribeTable` (no create or delete table) | `mandate`, `homefront-*` and their indexes |
 | Verified Permissions | `IsAuthorized` | policy store `Fmx8fLovCMpXgABUM1bHhb` |
 | STS | `AssumeRole` | `role/homefront-agent` only |
+| Bedrock | `InvokeModel` (conversation auto-titles) | the Haiku 5.5 inference profile and its models only; no Sonnet |
 | Bedrock | `ApplyGuardrail` (the gateway's own scan of untrusted tool output) | guardrail `l74ju5pcrcdg` |
 | KMS | `Encrypt`, `Decrypt`, only with the `staffer` + `provider` encryption context | `alias/homefront-connections`'s key, when it exists |
 | SES | `SendEmail` from the one configured sender, `GetEmailIdentity`, `ListEmailIdentities` | only when `SES_FROM` is set at deploy |

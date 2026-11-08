@@ -167,6 +167,14 @@ Resources:
                 Effect: Allow
                 Action: sts:AssumeRole
                 Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AgentRoleName}
+              # Conversation auto-titles (Backend/app/services/conversations.py) run in the gateway on
+              # Haiku 5.5 only. The agents' Sonnet 5 stays with homefront-agent.
+              - Sid: ConversationTitlesHaikuOnly
+                Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-5-5*
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.claude-haiku-5-5*
               # The gateway's own scan of untrusted tool output (guarded() -> guardrail_scanner.scan).
               - Sid: GuardrailScan
                 Effect: Allow
