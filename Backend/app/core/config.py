@@ -118,6 +118,42 @@ def apply_aws_env() -> None:
             os.environ.setdefault(key, value.strip())
 
 
+# What the gateway reads straight from os.environ (not through Settings).
+GATEWAY_ENV_KEYS = (
+    "MANDATE_SIGNING_SECRET",
+    "MANDATE_TABLE",
+    "MANDATE_DDB_ENDPOINT_URL",
+    "MANDATE_AGENT_ID",
+    "MANDATE_MCP_ALLOWED_HOSTS",
+    "AVP_POLICY_STORE_ID",
+    "AVP_POLICY_NAMES",
+    "GUARDRAIL_ID",
+    "GUARDRAIL_VERSION",
+    "HOMEFRONT_AUTOSTART_AGENT",
+)
+
+
+def apply_gateway_env() -> None:
+    """Export the gateway's settings from the .env files into os.environ.
+
+    scripts/run-gateway.sh does this for a bash start; this does it for any other
+    start (uvicorn from PowerShell, an IDE). Backend/infra/.env.aws is what
+    setup.sh --apply writes (the AVP store id), so it is read first. Empty values
+    are skipped, and values already in the real environment win."""
+    import os
+
+    from dotenv import dotenv_values
+
+    for path in (_BACKEND_DIR / "infra" / ".env.aws", _REPO_ROOT / ".env"):
+        if not path.is_file():
+            continue
+        values = dotenv_values(path)
+        for key in GATEWAY_ENV_KEYS:
+            value = (values.get(key) or "").strip()
+            if value:
+                os.environ.setdefault(key, value)
+
+
 def apply_datagov_env() -> None:
     """Export gateway-held api.data.gov settings for MCP tool handlers."""
     import os
