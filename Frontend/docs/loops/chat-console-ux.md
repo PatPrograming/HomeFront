@@ -1,8 +1,8 @@
 # Loop: chat-console-ux
 
-Status: BUILDING
+Status: DONE
 Profile: feature
-Round: 1 / 4
+Round: 3 / 4
 Base commit: f7aeb8c
 Branch: claude/chat-ux-huy-60b162
 
@@ -79,3 +79,15 @@ Tests first: `ConsoleRoles.test.tsx`, `AgentActivity.test.tsx`, `agentActivity.t
 - Outcome checks: 4/4 pass (round-2.json); 72 tests. Live mock repro of the falsifier's steps now shows
   "Sends case status updates without asking (this session only)".
 - Decision: re-trial (lite).
+- Re-trial (lite) on ee02325: FALSIFIED again on evidence. The mutation `grants: []` in Console.tsx survived every
+  test, and an Enter-to-send stall appeared in a browser run with stale mock localStorage.
+
+### Round 3 — 2026-11-08
+- Built: ConsoleRoles test "Console session grants" (this session's grants appear in the disclosure, other sessions'
+  don't). Re-ran the surviving mutation by hand: it now fails 1 test; file restored.
+- Enter-to-send: reproduced on a clean origin at 375 px with real keystrokes; two messages sent by Enter, both
+  answered, scrollWidth 375. The trial's stall came from a stopped mock session in stale localStorage (pre-existing
+  mock behaviour: a new session in another tab stops the old one), not from this change.
+- Outcome checks: 4/4 pass (round-3.json). 73 tests.
+- Decision: DONE. Every FALSIFIED item is fixed with a killing test or traced to stale mock state; no third
+  trial was run (cost), so "trial ACCEPT" is not claimed.

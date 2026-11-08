@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DecisionEvent } from "../../../packages/mandate-contracts/ts/index";
-import type { ChatMessage, SessionCard } from "../lib/api";
+import type { AutonomyCategory, ChatMessage, SessionCard } from "../lib/api";
 
 // The real Console and ChatPanel, with data hooks stubbed: what Maya (staffer) and the Chief of Staff (admin) see.
 const storage = new Map<string, string>();
@@ -12,7 +12,7 @@ vi.stubGlobal("sessionStorage", {
 });
 
 const SID = "sid-7f3a9c";
-const state = { groups: ["staffer"], revoked: false };
+const state = { groups: ["staffer"], revoked: false, categories: [] as AutonomyCategory[] };
 const base = { sid: SID, agent: "agent-1", actingFor: "maya", office: "rep-x", guardrail: { flagged: false, categories: [] } };
 const events: DecisionEvent[] = [
   { ...base, id: "2", ts: "2026-11-08T08:00:03Z", tool: "records_bulk_export", resource: "all constituents", decision: "DENY", reason: "denied by policy", policyIds: ["forbid-bulk-export"], atlas: ["AML.T0053"] },
@@ -27,7 +27,7 @@ vi.mock("../components/Layout", () => ({ default: ({ children }: { children: unk
 vi.mock("../lib/AuthProvider", () => ({ useSession: () => ({ username: "maya", groups: state.groups }) }));
 vi.mock("../lib/useSessionRevoked", () => ({ useSessionRevoked: () => state.revoked }));
 vi.mock("../lib/useEventFeed", () => ({ useEventFeed: () => ({ events, error: null, lastPollAt: 1 }) }));
-vi.mock("../lib/useReview", () => ({ useReview: () => ({ drafts: [], categories: [], reload: async () => {} }) }));
+vi.mock("../lib/useReview", () => ({ useReview: () => ({ drafts: [], categories: state.categories, reload: async () => {} }) }));
 vi.mock("../lib/useChat", () => ({ useChat: () => ({ messages, error: null, send: async () => {} }) }));
 vi.mock("../lib/api", () => ({ api: {} }));
 
@@ -46,6 +46,7 @@ beforeEach(() => {
   storage.clear();
   storage.set("mandate.card", JSON.stringify(card));
   state.revoked = false;
+  state.categories = [];
 });
 
 describe("Console role gate", () => {
@@ -74,5 +75,15 @@ describe("Console revoked path", () => {
     expect(html).toContain("Revoked");
     expect(html).toContain("Start a new conversation");
     expect(html).toMatch(/<textarea[^>]*disabled/);
+  });
+});
+
+describe("Console session grants", () => {
+  it("passes this session's 'Approve and allow' grants to the chat disclosure, and no other session's", () => {
+    state.categories = [{ category: "case_status", label: "Case status updates", level: "review", locked: false } as AutonomyCategory];
+    storage.set("mandate.grants", JSON.stringify({ "other-sid": ["case_status"] }));
+    expect(render(["staffer"])).not.toContain("(this session only)");
+    storage.set("mandate.grants", JSON.stringify({ [SID]: ["case_status"] }));
+    expect(render(["staffer"])).toContain("Sends case status updates without asking (this session only)");
   });
 });
