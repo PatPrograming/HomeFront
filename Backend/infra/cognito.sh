@@ -2,10 +2,13 @@
 # Builds the HomeFront Cognito user pool in us-east-1. Safe to run twice: each step looks the
 # resource up first and creates it only if it is missing. Nothing is ever deleted.
 #
-#   bash Backend/infra/cognito.sh --dry-run     print every command, touch nothing (no aws needed)
-#   bash Backend/infra/cognito.sh               really create it (needs aws, and the two passwords below)
+#   bash Backend/infra/cognito.sh             print every command, touch nothing (no aws needed)
+#   bash Backend/infra/cognito.sh --apply     really create it (needs aws, and the two passwords below)
 #
-# Real run needs MAYA_TEMP_PASSWORD and CHIEFOFSTAFF_TEMP_PASSWORD in the environment. Each must meet
+# Dry run is the default, like every other HomeFront AWS script; only --apply changes AWS.
+# --dry-run is still accepted and changes nothing.
+#
+# --apply needs MAYA_TEMP_PASSWORD and CHIEFOFSTAFF_TEMP_PASSWORD in the environment. Each must meet
 # Cognito's default policy: 8+ characters with upper, lower, digit and symbol.
 set -euo pipefail
 
@@ -14,11 +17,12 @@ POOL_NAME=mandate
 DOMAIN_PREFIX=${COGNITO_DOMAIN_PREFIX:-mandate-a10-hack-2026}
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 ENV_FILE=$REPO_ROOT/.env
-DRY_RUN=false
+DRY_RUN=true  # safe by default: nothing changes without --apply
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --dry-run) DRY_RUN=true ;;
+    --apply) DRY_RUN=false ;;
+    --dry-run) ;;  # already the default; kept so old commands still work
     --env-file)
       ENV_FILE=${2:?--env-file needs a path}
       # Absolute now, relative to where the caller stands, so a later cd cannot change the target.

@@ -18,17 +18,17 @@ Scripts that build the AWS resources the backend depends on.
 
 ### Run it
 
-Start with a dry run. It prints every command, touches nothing, and needs no AWS credentials.
+By default the script only prints what it would do. It touches nothing and needs no AWS credentials. Only `--apply` changes AWS.
 
 ```bash
-bash Backend/infra/cognito.sh --dry-run
+bash Backend/infra/cognito.sh
 ```
 
 Ask Huy before the real run. It needs the `aws` CLI with credentials, and two temporary passwords that meet Cognito's default policy (8+ characters with upper, lower, digit and symbol):
 
 ```bash
 export MAYA_TEMP_PASSWORD='...' CHIEFOFSTAFF_TEMP_PASSWORD='...'
-bash Backend/infra/cognito.sh
+bash Backend/infra/cognito.sh --apply
 ```
 
 Set `COGNITO_DOMAIN_PREFIX` to pick another login domain prefix. Pass `--env-file <path>` to write somewhere other than the repo-root `.env`.
