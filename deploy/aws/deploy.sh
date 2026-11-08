@@ -73,6 +73,7 @@ PARAMS=(ImageUri="$IMAGE" SecretArn="$SECRET_ARN" VpcId="$VPC_ID" SubnetIds="$SU
         CloudFrontPrefixListId="$PREFIX_LIST")
 [[ -n "${SES_FROM:-}" ]] && PARAMS+=(SesFromAddress="$SES_FROM")
 [[ -n "${AVP_POLICY_NAMES:-}" ]] && PARAMS+=(AvpPolicyNames="$AVP_POLICY_NAMES")
+[[ "${GRANT_COGNITO_ADMIN:-}" == true ]] && PARAMS+=(GrantCognitoAdmin=true)
 # Only for a redeploy in another account (README, "If the event account is wiped"); the template's
 # defaults are this event's IDs.
 [[ -n "${COGNITO_USER_POOL_ID:-}" ]] && PARAMS+=(CognitoUserPoolId="$COGNITO_USER_POOL_ID")

@@ -39,7 +39,8 @@ browser ──HTTPS──> CloudFront ──┬── /            ──> S3 bu
 | Bedrock | `InvokeModel`, `InvokeModelWithResponseStream` | `us.anthropic.claude-sonnet-5*` and `us.anthropic.claude-haiku-5-5*` inference profiles and their models |
 | Bedrock | `ApplyGuardrail` | guardrail `l74ju5pcrcdg` |
 | SES | `SendEmail` from the one configured sender, `GetEmailIdentity`, `ListEmailIdentities` | only when `SES_FROM` is set at deploy |
-| Cognito | nothing | The routes call no Cognito admin API: tokens are checked against the pool's public keys, and offboarding writes DynamoDB. |
+| Cognito | nothing today | `main`'s routes call no Cognito admin API: tokens are checked against the pool's public keys, and offboarding writes DynamoDB. |
+| Cognito, after the Admin-Roles merge | `ListUsers`, `ListUsersInGroup`, `AdminAddUserToGroup`, `AdminRemoveUserFromGroup` | the mandate pool only; turn on with `GRANT_COGNITO_ADMIN=true deploy/aws/deploy.sh --apply` |
 
 Not granted, on purpose: the teammates' "Run a task" runner (Opus 5.5 through Bedrock Mantle), and the IAM permission
 check on the Agents tab's email setup. Both report an error in the console instead of working.

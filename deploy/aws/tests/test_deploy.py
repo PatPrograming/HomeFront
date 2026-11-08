@@ -116,6 +116,18 @@ def test_ses_is_granted_only_when_a_sender_is_configured_and_only_from_it():
     assert send["Condition"]["StringEquals"]["ses:FromAddress"] == {"Ref": "SesFromAddress"}
 
 
+def test_cognito_admin_calls_are_opt_in_and_pinned_to_the_pool():
+    policy = next(p for p in RES["TaskRole"]["Properties"]["Policies"]
+                  if "Fn::If" in p and p["Fn::If"][0] == "HasCognitoAdmin")
+    _, granted, otherwise = policy["Fn::If"]
+    assert otherwise == {"Ref": "AWS::NoValue"}
+    assert APP["Parameters"]["GrantCognitoAdmin"]["Default"] == "false"
+    (stmt,) = granted["PolicyDocument"]["Statement"]
+    assert set(stmt["Action"]) == {"cognito-idp:ListUsers", "cognito-idp:ListUsersInGroup",
+                                   "cognito-idp:AdminAddUserToGroup", "cognito-idp:AdminRemoveUserFromGroup"}
+    assert "userpool/${CognitoUserPoolId}" in text(stmt["Resource"])
+
+
 def test_the_task_role_trusts_only_ecs_tasks_in_this_account():
     trust = RES["TaskRole"]["Properties"]["AssumeRolePolicyDocument"]["Statement"][0]
     assert trust["Principal"] == {"Service": "ecs-tasks.amazonaws.com"}

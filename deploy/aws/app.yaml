@@ -66,8 +66,17 @@ Parameters:
     Default: ""
     Description: SES-verified sender. Empty = email stays simulated and the role gets no SES permission.
 
+  GrantCognitoAdmin:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      "true" once the Admin-Roles work (admin tab: people and roles) is merged; its routes list users and change
+      group membership. main today calls no Cognito admin API.
+
 Conditions:
   HasSes: !Not [!Equals [!Ref SesFromAddress, ""]]
+  HasCognitoAdmin: !Equals [!Ref GrantCognitoAdmin, "true"]
 
 Resources:
   # ---------------------------------------------------------------- logs
@@ -176,6 +185,21 @@ Resources:
                     - ses:GetEmailIdentity
                     - ses:ListEmailIdentities
                   Resource: "*"
+          - !Ref AWS::NoValue
+        - !If
+          - HasCognitoAdmin
+          - PolicyName: homefront-cognito-admin
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Sid: AdminTabPeopleAndGroups
+                  Effect: Allow
+                  Action:
+                    - cognito-idp:ListUsers
+                    - cognito-idp:ListUsersInGroup
+                    - cognito-idp:AdminAddUserToGroup
+                    - cognito-idp:AdminRemoveUserFromGroup
+                  Resource: !Sub arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
           - !Ref AWS::NoValue
 
   # ---------------------------------------------------------------- network
