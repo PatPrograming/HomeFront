@@ -28,7 +28,7 @@ const STEPS = [
 export default function Home() {
   return (
     <Layout>
-      <Hero mission={MISSION} />
+      <Hero mission={DEFAULTS.mission} /*buttons={DEFAULTS.buttons}*/ />
 
       <section id="how-it-works" className="how">
         <div className="container">
