@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, type Draft, type DraftEdits } from "../lib/api";
+import ConnectPrompt, { parseNeedsConnection, type NeedsConnection } from "./ConnectPrompt";
 
 // Only the text can change; the recipient or account is what the gateway's policy already checked.
 const EDITABLE: Record<Draft["tool"], (keyof DraftEdits)[]> = { email_send: ["subject", "body"], social_post: ["text"] };
@@ -19,13 +20,20 @@ function DraftCard({
   const [edits, setEdits] = useState<DraftEdits>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needs, setNeeds] = useState<NeedsConnection | null>(null);
   const isEmail = draft.tool === "email_send";
 
   async function decide(action: () => Promise<unknown>) {
     setBusy(true);
     setError(null);
     try {
-      await action();
+      // Not sent: the account isn't connected. The draft stays here so it can be approved again after connecting.
+      const missing = parseNeedsConnection(await action());
+      setNeeds(missing);
+      if (missing) {
+        setBusy(false);
+        return;
+      }
       await onDone();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -77,13 +85,14 @@ function DraftCard({
             onClick={() => decide(async () => {
               await api.grant(draft.sid!, draft.category);
               onGrant?.(draft.sid!, draft.category);
-              await api.approveDraft(draft.id, edits);
+              return api.approveDraft(draft.id, edits);
             })}
           >
             Approve and allow for this session
           </button>
         )}
       </div>
+      {needs && <ConnectPrompt provider={needs.provider} note={needs.note} />}
       {error && (
         <p className="alert" role="alert">
           {error}

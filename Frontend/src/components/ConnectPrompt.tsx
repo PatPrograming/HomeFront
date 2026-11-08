@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { beginConnect } from "../lib/connections";
 import "../pages/Account.css";
 
 export interface NeedsConnection {
@@ -9,11 +8,15 @@ export interface NeedsConnection {
   note: string;
 }
 
+// The only accounts HomeFront can connect. Labels come from here, never from the message, because a
+// tool result can be steered by text the agent read (it must not make "Connect Gmail" start an X sign-in).
+export const CONNECTABLE: Record<string, string> = { gmail: "Gmail", x: "X" };
+
 function fromObject(x: unknown): NeedsConnection | null {
   if (typeof x !== "object" || x === null) return null;
   const r = x as Record<string, unknown>;
-  if (r.status !== "needs_connection" || typeof r.provider !== "string" || typeof r.label !== "string") return null;
-  return { provider: r.provider, label: r.label, note: typeof r.note === "string" ? r.note : "" };
+  if (r.status !== "needs_connection" || typeof r.provider !== "string" || !(r.provider in CONNECTABLE)) return null;
+  return { provider: r.provider, label: CONNECTABLE[r.provider], note: typeof r.note === "string" ? r.note : "" };
 }
 
 /** Reads a tool's `needs_connection` result from the result object, a JSON string, or text that contains the JSON. */
@@ -30,13 +33,16 @@ export function parseNeedsConnection(x: unknown): NeedsConnection | null {
 }
 
 /** Shown in the chat when the assistant could not send or post because the staffer has not connected that account. */
-export default function ConnectPrompt({ provider, label, note }: { provider: string; label?: string; note?: string }) {
+export default function ConnectPrompt({ provider, note }: { provider: string; label?: string; note?: string }) {
   const [error, setError] = useState<string | null>(null);
-  const name = label ?? provider;
+  const name = CONNECTABLE[provider] ?? provider;
 
   const connect = () => {
     setError(null);
-    beginConnect(provider).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    // Loaded on click, so the chat can show this prompt without loading the API client up front.
+    import("../lib/connections")
+      .then(({ beginConnect }) => beginConnect(provider))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   };
 
   return (

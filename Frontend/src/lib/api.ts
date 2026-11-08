@@ -52,6 +52,8 @@ export interface ChatMessage {
   ts: string;
   role: "user" | "assistant";
   text: string;
+  /** Set by the gateway when a send needed an account the staffer has not connected. */
+  connect?: "gmail" | "x" | null;
 }
 
 /** GET /sessions/{sid}/messages?after=<cursor> */
@@ -175,7 +177,7 @@ export const api = {
       body: { category },
     }),
   approveDraft: (id: string, edits: DraftEdits) =>
-    request<{ id: string; status: "sent"; edited: boolean }>(`/drafts/${encodeURIComponent(id)}/approve`, { method: "POST", body: edits }),
+    request<{ id: string; status: "sent" | "needs_connection"; edited?: boolean; provider?: string }>(`/drafts/${encodeURIComponent(id)}/approve`, { method: "POST", body: edits }),
   rejectDraft: (id: string) =>
     request<{ id: string; status: "rejected" }>(`/drafts/${encodeURIComponent(id)}/reject`, { method: "POST", body: {} }),
   autonomy: () => request<{ categories: AutonomyCategory[] }>("/autonomy"),
