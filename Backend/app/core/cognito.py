@@ -10,9 +10,11 @@ valid staffer in the wrong group is a 403. Cognito tokens are verified locally u
 `exp`, so they cannot be revoked here; revocation is the DynamoDB check in lane B.
 """
 
+import ssl
 from dataclasses import dataclass
 from functools import lru_cache
 
+import certifi  # installed with httpx; a maintained Mozilla CA bundle
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -47,7 +49,10 @@ def _issuer() -> str:
 
 @lru_cache
 def _jwks_client(url: str) -> jwt.PyJWKClient:
-    return jwt.PyJWKClient(url, cache_keys=True)
+    # Bring our own CA bundle: python.org Python on macOS has none, so without this the
+    # HTTPS fetch of the pool's keys fails and every real token is (safely) rejected.
+    context = ssl.create_default_context(cafile=certifi.where())
+    return jwt.PyJWKClient(url, cache_keys=True, ssl_context=context)
 
 
 def _signing_key(token: str):

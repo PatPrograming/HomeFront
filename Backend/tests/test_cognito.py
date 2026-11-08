@@ -361,3 +361,18 @@ def test_me_requires_token(me_client):
     # A bad token must not slip through either; the no-token case needs Cognito wiring to be meaningful.
     assert me_client.get("/api/v1/me").status_code == 401
     assert me_client.get("/api/v1/me", headers=bearer(make_token(key=_OTHER_KEY))).status_code == 401
+
+
+def test_jwks_client_trusts_the_certifi_ca_bundle():
+    # python.org Python on macOS ships without CA certificates, so a default HTTPS fetch of
+    # the JWKS fails and every real token is rejected. The client must bring its own CAs.
+    import ssl
+
+    import certifi
+
+    from app.core import cognito
+
+    context = cognito._jwks_client("https://example.invalid/jwks.json").ssl_context
+    assert isinstance(context, ssl.SSLContext)
+    expected = ssl.create_default_context(cafile=certifi.where()).cert_store_stats()["x509_ca"]
+    assert context.cert_store_stats()["x509_ca"] == expected > 0
