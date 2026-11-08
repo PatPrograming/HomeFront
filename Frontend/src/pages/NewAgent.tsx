@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import { agentsApi as api } from "../lib/agentsApi";
+import { buildAgentPayload } from "../lib/agentPayload";
 import { describeError, type Agent, type AgentKind, type AgentType, type Tool } from "../lib/agents";
 import "./Agents.css";
 
@@ -65,14 +66,16 @@ export default function NewAgent() {
     setSubmitting(true);
     setError(null);
     try {
-      const agent: Agent = await api.createAgent({
-        kind: type.kind,
-        name: name.trim(),
-        agency: agency.trim(),
-        instructions,
-        tool_grants: grants,
-        max_steps: maxSteps,
-      });
+      const agent: Agent = await api.createAgent(
+        buildAgentPayload({
+          kind: type.kind,
+          name,
+          agency,
+          instructions,
+          toolGrants: grants,
+          maxSteps,
+        }),
+      );
       navigate(`/monitoring?agent=${encodeURIComponent(agent.agent_id)}`);
     } catch (err) {
       setError(describeError(err, types));

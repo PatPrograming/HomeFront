@@ -11,3 +11,4 @@ boto3[crt]>=1.43,<2  # crt: needed for `aws login` credentials (main)
 mcp>=1.23,<2
 moto[dynamodb]>=5.0
 certifi>=2024.2
+anthropic[bedrock]>=2.6,<3  # Run a task (AgentRunner); dropped by the 5a0ad71 merge

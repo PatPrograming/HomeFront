@@ -8,6 +8,7 @@ HITL approval).
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from .runner import AgentRunner, RunRecord, new_run
@@ -73,6 +74,7 @@ def execute_research_then_email(
     email_run.steps.append(
         {
             "type": "pipeline",
+            "ts": time.time(),
             "stage": "research",
             "agent_id": research_agent.agent_id,
             "message": f"Research agent ({research_agent.name}) is finding datasets and figures…",
@@ -97,6 +99,7 @@ def execute_research_then_email(
     email_run.steps.append(
         {
             "type": "pipeline",
+            "ts": time.time(),
             "stage": "handoff",
             "research_run_id": research_run.run_id,
             "research_status": research_run.status,
@@ -122,6 +125,7 @@ def execute_research_then_email(
     email_run.steps.append(
         {
             "type": "pipeline",
+            "ts": time.time(),
             "stage": "email",
             "agent_id": email_agent.agent_id,
             "message": f"Email agent ({email_agent.name}) is drafting from research findings…",

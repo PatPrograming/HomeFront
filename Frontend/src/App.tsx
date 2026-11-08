@@ -7,8 +7,6 @@ import AuthCallback from "./pages/AuthCallback";
 import Account from "./pages/Account";
 import Console from "./pages/Console";
 import Admin from "./pages/Admin";
-import Emails from "./pages/Emails";
-import SocialPlatform from "./pages/SocialPlatform";
 import Agents from "./pages/Agents";
 import NewAgent from "./pages/NewAgent";
 import Approvals from "./pages/Approvals";
@@ -49,15 +47,6 @@ export default function App() {
           <Route path="/" element={<HomeOrCallback />} />
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/emails" element={<Emails />} />
-          <Route
-            path="/social-platform"
-            element={
-              <RequireAuth>
-                <SocialPlatform />
-              </RequireAuth>
-            }
-          />
           <Route
             path="/console"
             element={
