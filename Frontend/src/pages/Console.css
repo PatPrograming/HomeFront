@@ -760,43 +760,10 @@
   font-size: 14px;
 }
 
-/* Review queue */
-.drafts,
+/* Review panel fields and actions */
 .autonomy {
   list-style: none;
   padding: 0;
-}
-
-.draft {
-  display: grid;
-  gap: 8px;
-  padding: 14px 0;
-  border-top: 1px solid var(--line);
-}
-
-.draft:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.draft-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  overflow-wrap: anywhere;
-  font-size: 14px;
-}
-
-.draft-subject {
-  font-weight: 600;
-}
-
-.draft-body {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  color: var(--ink-soft);
-  font-size: 15px;
 }
 
 .draft-field {
@@ -881,6 +848,236 @@
   color: #fff;
 }
 
+/* Review from the chat: a card per draft under the reply, opened in a side panel (a sheet on a phone). */
+.review-cards {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  max-width: 520px;
+}
+
+.review-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.review-card.is-done {
+  background: transparent;
+}
+
+.review-card-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--tone);
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.review-card-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.review-card-title {
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* the full address is in the title tooltip and the review panel */
+}
+
+@media (max-width: 600px) {
+  .review-card-icon {
+    display: none;
+  }
+}
+
+.review-card-meta {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.review-card.is-done .review-card-meta {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.mandate-console .review-card-open {
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.msg-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: -4px;
+}
+
+.msg-foot .msg-time {
+  margin-top: 0;
+}
+
+.mandate-console .msg-action {
+  min-height: 28px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mandate-console .msg-action:hover {
+  background: var(--tone);
+  color: var(--ink);
+}
+
+.chat-stopped {
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.mandate-console .send-btn.is-stop {
+  background: var(--ink);
+}
+
+.head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mandate-console .waiting-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--blue-50, #eef4fb);
+  border-color: #c9dbef;
+  color: var(--accent);
+}
+
+.mandate-console .waiting-badge:hover {
+  background: #e0ebf7;
+}
+
+.waiting-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.review-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.review-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 12px 12px 20px;
+}
+
+.review-panel-head h2 {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.review-panel-head h2:focus {
+  outline: none;
+}
+
+.review-panel-kind {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.review-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 4px 20px 16px;
+}
+
+.draft-field input.is-readonly {
+  background: var(--tone);
+  border-color: transparent;
+  color: var(--ink-soft);
+}
+
+.review-panel-actions {
+  display: grid;
+  gap: 10px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--line);
+}
+
+@media (min-width: 1024px) {
+  .assistant-shell.has-review {
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
+  }
+  .review-slot {
+    position: sticky;
+    top: 84px;
+    display: flex;
+    max-height: calc(100vh - 100px);
+    padding: 16px 0;
+  }
+  .review-slot .review-panel {
+    height: auto;
+    max-height: 100%;
+    width: 100%;
+  }
+  .rail.is-covered {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .review-slot {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: var(--canvas, #f5f7fa);
+    animation: sheet-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .review-panel {
+    border: 0;
+    border-radius: 0;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
 @keyframes breathe {
   50% {
     opacity: 0.45;
@@ -896,6 +1093,9 @@
   .rail.is-open,
   .activity .chevron {
     transition: none;
+  }
+  .review-slot {
+    animation: none;
   }
 }
 
