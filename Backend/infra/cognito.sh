@@ -19,7 +19,11 @@ DRY_RUN=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=true ;;
-    --env-file) ENV_FILE=${2:?--env-file needs a path}; shift ;;
+    --env-file)
+      ENV_FILE=${2:?--env-file needs a path}
+      # Absolute now, relative to where the caller stands, so a later cd cannot change the target.
+      case "$ENV_FILE" in /*) ;; *) ENV_FILE=$PWD/$ENV_FILE ;; esac
+      shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -58,12 +62,21 @@ run() {
 }
 
 # Prints the value if the resource exists, nothing if it does not. A dry run never looks.
-# The aws error is hidden because "not found" is an error for most describe/get calls; a real
-# problem (bad credentials) shows up on the create that follows.
+# The aws error is hidden because "not found" is an error for most describe/get calls; a wrong
+# guess makes the create that follows fail loudly. List calls use list_lookup instead.
 lookup() {
   [ "$DRY_RUN" = true ] && return 0
   local value
   value=$(aws cognito-idp "$@" --output text --region "$REGION" 2>/dev/null) || return 0
+  [ "$value" = None ] || echo "$value"
+}
+
+# For list calls, where "nothing matches" prints None. Unlike lookup, an aws error is not "missing":
+# it returns non-zero so set -e stops the script, with the aws error left visible on stderr.
+list_lookup() {
+  [ "$DRY_RUN" = true ] && return 0
+  local value
+  value=$(aws cognito-idp "$@" --output text --region "$REGION") || return
   [ "$value" = None ] || echo "$value"
 }
 
@@ -82,6 +95,7 @@ create_user() {
   local username=$1 password=$2 group=$3
   step "User $username in group $group"
   if [ -z "$(lookup admin-get-user --user-pool-id "$POOL_ID" --username "$username" --query Username)" ]; then
+    # The temporary password is briefly visible in `ps` on this machine; fine, Cognito forces a change at first login.
     run admin-create-user --user-pool-id "$POOL_ID" --username "$username" \
       --temporary-password "$password" --message-action SUPPRESS > /dev/null
   fi
@@ -89,7 +103,7 @@ create_user() {
 }
 
 step "User pool $POOL_NAME (invite-only: no sign-up, MFA off, no self-service recovery)"
-POOL_ID=$(lookup list-user-pools --max-results 60 --query "UserPools[?Name=='$POOL_NAME'].Id | [0]")
+POOL_ID=$(list_lookup list-user-pools --max-results 60 --query "UserPools[?Name=='$POOL_NAME'].Id | [0]")
 if [ -z "$POOL_ID" ]; then
   POOL_ID=$(run create-user-pool --pool-name "$POOL_NAME" \
     --admin-create-user-config AllowAdminCreateUserOnly=true \
@@ -103,7 +117,7 @@ POOL_ID=${POOL_ID:-<POOL_ID>}
 step "Managed login domain $DOMAIN_PREFIX"
 EXISTING_DOMAIN=$(lookup describe-user-pool --user-pool-id "$POOL_ID" --query UserPool.Domain)
 if [ -z "$EXISTING_DOMAIN" ]; then
-  run create-user-pool-domain --domain "$DOMAIN_PREFIX" --user-pool-id "$POOL_ID" --managed-login-version 2
+  run create-user-pool-domain --domain "$DOMAIN_PREFIX" --user-pool-id "$POOL_ID" --managed-login-version 2 > /dev/null
 else
   DOMAIN_PREFIX=$EXISTING_DOMAIN  # a pool has one domain; keep the one it already has
 fi
@@ -116,7 +130,7 @@ fi
 
 # The agent client is built first. It has a secret and only the client_credentials flow.
 step "App client mandate-agent (confidential, client_credentials, scope mandate/tools)"
-AGENT_CLIENT_ID=$(lookup list-user-pool-clients --user-pool-id "$POOL_ID" --max-results 60 \
+AGENT_CLIENT_ID=$(list_lookup list-user-pool-clients --user-pool-id "$POOL_ID" --max-results 60 \
   --query "UserPoolClients[?ClientName=='mandate-agent'].ClientId | [0]")
 if [ -z "$AGENT_CLIENT_ID" ]; then
   # --query keeps ClientSecret out of the output; it is fetched later and written only to the env file.
@@ -132,7 +146,7 @@ AGENT_CLIENT_ID=${AGENT_CLIENT_ID:-<AGENT_CLIENT_ID>}
 # No secret makes this a public client, so the browser must use authorization code + PKCE.
 # ALLOW_ADMIN_USER_PASSWORD_AUTH needs AWS credentials, so only a CLI fallback login can use it.
 step "App client staff-web (public, authorization code + PKCE)"
-STAFF_CLIENT_ID=$(lookup list-user-pool-clients --user-pool-id "$POOL_ID" --max-results 60 \
+STAFF_CLIENT_ID=$(list_lookup list-user-pool-clients --user-pool-id "$POOL_ID" --max-results 60 \
   --query "UserPoolClients[?ClientName=='staff-web'].ClientId | [0]")
 if [ -z "$STAFF_CLIENT_ID" ]; then
   STAFF_CLIENT_ID=$(run create-user-pool-client --user-pool-id "$POOL_ID" --client-name staff-web \
@@ -175,11 +189,17 @@ if [ "$DRY_RUN" = false ]; then
   step "Writing $ENV_FILE"
   AGENT_CLIENT_SECRET=$(run describe-user-pool-client --user-pool-id "$POOL_ID" --client-id "$AGENT_CLIENT_ID" \
     --query UserPoolClient.ClientSecret --output text)
-  # Build the new file beside the old one and mv it over, so a crash never leaves a half-written .env.
+  # Build the new content in a private temp file first, so a failed read never truncates the .env.
+  # grep exits 1 when no line is left to keep (fine); any other failure aborts the script.
   tmp_file=$(mktemp "$ENV_FILE.XXXXXX")
-  { [ ! -f "$ENV_FILE" ] || grep -v '^COGNITO_' "$ENV_FILE" || true; } > "$tmp_file"
+  { [ ! -f "$ENV_FILE" ] || grep -v '^COGNITO_' "$ENV_FILE" || [ $? -eq 1 ]; } > "$tmp_file"
   { public_env; echo "COGNITO_AGENT_CLIENT_SECRET=$AGENT_CLIENT_SECRET"; } >> "$tmp_file"
-  mv "$tmp_file" "$ENV_FILE"
+  if [ -f "$ENV_FILE" ]; then
+    cat "$tmp_file" > "$ENV_FILE"  # write through the path so a symlinked .env stays a symlink
+    rm "$tmp_file"
+  else
+    mv "$tmp_file" "$ENV_FILE"
+  fi
   echo "secret written to $ENV_FILE"
 fi
 
