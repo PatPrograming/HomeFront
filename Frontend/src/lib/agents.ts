@@ -95,6 +95,78 @@ export const toolAction = (tool: string) => TOOL_ACTIONS[tool] || `use ${tool}`;
 export const SOCIAL_TOOLS = ["social.post", "social.reply"];
 export const isSocialTool = (tool: string) => SOCIAL_TOOLS.includes(tool);
 
+const RISK_RANK: Record<string, number> = { low: 0, medium: 1, high: 2 };
+
+/** Prefer a low-risk, non-HITL grant for the Prompt 1 focus tool. */
+export function pickFocusTool(agent: Agent | null | undefined, catalog: Tool[] = []): string | null {
+  const grants = agent?.tool_grants ?? [];
+  if (!grants.length) return null;
+  const byName = new Map(catalog.map((t) => [t.name, t]));
+  const ranked = [...grants].sort((a, b) => {
+    const ta = byName.get(a);
+    const tb = byName.get(b);
+    const hitl = Number(!!ta?.requires_hitl) - Number(!!tb?.requires_hitl);
+    if (hitl) return hitl;
+    return (RISK_RANK[ta?.risk_level || "medium"] ?? 1) - (RISK_RANK[tb?.risk_level || "medium"] ?? 1);
+  });
+  return ranked[0] ?? null;
+}
+
+/** Safe placeholder arguments for a Monitoring Prompt 1 tool call. */
+export function demoArgsForTool(tool: string, agent?: Agent | null): Record<string, unknown> {
+  switch (tool) {
+    case "email.send": {
+      const to = agent?.recipients?.[0] || "constituent@example.gov";
+      return { to, subject: "Town hall reminder", body: "Join us Tuesday at City Hall." };
+    }
+    case "email.send_list":
+      return { subject: "Office update", body: "A short update from the office." };
+    case "social.post":
+      return {
+        platform: agent?.platforms?.[0] || "bluesky",
+        text: "Office hours this week — stop by with questions.",
+      };
+    case "social.reply":
+      return {
+        platform: agent?.platforms?.[0] || "bluesky",
+        text: "Thanks for writing in — we will follow up.",
+        reply_to_url: "https://bsky.app/profile/example.bsky.social/post/demo",
+      };
+    case "web.scrape":
+      return { url: "https://www.usa.gov" };
+    case "datagov.search":
+      return { query: "public health" };
+    case "usaspending.search":
+      return { keywords: "broadband", fiscal_year: 0, awarding_agency: "", limit: 5 };
+    case "sam.entity_lookup":
+      return { uei: "EXAMPLEUEI123" };
+    case "report.save":
+      return { title: "Demo findings", body: "Short summary for human review.", sources: [] };
+    case "census.query":
+      return { query: "population California" };
+    case "openfda.search":
+      return { query: "ibuprofen" };
+    case "eia.query":
+      return { series: "PET.RWTC.D" };
+    case "nasa.search":
+      return { query: "earth" };
+    case "noaa.climate":
+      return { location: "USW00094728" };
+    case "nps.parks":
+      return { query: "yosemite" };
+    case "bls.series":
+      return { series_id: "CUUR0000SA0" };
+    case "fec.search":
+      return { query: "senate" };
+    case "epa.search":
+      return { query: "water" };
+    case "fcc.search":
+      return { query: "license" };
+    default:
+      return {};
+  }
+}
+
 // What a handed-off social draft looks like after approval (mcp_tools/share_links.py).
 // HomeFront never publishes: the person opens share_url and presses Post themselves.
 export interface ShareResult {

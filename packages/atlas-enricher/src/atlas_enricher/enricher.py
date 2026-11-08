@@ -12,6 +12,7 @@ class AnnotateEvent(str, Enum):
     allow = "allow"
     deny = "deny"
     revoke = "revoke"
+    authenticate = "authenticate"
     discover = "discover"
     secret_probe = "secret_probe"
     untrusted_input = "untrusted_input"
@@ -24,6 +25,11 @@ EVENT_MAP: dict[AnnotateEvent, dict[str, Any]] = {
         "technique_ids": [],
         "mitigation_ids": ["AML.M0028", "AML.M0024"],
         "narrative": "Tool invocation permitted under AI Agent Tools Permissions Configuration.",
+    },
+    AnnotateEvent.authenticate: {
+        "technique_ids": [],
+        "mitigation_ids": ["AML.M0028", "AML.M0024"],
+        "narrative": "Workload identity issued; tool grants enforced (AML.M0028).",
     },
     AnnotateEvent.deny: {
         "technique_ids": ["AML.T0053"],

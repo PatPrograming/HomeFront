@@ -781,7 +781,7 @@ def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthRe
     )
     atlas = enricher.annotate(
         AnnotateRequest(
-            event=AnnotateEvent.allow,
+            event=AnnotateEvent.authenticate,
             agent_id=agent.agent_id,
             reason="workload identity issued",
         )
@@ -791,8 +791,9 @@ def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthRe
         "Agent authenticated with AAuth (aa-agent+jwt + PoP-bound aa-auth+jwt); "
         "tool grants enforced per AML.M0028."
         if aauth_on
-        else "Agent authenticated; tool grants enforced per AML.M0028."
+        else atlas.narrative
     )
+    atlas_out = {**atlas.model_dump(), "narrative": narrative}
     # Auth itself is not a tool call; still log under AML.M0024 telemetry.
     store.append_audit(
         {
@@ -803,7 +804,7 @@ def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthRe
             "actor": actor.label,
             "tool": None,
             "auth_protocol": tok.auth_protocol,
-            "atlas": atlas.model_dump(),
+            "atlas": atlas_out,
         }
     )
     return AuthResponse(
@@ -818,7 +819,8 @@ def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthRe
         aa_auth_jwt=tok.aa_auth_jwt,
         jkt=tok.jkt,
         atlas={
-            "mitigation_ids": ["AML.M0028", "AML.M0024"],
+            "technique_ids": atlas.technique_ids,
+            "mitigation_ids": atlas.mitigation_ids,
             "narrative": narrative,
         },
     )

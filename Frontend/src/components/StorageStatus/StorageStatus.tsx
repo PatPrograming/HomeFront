@@ -56,13 +56,30 @@ export default function StorageStatus({ compact = false }: { compact?: boolean }
       : []),
   ];
 
+  const summary = ok
+    ? "Saving to DynamoDB"
+    : status.agent_store === "memory" || status.audit_store === "memory"
+      ? "Memory only (demo)"
+      : "Not fully saved";
+
   return (
-    <div className={`storage ${ok ? "storage-ok" : "storage-bad"}${compact ? " is-compact" : ""}`} role="status">
-      <strong>{ok ? "Saving to DynamoDB" : "Not fully saved"}</strong>
+    <div
+      className={`storage ${ok ? "storage-ok" : "storage-bad"}${compact ? " is-compact" : ""}`}
+      role="status"
+      title={
+        ok
+          ? "Agents, activity log, and approvals persist in DynamoDB."
+          : "Local demo: AGENT_STORE is memory, so data resets when the gateway restarts. Set AGENT_STORE=dynamodb for durable saves."
+      }
+    >
+      <strong>{summary}</strong>
       {!compact && (
         <span>
           Agents: {storeName(status.agent_store)} · Activity log: {storeName(status.audit_store)}
           {status.approval_store && <> · Approvals: {storeName(status.approval_store)}</>}
+          {!ok && status.agent_store === "memory" && (
+            <> · Set <code>AGENT_STORE=dynamodb</code> for durable saves.</>
+          )}
         </span>
       )}
       {!compact && issues.length > 0 && (

