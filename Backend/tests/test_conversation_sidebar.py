@@ -345,3 +345,84 @@ def test_drafts_from_the_conversation_are_still_counted_until_deleted(client, st
     sid = open_conversation(client, "check the inbox")
     hold_draft(store, sid, 1)
     assert row(client, sid)["waitingDrafts"] == 1
+
+
+# --- found by the trial: nulls and changes made while a title is being written --------------
+
+
+@pytest.mark.parametrize("body", [{"pinned": None}, {"archived": None}, {"pinned": None, "group": "x"}])
+def test_a_null_flag_is_refused_and_the_list_keeps_working(client, body):
+    sid = open_conversation(client, "hello")
+    assert patch(client, sid, **body).status_code == 422
+    login()
+    assert client.get("/api/v1/sessions").status_code == 200
+    assert row(client, sid)["pinned"] is False
+
+
+class ModelThatActsMeanwhile(FakeTitleModel):
+    """Runs a staffer action while 'Bedrock' is thinking, to force that ordering."""
+
+    def __init__(self, meanwhile):
+        super().__init__("Auto title")
+        self.meanwhile = meanwhile
+
+    def __call__(self, staffer_messages):
+        self.meanwhile()
+        return super().__call__(staffer_messages)
+
+
+def test_a_rename_and_pin_during_titling_are_kept(client):
+    sids = []
+    conversations.set_title_model(ModelThatActsMeanwhile(lambda: patch(client, sids[0], title="My name", pinned=True)))
+    try:
+        login()
+        sids.append(client.post("/api/v1/sessions", json={}).json()["sid"])
+        say(client, sids[0], "first message")
+    finally:
+        conversations.set_title_model(None)
+    r = row(client, sids[0])
+    assert (r["title"], r["pinned"]) == ("My name", True)
+
+
+def test_a_delete_during_titling_stays_deleted(client):
+    sids = []
+
+    def delete():
+        login()
+        assert client.delete(f"/api/v1/sessions/{sids[0]}").status_code == 200
+
+    conversations.set_title_model(ModelThatActsMeanwhile(delete))
+    try:
+        login()
+        sids.append(client.post("/api/v1/sessions", json={}).json()["sid"])
+        say(client, sids[0], "first message")
+    finally:
+        conversations.set_title_model(None)
+    assert row(client, sids[0]) is None and row(client, sids[0], archived="1") is None
+
+
+def test_an_auto_title_written_between_a_pins_read_and_write_survives(client, monkeypatch):
+    sid = open_conversation(client, "hello")
+    real, reads = conversations.get_meta, []
+
+    def read_then_title_lands(sid_, staffer):
+        meta = real(sid_, staffer)
+        reads.append(sid_)
+        if len(reads) == 2:  # update_meta's own read: the title arrives right after it
+            conversations.put_title_if_allowed(sid_, "maya", "Auto title", "auto")
+        return meta
+
+    monkeypatch.setattr(conversations, "get_meta", read_then_title_lands)
+    assert patch(client, sid, pinned=True).status_code == 200
+    monkeypatch.undo()
+    r = row(client, sid)
+    assert (r["title"], r["pinned"]) == ("Auto title", True)
+
+
+def test_update_meta_never_stores_an_invalid_record(client):
+    from pydantic import ValidationError
+
+    sid = open_conversation(client, "hello")
+    with pytest.raises(ValidationError):
+        conversations.update_meta(sid, "maya", {"pinned": None})
+    assert row(client, sid)["pinned"] is False

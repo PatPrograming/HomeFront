@@ -164,8 +164,9 @@ class ConversationPatch(BaseModel):
     def _something(self) -> "ConversationPatch":
         if not self.model_fields_set:
             raise ValueError("nothing to change")
-        if "title" in self.model_fields_set and self.title is None:
-            raise ValueError("a title cannot be removed, only renamed")
+        for name in ("title", "pinned", "archived"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
         return self
 
 
@@ -186,8 +187,7 @@ def update_conversation(sid: str, body: ConversationPatch, staff: StaffIdentity 
     changes = {field: getattr(body, field) for field in body.model_fields_set}
     if "title" in changes:
         changes["title_source"] = "user"  # automatic titles never replace the staffer's own
-    meta = meta.model_copy(update=changes)
-    conversations.put_meta(sid, meta)
+    meta = conversations.update_meta(sid, staff.username, changes)
     store = get_gateway().store
     staffer = store.get_staffer(staff.username)
     waiting = sum(1 for _, draft in store.pending_drafts_for(staff.username) if draft.sid == sid)
@@ -198,12 +198,12 @@ def update_conversation(sid: str, body: ConversationPatch, staff: StaffIdentity 
 def delete_conversation(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dict:
     """Soft delete: hidden from the staffer, revoked, its agent stopped. Events, drafts and the chat stay
     in the table for the audit log."""
-    session, meta = _own_conversation(sid, staff)
+    session, _ = _own_conversation(sid, staff)
     store = get_gateway().store
     revoked = session.status == "active"
     if revoked:
         store.put_session(sid, session.model_copy(update={"status": "revoked"}))
-    conversations.put_meta(sid, meta.model_copy(update={"deleted": True}))
+    conversations.update_meta(sid, staff.username, {"deleted": True})
     supervisor = get_supervisor()
     if supervisor:
         supervisor.stop(sid, "conversation deleted")

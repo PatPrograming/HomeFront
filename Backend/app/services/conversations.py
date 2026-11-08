@@ -54,8 +54,42 @@ def get_meta(sid: str, staffer_id: str) -> ConversationMeta:
     return ConversationMeta.model_validate(item) if item else ConversationMeta(acting_for=staffer_id)
 
 
-def put_meta(sid: str, meta: ConversationMeta) -> None:
-    get_gateway().store.table.put_item(Item={**_key(sid), **meta.model_dump()})
+def _set(sid: str, staffer_id: str, fields: dict, condition: str | None = None, values: dict | None = None) -> None:
+    """Write only these fields (never the whole item), so writers can't undo each other's changes."""
+    names = {f"#{name}": name for name in fields} | {"#owner": "acting_for"}
+    if condition:
+        names |= {"#title_source": "title_source", "#deleted": "deleted"}
+    assignments = [f"#{name} = :{name}" for name in fields] + ["#owner = if_not_exists(#owner, :owner)"]
+    kwargs = {
+        "Key": _key(sid),
+        "UpdateExpression": "SET " + ", ".join(assignments),
+        "ExpressionAttributeNames": names,
+        "ExpressionAttributeValues": {f":{name}": value for name, value in fields.items()} | {":owner": staffer_id} | (values or {}),
+    }
+    if condition:
+        kwargs["ConditionExpression"] = condition
+    get_gateway().store.table.update_item(**kwargs)
+
+
+def update_meta(sid: str, staffer_id: str, changes: dict) -> ConversationMeta:
+    """Apply the staffer's changes. The result must still be a valid ConversationMeta, or nothing is written."""
+    merged = ConversationMeta.model_validate({**get_meta(sid, staffer_id).model_dump(), **changes})
+    _set(sid, staffer_id, {name: getattr(merged, name) for name in changes})
+    return get_meta(sid, staffer_id)
+
+
+def put_title_if_allowed(sid: str, staffer_id: str, title: str, source: str) -> None:
+    """The automatic title, unless the staffer renamed or deleted the conversation in the meantime."""
+    table = get_gateway().store.table
+    try:
+        _set(
+            sid, staffer_id, {"title": title, "title_source": source},
+            condition="(attribute_not_exists(#title_source) OR #title_source <> :user) "
+            "AND (attribute_not_exists(#deleted) OR #deleted = :no)",
+            values={":user": "user", ":no": False},
+        )
+    except table.meta.client.exceptions.ConditionalCheckFailedException:
+        return
 
 
 # --- titles ------------------------------------------------------------------------------
@@ -138,4 +172,4 @@ def refresh_title(sid: str, staffer_id: str) -> None:
             title = ""
     if not title:
         title, source = fallback_title(sid), "fallback"
-    put_meta(sid, meta.model_copy(update={"title": title, "title_source": source}))
+    put_title_if_allowed(sid, staffer_id, title, source)
