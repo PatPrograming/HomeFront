@@ -27,6 +27,17 @@ from mandate_agent.broker import BrokerError, fetch_mandate_token  # noqa: E402
 from mandate_agent.config import Settings  # noqa: E402
 
 DEFAULT_EMAILS = "email-1,email-2,email-3"
+ENV_FILE = REPO / "agent" / ".env"  # git-ignored; see agent/.env.example
+
+
+def load_env_file(path: Path) -> None:
+    """Fill unset variables from KEY=VALUE lines. Values already in the shell win; empty values are skipped."""
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        key, sep, value = line.strip().partition("=")
+        if sep and key and not key.startswith("#") and value.strip():
+            os.environ.setdefault(key.strip(), value.strip())
 
 
 def build_prompt(email_ids: list[str]) -> str:
@@ -56,6 +67,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    load_env_file(ENV_FILE)
     settings = Settings.from_env(args.gateway)
     try:
         token = resolve_token(args, settings)

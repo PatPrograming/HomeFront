@@ -88,3 +88,27 @@ def test_broker_refusal_exits_3_without_starting(clean_env, monkeypatch, capsys)
 
 def test_prompt_lists_the_emails():
     assert cli.build_prompt(["email-1", "email-3"]) == "Work today's inbox. The new emails are: email-1, email-3. Handle each one."
+
+
+def test_cognito_domain_as_full_url(clean_env, monkeypatch):
+    monkeypatch.setenv("COGNITO_DOMAIN", "https://mandate-test.auth.us-east-1.amazoncognito.com/")
+    calls = []
+    fetch_mandate_token("http://127.0.0.1:8080", "sid-1", http=httpx.Client(transport=broker_transport(calls)))
+    assert str(calls[0].url) == "https://mandate-test.auth.us-east-1.amazoncognito.com/oauth2/token"
+
+
+def test_env_file_fills_missing_values_but_never_overrides_the_shell(clean_env, monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("# comment\nGUARDRAIL_ID=from-file\nBEDROCK_MODEL_ID=from-file\n\nEMPTY=\n")
+    monkeypatch.delenv("GUARDRAIL_ID", raising=False)
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "from-shell")
+    cli.load_env_file(env_file)
+    import os
+    assert os.environ["GUARDRAIL_ID"] == "from-file"
+    assert os.environ["BEDROCK_MODEL_ID"] == "from-shell"
+    assert "EMPTY" not in os.environ
+    monkeypatch.delenv("GUARDRAIL_ID")
+
+
+def test_missing_env_file_is_fine(tmp_path):
+    cli.load_env_file(tmp_path / "absent.env")

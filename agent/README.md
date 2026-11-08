@@ -75,14 +75,15 @@ agent/.venv/bin/python agent/agent.py --token dev --gateway http://127.0.0.1:800
 curl -X POST http://127.0.0.1:8000/admin/revoke               # offboard mid-run (or ?mode=401)
 
 # agent against lane B's gateway with the real broker
-export COGNITO_DOMAIN=<pool domain> COGNITO_AGENT_CLIENT_ID=... COGNITO_AGENT_CLIENT_SECRET=...
+cp agent/.env.example agent/.env    # then paste COGNITO_AGENT_CLIENT_SECRET into agent/.env
 agent/.venv/bin/python agent/agent.py --sid <session id>
 ```
 
-Environment variables: `MANDATE_GATEWAY_URL` (default `http://127.0.0.1:8080/mcp`), `MANDATE_API_URL`
+Settings: copy `agent/.env.example` to `agent/.env` (git-ignored) and paste the agent client secret;
+`agent.py` reads it at start, and variables already set in your shell win. Variables: `MANDATE_GATEWAY_URL` (default `http://127.0.0.1:8080/mcp`), `MANDATE_API_URL`
 (default: the gateway URL without `/mcp`), `BEDROCK_MODEL_ID` (default `us.anthropic.claude-sonnet-5`),
-`AWS_REGION` (default `us-east-1`), `MANDATE_TOKEN` (dev token), and the three `COGNITO_*` values
-above. For Haiku 4.5, set `BEDROCK_MODEL_ID` to its `us.` inference profile id (check it with
+`AWS_REGION` (default `us-east-1`), `MANDATE_TOKEN` (dev token), and `COGNITO_DOMAIN` (the full `https://` URL),
+`COGNITO_AGENT_CLIENT_ID`, `COGNITO_AGENT_CLIENT_SECRET`. For Haiku 4.5, set `BEDROCK_MODEL_ID` to its `us.` inference profile id (check it with
 `aws bedrock list-inference-profiles`). The stub accepts any bearer token, unless `MANDATE_DEV_SECRET`
 is set; then it checks the token like the gateway.
 
@@ -91,7 +92,8 @@ is set; then it checks the token like the gateway.
 ```bash
 bash agent/guardrail/create.sh --dry-run    # show the config, call nothing (no flag does the same)
 bash agent/guardrail/create.sh --apply      # create it in us-east-1 (ask Huy first)
-export GUARDRAIL_ID=... GUARDRAIL_VERSION=...
+# the demo guardrail already exists (kept by Huy): GUARDRAIL_ID=l74ju5pcrcdg, GUARDRAIL_VERSION=2 (in agent/.env.example);
+# create.sh --apply finds it by name and reuses it, so it never creates a duplicate
 agent/.venv/bin/python agent/guardrail/eval.py --record agent/guardrail/fixtures/recorded_live.json
 agent/.venv/bin/python agent/guardrail/eval.py --from-recorded agent/guardrail/fixtures/recorded_live.json
 ```
