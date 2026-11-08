@@ -1,8 +1,8 @@
 # Loop: mandate-gateway
 
-Status: BUILDING
+Status: DONE
 Profile: feature (trial depth: full, because this is authentication and authorization)
-Round: 1 / 4
+Round: 2 / 4
 Base commit: 839c456
 Branch: claude/gateway-huy-23ae16
 
@@ -59,13 +59,27 @@ Interfaces (the tests are written against these):
 
 | # | Task | Role | Files it may touch | Done when | Depends on | Status |
 |---|------|------|--------------------|-----------|------------|--------|
-| 1 | Failing tests for the interfaces above and §10 | team-test-author | `packages/identity-gateway/tests/**`, `Backend/tests/test_gateway_api.py`, `Backend/tests/test_routes.py` | tests collect and fail on missing modules | — | in progress |
-| 2 | storage, authz, tokens, gateway (`guarded`) | lead | `packages/identity-gateway/src/**` | C2 | — | in progress |
-| 3 | MCP endpoint + REST path + app wiring | lead | `packages/identity-gateway/src/**`, `Backend/app/{agent_iam,main}.py` | C3 | 2 | pending |
-| 4 | Broker/admin/events routes | lead | `Backend/app/routers/{sessions,staff,events}.py` | C4, C7 | 2 | pending |
-| 5 | setup.sh, seed.py, tests.sh, READMEs, run-gateway.sh | lead | `Backend/infra/**`, `Backend/policy/**`, `scripts/run-gateway.sh`, `packages/identity-gateway/README.md` | C5, C6, C8 | 2 | pending |
+| 1 | Failing tests for the interfaces above and §10 | team-test-author | `packages/identity-gateway/tests/**`, `Backend/tests/test_gateway_api.py`, `Backend/tests/test_routes.py` | tests collect and fail on missing modules | — | done |
+| 2 | storage, authz, tokens, gateway (`guarded`) | lead | `packages/identity-gateway/src/**` | C2 | — | done |
+| 3 | MCP endpoint + REST path + app wiring | lead | `packages/identity-gateway/src/**`, `Backend/app/{agent_iam,main}.py` | C3 | 2 | done |
+| 4 | Broker/admin/events routes | lead | `Backend/app/routers/{sessions,staff,events}.py` | C4, C7 | 2 | done |
+| 5 | setup.sh, seed.py, tests.sh, READMEs, run-gateway.sh | lead | `Backend/infra/**`, `Backend/policy/**`, `scripts/run-gateway.sh`, `packages/identity-gateway/README.md` | C5, C6, C8 | 2 | done |
 
 ## Rounds
+
+### Round 1 — 2026-11-07
+- Built: tasks 1–5, commits 6552f55, 5feebdf, 3f8fbba (mcp 1.x per lead), b1a6110, a0cce9b (tests), c584e8d (scripts dry-run unless --apply).
+- Outcome checks: 8/8 pass (round-1.json). No round-0 scoreboard was recorded; the modules did not exist at the base, so C1–C4 and C8 could not have passed, and C7 failed on `0.0.0.0` in run-gateway.sh.
+- Review: team-reviewer APPROVE with 2 Medium (sessions never expire for minting; recipientKnown counted other offices' constituents) and 5 Low. Security review `security:comment` (gitleaks clean after a key-shaped test fixture was replaced; only pre-existing PyJWT CVEs). Falsifier HOLDS; advocate PARTIAL (live AWS unprovable offline).
+- Gap list: (1) session expiry, (2) office-scoped recipientKnown, (3) audit-feed text from unauthenticated callers, (4) Cognito fallback too broad, (5) setup.sh lookups masked errors, (6) future cursor, (7) README "no audit, no action" overstated, (8) PyJWT floor.
+- Decision: next round.
+
+### Round 2 — 2026-11-07
+- Built: a9b1f36 (all 8 gaps + mcp>=1.23 + guardrail-scanner path + email-3 demo tests), d15de85 (certifi SSL_CERT_FILE, HomeFront naming).
+- Outcome checks: 8/8 pass (round-2.json, round-3.json after d15de85).
+- Trial (full): judge ACCEPT on a9b1f36; 11 of 11 judge mutation probes caught, including the round-2 tests (written after the code, so probed explicitly). Claims 7 (no AWS reached) and the security label were UNBACKED by the judge (cannot be proven offline / no artifact shown).
+- Gap list: empty. Reviewer Low #3 (concurrent writes can slip behind a cursor) remains as a known limitation.
+- Decision: DONE.
 
 ## Decisions
 
