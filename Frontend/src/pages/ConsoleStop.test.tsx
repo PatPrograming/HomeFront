@@ -18,6 +18,13 @@ let panel: { chat: Chat; stop?: { onStop: () => Promise<void> } } | null = null;
 const revokeSession = vi.fn();
 const startSession = vi.fn();
 
+// Run effects during the server render, so a stop wired to incoming messages through useEffect (not only one in
+// the render body) shows up in "an agent message saying stop triggers nothing". Cleanups are not needed here.
+vi.mock("react", async (importOriginal) => {
+  const React = await importOriginal<typeof import("react")>();
+  const runNow = (effect: () => unknown) => void effect();
+  return { ...React, useEffect: runNow, useLayoutEffect: runNow };
+});
 vi.mock("../components/Layout", () => ({ default: ({ children }: { children: unknown }) => children }));
 vi.mock("../lib/AuthProvider", () => ({ useSession: () => ({ username: "maya" }) }));
 vi.mock("../lib/useSessionRevoked", () => ({ useSessionRevoked: () => false }));

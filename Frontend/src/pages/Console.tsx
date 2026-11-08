@@ -23,7 +23,7 @@ import "./Console.css";
 const CARD_KEY = "mandate.card"; // the running session's card, so a reload keeps the sid on screen
 const REVOKED = "session revoked / delegator inactive";
 const STOPPED_KEY = "mandate.stopped"; // sid of the task the staffer stopped in this tab
-const GRANTS_KEY ="mandate.grants"; // { [sid]: categories } granted with "Approve and allow for this session"
+const GRANTS_KEY = "mandate.grants"; // { [sid]: categories } granted with "Approve and allow for this session"
 
 // The API has no "list grants" route, so the console remembers the grants this tab made, per session.
 function loadGrants(): Record<string, string[]> {
