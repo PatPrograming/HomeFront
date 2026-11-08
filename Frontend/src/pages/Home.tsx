@@ -7,6 +7,8 @@ import "./Home.css";
 // "Agentic Outreach / for Federal Agencies." — second line is accented in the hero.
 const MISSION = ["Agentic Outreach for", "Federal Agencies."];
 
+const DEFAULTS: { mission: string[]; buttons?: string[] } = { mission: MISSION };
+
 const STEPS = [
   {
     n: "01",
