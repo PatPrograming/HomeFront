@@ -7,6 +7,7 @@ import AuthCallback from "./pages/AuthCallback";
 import Account from "./pages/Account";
 import Console from "./pages/Console";
 import Admin from "./pages/Admin";
+import People from "./pages/People";
 import Emails from "./pages/Emails";
 import SocialPlatform from "./pages/SocialPlatform";
 import Agents from "./pages/Agents";
@@ -71,6 +72,14 @@ export default function App() {
             element={
               <RequireAuth role="admin">
                 <Admin />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/people"
+            element={
+              <RequireAuth role="admin">
+                <People />
               </RequireAuth>
             }
           />

@@ -5,6 +5,7 @@
 //   GET  /sessions/{sid}       → { sid, status, actingFor, office, expiresAt }; own sessions, or any for an admin
 //   GET  /events?since=<key>   → contract sample events + the generated ones, same cursor rules
 //   POST /staff/{id}/offboard  → admin only; the agent's next call becomes a DENY and the run stops
+//   /admin/people, /admin/roles, /admin/audit → People & roles (admin only)
 //   chat, review queue and autonomy routes → mockAssistant.ts
 // State lives in localStorage so a Maya tab and a Chief of Staff tab see the same fake world.
 import { ROLE_LABELS, ROLE_TOOLS, TOOL_NAMES, type DecisionEvent, type Role } from "../../../packages/mandate-contracts/ts/index";
@@ -38,6 +39,15 @@ interface MockState {
   sessions: Record<string, MockSession>;
   offboarded: Record<string, number>;
   assistant: AssistantState;
+  admin?: MockAdmin;
+}
+
+// People & roles edits: office role and group per user, a role's tool list, and the change log.
+interface MockAdmin {
+  roles: Record<string, Role>;
+  groups: Record<string, "staffer" | "admin">;
+  roleTools: Partial<Record<Role, string[]>>;
+  log: { id: string; ts: string; actor: string; type: string; target: string; summary: string }[];
 }
 
 console.info("MANDATE_MOCK_API_MODULE loaded: fake API, no backend is called.");
@@ -96,7 +106,8 @@ function save(state: MockState): void {
   }
   const offboarded = { ...latest.offboarded, ...state.offboarded };
   const assistant = mergeAssistantState(latest.assistant, state.assistant);
-  localStorage.setItem(STORE_KEY, JSON.stringify({ events: [...events.values()], sessions, offboarded, assistant }));
+  const admin = state.admin ?? latest.admin;
+  localStorage.setItem(STORE_KEY, JSON.stringify({ events: [...events.values()], sessions, offboarded, assistant, admin }));
 }
 
 export function resetMock(): void {
@@ -113,6 +124,103 @@ const MOCK_ROLES: Record<string, Role> = {
   a10: "legislative_aide",
   aws: "intern",
 };
+
+const MOCK_ADMINS = new Set(["admin", "chiefofstaff"]);
+const ROLES = Object.keys(ROLE_LABELS) as Role[];
+const ACTIONS: Record<string, string> = {
+  inbox_read: "read the office inbox",
+  case_read: "open constituent case files",
+  datagov_search: "search public government data",
+  web_scrape: "read public web pages",
+  email_send: "send email for the office",
+  social_post: "post on the office's official account",
+  records_bulk_export: "export constituent records in bulk",
+};
+
+function adminState(state: MockState): MockAdmin {
+  state.admin ??= { roles: { ...MOCK_ROLES }, groups: {}, roleTools: {}, log: [] };
+  return state.admin;
+}
+
+const roleOf = (state: MockState, username: string): Role | undefined => state.admin?.roles[username] ?? MOCK_ROLES[username];
+const toolsOf = (state: MockState, role: Role): string[] => state.admin?.roleTools[role] ?? [...ROLE_TOOLS[role]];
+
+function describe(role: Role, before: string[], after: string[]): string[] {
+  const label = ROLE_LABELS[role];
+  return [
+    ...after.filter((t) => !before.includes(t)).map((t) => `Every ${label}'s assistant will be able to ${ACTIONS[t] ?? t}.`),
+    ...before.filter((t) => !after.includes(t)).map((t) => `Every ${label}'s assistant will no longer be able to ${ACTIONS[t] ?? t}.`),
+  ];
+}
+
+// Like people.py: the admin group only, a real role, only governed tools, never the last admin.
+function adminRoute(state: MockState, method: string, pathname: string, body: unknown, user: { username: string; groups: string[] }): unknown {
+  if (!user.groups.includes("admin")) throw new MockError(403, "Admin only");
+  const a = adminState(state);
+  const groupOf = (u: string) => a.groups[u] ?? (MOCK_ADMINS.has(u) ? "admin" : "staffer");
+  const usernames = Object.keys(a.roles).sort();
+  const people = () =>
+    usernames.map((u) => ({
+      username: u, email: `${u}@rep-x.example.gov`, inDirectory: true, enabled: true, group: groupOf(u),
+      officeRole: a.roles[u], roleLabel: ROLE_LABELS[a.roles[u]], office: OFFICE, active: !state.offboarded[u],
+    }));
+  const log = (type: string, target: string, summary: string) =>
+    a.log.unshift({ id: crypto.randomUUID(), ts: new Date().toISOString(), actor: user.username, type, target, summary });
+  const roleTools = (role: string, tools: unknown) => {
+    if (!ROLES.includes(role as Role)) throw new MockError(404, `There is no office role called '${role}'.`);
+    if (!Array.isArray(tools) || new Set(tools).size !== tools.length) throw new MockError(400, "A tool is listed twice.");
+    for (const t of tools) {
+      if (t === "records_bulk_export") throw new MockError(400, `${t} is blocked for everyone by policy and cannot be given to a role.`);
+      if (!TOOL_NAMES.includes(t)) throw new MockError(400, `There is no tool called '${t}'.`);
+    }
+    const r = role as Role;
+    const before = toolsOf(state, r);
+    const after = TOOL_NAMES.filter((t) => tools.includes(t));
+    return { role: r, tools: after, before, changes: describe(r, before, after), affects: usernames.filter((u) => a.roles[u] === r) };
+  };
+
+  if (method === "GET" && pathname === "/admin/people") return { people: people() };
+  if (method === "GET" && pathname === "/admin/roles") {
+    return {
+      roles: ROLES.map((r) => ({
+        id: r, label: ROLE_LABELS[r], tools: toolsOf(state, r), defaultTools: [...ROLE_TOOLS[r]],
+        assignable: TOOL_NAMES.filter((t) => t !== "records_bulk_export"), customized: Boolean(a.roleTools[r]),
+        updatedBy: a.log.find((e) => e.type === "role_tools_changed" && e.target === r)?.actor ?? null, updatedAt: null, people: usernames.filter((u) => a.roles[u] === r),
+      })),
+      tools: TOOL_NAMES.map((t) => ({ name: t, action: ACTIONS[t] ?? t, alwaysDenied: t === "records_bulk_export", adminOnly: false })),
+    };
+  }
+  if (method === "GET" && pathname === "/admin/audit") return { events: a.log };
+  const preview = pathname.match(/^\/admin\/roles\/([^/]+)\/preview$/);
+  if (method === "POST" && preview) return roleTools(decodeURIComponent(preview[1]), (body as { tools?: unknown })?.tools);
+  const role = pathname.match(/^\/admin\/roles\/([^/]+)$/);
+  if (method === "PUT" && role) {
+    const change = roleTools(decodeURIComponent(role[1]), (body as { tools?: unknown })?.tools);
+    a.roleTools[change.role] = change.tools;
+    log("role_tools_changed", change.role, change.changes.join(" ") || `${ROLE_LABELS[change.role]} saved with no change.`);
+    return change;
+  }
+  const person = pathname.match(/^\/admin\/people\/([^/]+)$/);
+  if (method === "PUT" && person) {
+    const u = decodeURIComponent(person[1]);
+    if (!a.roles[u]) throw new MockError(404, "Unknown person");
+    const { officeRole, group } = (body ?? {}) as { officeRole?: string; group?: "staffer" | "admin" };
+    if (officeRole !== undefined && !ROLES.includes(officeRole as Role)) throw new MockError(400, `There is no office role called '${officeRole}'.`);
+    if (group && group !== groupOf(u)) {
+      if (groupOf(u) === "admin" && !usernames.some((o) => o !== u && groupOf(o) === "admin")) {
+        throw new MockError(409, "This is the last admin. Make someone else an admin first.");
+      }
+      log("group_changed", u, `${u} moved from ${groupOf(u)} to ${group}.`);
+      a.groups[u] = group;
+    }
+    if (officeRole) {
+      log("role_assigned", u, `${u} is now ${ROLE_LABELS[officeRole as Role]} (was ${ROLE_LABELS[a.roles[u]]}). Their assistant's next tool call uses the new role.`);
+      a.roles[u] = officeRole as Role;
+    }
+    return people().find((p) => p.username === u);
+  }
+  return undefined;
+}
 
 function caller(token: string | null): { username: string; groups: string[] } {
   if (!token) throw new MockError(401, "not signed in");
@@ -162,7 +270,7 @@ export async function mockRequest(method: string, path: string, body: unknown, t
     if (state.offboarded[user.username]) throw new MockError(403, "staffer is offboarded");
     for (const s of Object.values(state.sessions)) if (s.actingFor === user.username) s.stopped = true;
     const sid = crypto.randomUUID();
-    const role = MOCK_ROLES[user.username] ?? (user.groups.includes("admin") ? "chief_of_staff" : "caseworker");
+    const role = roleOf(state, user.username) ?? (user.groups.includes("admin") ? "chief_of_staff" : "caseworker");
     const card = {
       sid,
       agent: "agent-1",
@@ -172,7 +280,7 @@ export async function mockRequest(method: string, path: string, body: unknown, t
       // Like the real broker: the role comes from the account (test-users.sh), never from the client.
       role,
       roleLabel: ROLE_LABELS[role],
-      allowedTools: TOOL_NAMES.filter((t) => ROLE_TOOLS[role].includes(t)),
+      allowedTools: TOOL_NAMES.filter((t) => toolsOf(state, role).includes(t)),
       expiresAt: new Date(now + 60 * 60 * 1000).toISOString(), // a session lasts one hour, like the real one
     };
     state.sessions[sid] = { ...card, startedAt: now, step: 0, stopped: false };
@@ -195,6 +303,9 @@ export async function mockRequest(method: string, path: string, body: unknown, t
     state.offboarded[id] = now;
     const revoked = Object.values(state.sessions).filter((s) => s.actingFor === id && !s.stopped);
     result = { staffer: id, active: false, revokedSessions: revoked.length };
+  } else if (url.pathname.startsWith("/admin/")) {
+    result = adminRoute(state, method, url.pathname, body, user);
+    if (result === undefined) throw new MockError(404, `mock API has no ${method} ${url.pathname}`);
   } else {
     const revoked = (s: { sid: string; actingFor: string }) => Boolean(state.offboarded[s.actingFor] || state.sessions[s.sid]?.stopped);
     result = assistantRoute(state.assistant, state.events, state.sessions, revoked, {

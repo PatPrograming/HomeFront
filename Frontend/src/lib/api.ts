@@ -90,6 +90,60 @@ export interface AutonomyCategory {
   suggestAuto: boolean;
 }
 
+/** GET /admin/people: one person, merged from Cognito (group) and DynamoDB (office role). */
+export interface Person {
+  username: string;
+  email: string | null;
+  inDirectory: boolean;
+  enabled: boolean;
+  group: "staffer" | "admin" | null;
+  officeRole: string | null;
+  roleLabel: string;
+  office: string | null;
+  active: boolean;
+}
+
+/** GET /admin/roles: one office role and the tools its staff's assistants may use right now. */
+export interface RoleView {
+  id: string;
+  label: string;
+  tools: string[];
+  defaultTools: string[];
+  assignable: string[];
+  customized: boolean;
+  updatedBy: string | null;
+  updatedAt: string | null;
+  people: string[];
+}
+
+export interface ToolInfo {
+  name: string;
+  action: string;
+  alwaysDenied: boolean;
+  adminOnly: boolean;
+}
+
+/** POST /admin/roles/{role}/preview and PUT /admin/roles/{role}: what the change allows, in plain words. */
+export interface RoleChange {
+  role: string;
+  tools: string[];
+  before: string[];
+  changes: string[];
+  affects: string[];
+}
+
+/** GET /admin/audit: one change an admin made on People & roles. */
+export interface AdminEvent {
+  id: string;
+  ts: string;
+  actor: string;
+  type: "role_assigned" | "group_changed" | "role_tools_changed";
+  target: string;
+  summary: string;
+}
+
+export type Assignment = { officeRole?: string; group?: "staffer" | "admin" };
+
 export interface HomeContent {
   mission: string[];
   buttons: string[];
@@ -164,6 +218,17 @@ export const api = {
   events: (cursor?: string | null) => request<EventPage>(eventsPath(cursor)),
   offboard: (stafferId: string) =>
     request<OffboardResult>(`/staff/${encodeURIComponent(stafferId)}/offboard`, { method: "POST", body: {} }),
+
+  // Admin: People & roles. The server checks the admin group on every call; Cedar enforces the result.
+  people: () => request<{ people: Person[] }>("/admin/people"),
+  roles: () => request<{ roles: RoleView[]; tools: ToolInfo[] }>("/admin/roles"),
+  previewRole: (role: string, tools: string[]) =>
+    request<RoleChange>(`/admin/roles/${encodeURIComponent(role)}/preview`, { method: "POST", body: { tools } }),
+  setRoleTools: (role: string, tools: string[]) =>
+    request<RoleChange>(`/admin/roles/${encodeURIComponent(role)}`, { method: "PUT", body: { tools } }),
+  assign: (username: string, change: Assignment) =>
+    request<Person>(`/admin/people/${encodeURIComponent(username)}`, { method: "PUT", body: change }),
+  adminAudit: () => request<{ events: AdminEvent[] }>("/admin/audit"),
 
   // Chat console: talk to the agent, review what it held, decide what it may send alone
   messages: (sid: string, after?: string | null) =>
