@@ -53,7 +53,7 @@ def test_agent_types_catalog_is_public():
     r = client.get("/api/v1/agent-types")
     assert r.status_code == 200
     by_kind = {t["kind"]: t for t in r.json()}
-    assert set(by_kind) == {"email", "social", "research", "custom"}
+    assert set(by_kind) == {"email", "social", "research", "market_research", "custom"}
     assert by_kind["custom"]["allowed_tools"] is None
     assert by_kind["research"]["allowed_tools"] == ["datagov.search", "web.scrape"]
 
@@ -61,7 +61,7 @@ def test_agent_types_catalog_is_public():
 # --- creation -------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("kind", ["email", "social", "research"])
+@pytest.mark.parametrize("kind", ["email", "social", "research", "market_research"])
 def test_create_fills_template_defaults(kind):
     r = _create(kind)
     assert r.status_code == 201

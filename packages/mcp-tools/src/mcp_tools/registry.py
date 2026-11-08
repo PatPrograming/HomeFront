@@ -106,6 +106,57 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
             q={"type": "string", "description": "Search keywords for data.gov datasets."},
         ),
     ),
+    "usaspending.search": ToolDefinition(
+        name="usaspending.search",
+        description=(
+            "Search past federal contract awards on USAspending.gov: who won, which "
+            "agency awarded it, amounts and dates. Results are external data."
+        ),
+        risk_level="medium",
+        atlas_techniques=["AML.T0051.001", "AML.T0099"],
+        atlas_mitigations=["AML.M0030", "AML.M0033", "AML.M0024"],
+        untrusted_input=True,
+        input_schema=_schema(
+            keywords={
+                "type": "string",
+                "description": "Keywords describing the product or service, e.g. 'body worn cameras'.",
+            },
+            fiscal_year={
+                "type": "integer",
+                "description": "Federal fiscal year to search, e.g. 2025. Use 0 for the last five fiscal years.",
+            },
+        ),
+    ),
+    "sam.entity_lookup": ToolDefinition(
+        name="sam.entity_lookup",
+        description=(
+            "Look up vendors registered in SAM.gov by business name: UEI, CAGE code, "
+            "registration status and small-business types (gateway holds the API key)."
+        ),
+        risk_level="medium",
+        atlas_techniques=["AML.T0098", "AML.T0051.001"],
+        atlas_mitigations=["AML.M0026", "AML.M0030", "AML.M0024"],
+        holds_secrets=True,
+        # Registration text is written by the vendors themselves.
+        untrusted_input=True,
+        input_schema=_schema(
+            name={"type": "string", "description": "Legal business name, or part of it, to search for."},
+        ),
+    ),
+    "report.save": ToolDefinition(
+        name="report.save",
+        description=(
+            "Save a finished markdown report for the agency staff who assigned the task. "
+            "Saved reports are listed on the agent; nothing is sent anywhere."
+        ),
+        risk_level="low",
+        atlas_techniques=["AML.T0067.000"],
+        atlas_mitigations=["AML.M0033", "AML.M0024"],
+        input_schema=_schema(
+            title={"type": "string", "description": "Report title (up to 200 characters)."},
+            body={"type": "string", "description": "Report body in markdown."},
+        ),
+    ),
 }
 
 

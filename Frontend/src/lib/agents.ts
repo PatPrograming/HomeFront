@@ -1,7 +1,7 @@
 // Shared shapes and helpers for agents, agent types and tools (see GET /agent-types).
 import { ApiError } from "./api.js";
 
-export type AgentKind = "email" | "social" | "research" | "custom";
+export type AgentKind = "email" | "social" | "research" | "market_research" | "custom";
 
 export interface Agent {
   agent_id: string;
@@ -70,6 +70,9 @@ const TOOL_ACTIONS: Record<string, string> = {
   "social.reply": "reply to comments",
   "web.scrape": "read web pages",
   "datagov.search": "search data.gov",
+  "usaspending.search": "search past federal awards",
+  "sam.entity_lookup": "look up SAM.gov vendors",
+  "report.save": "save reports",
 };
 
 export const toolAction = (tool: string) => TOOL_ACTIONS[tool] || `use ${tool}`;

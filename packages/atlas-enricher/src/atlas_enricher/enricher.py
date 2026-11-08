@@ -78,6 +78,21 @@ TOOL_RESIDUAL_RISK: dict[str, dict[str, Any]] = {
         "mitigation_ids": ["AML.M0026"],
         "note": "api.data.gov key is held by the gateway, never returned to the agent.",
     },
+    "usaspending.search": {
+        "technique_ids": ["AML.T0051.001"],
+        "mitigation_ids": ["AML.M0030", "AML.M0033"],
+        "note": "Award records are external data; treat descriptions as an injection surface.",
+    },
+    "sam.entity_lookup": {
+        "technique_ids": ["AML.T0098", "AML.T0051.001"],
+        "mitigation_ids": ["AML.M0026", "AML.M0030"],
+        "note": "SAM.gov key stays in the gateway; vendor-written registration text is untrusted.",
+    },
+    "report.save": {
+        "technique_ids": ["AML.T0067.000"],
+        "mitigation_ids": ["AML.M0033", "AML.M0024"],
+        "note": "Saved reports are agent output for human review; check cited sources.",
+    },
 }
 
 

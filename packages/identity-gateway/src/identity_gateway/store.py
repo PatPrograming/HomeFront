@@ -11,6 +11,7 @@ from typing import Any, Callable, Iterable, Protocol
 
 from .approvals import ApprovalRepository, MemoryApprovalRepository
 from .audit import AuditRepository, MemoryAuditRepository, compact_atlas
+from .reports import MemoryReportRepository, ReportRepository
 
 log = logging.getLogger(__name__)
 
@@ -229,6 +230,8 @@ class GatewayStore:
         self._audit: AuditRepository = audit or MemoryAuditRepository()
         # Pending/decided human approvals for requires_hitl tools.
         self.approvals: ApprovalRepository = MemoryApprovalRepository()
+        # Reports saved by agents with report.save.
+        self.reports: ReportRepository = MemoryReportRepository()
         # Events the durable audit store rejected; still listed so nothing vanishes.
         self._unsaved_audit = MemoryAuditRepository()
         self.audit_write_errors = 0
@@ -248,6 +251,14 @@ class GatewayStore:
     def use_approval_repository(self, repo: ApprovalRepository) -> None:
         with self._lock:
             self.approvals = repo
+
+    def use_report_repository(self, repo: ReportRepository) -> None:
+        with self._lock:
+            self.reports = repo
+
+    @property
+    def report_backend(self) -> str:
+        return getattr(self.reports, "backend", type(self.reports).__name__)
 
     @property
     def approval_backend(self) -> str:

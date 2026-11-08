@@ -6,9 +6,9 @@ import { describeError, type Agent, type AgentKind, type AgentType, type Tool } 
 import "./Agents.css";
 
 // The three agent types users pick from. `custom` stays API-only.
-const KINDS: AgentKind[] = ["email", "social", "research"];
+const KINDS: AgentKind[] = ["email", "social", "research", "market_research"];
 
-const KIND_ICON: Record<string, string> = { email: "✉", social: "◎", research: "⌕" };
+const KIND_ICON: Record<string, string> = { email: "✉", social: "◎", research: "⌕", market_research: "▤" };
 
 export default function NewAgent() {
   const navigate = useNavigate();

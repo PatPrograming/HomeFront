@@ -40,6 +40,7 @@ from .agent_types import (
     get_agent_type,
 )
 from .approvals import ApprovalConflict, ApprovalRecord
+from .reports import ReportRecord
 from .runner import AgentRunner, RunStore, new_run
 from .store import (
     AGENT_ID_PATTERN,
@@ -63,6 +64,14 @@ runs = RunStore()
 # Set by the host app (see Backend/app/agent_iam.py); None = runs return 503.
 runner: AgentRunner | None = None
 enricher = AtlasEnricher()
+
+
+def _save_report(data: dict[str, Any]) -> dict[str, Any]:
+    # Looked up per call: the host app may swap in the DynamoDB repository.
+    return store.reports.insert(ReportRecord(**data)).view()
+
+
+email_handlers.set_report_sink(_save_report)
 
 app = FastAPI(
     title="HomeFront Identity Gateway",
@@ -184,6 +193,8 @@ def _recipients_error(exc: InvalidRecipientsError) -> HTTPException:
 EMAIL_SEND = "email.send"
 EMAIL_SEND_LIST = "email.send_list"
 EMAIL_TOOLS = (EMAIL_SEND, EMAIL_SEND_LIST)
+# Tools whose handler needs to know the calling agent (gateway-injected).
+CALLER_CONTEXT_TOOLS = frozenset({"report.save"})
 
 
 def _sender_preview(agent: AgentRecord) -> dict[str, Any]:
@@ -996,7 +1007,15 @@ def call_tool(
             agent_id=agent.agent_id,
         )
     )
-    result = _run_handler(tool, tool_name, arguments)
+    run_args = dict(arguments)
+    if tool_name in CALLER_CONTEXT_TOOLS:
+        # Who is calling comes from the workload token, never from arguments.
+        run_args.update(
+            agent_id=agent.agent_id,
+            trace_id=run_id or getattr(tok, "session_id", None),
+            run_id=run_id,
+        )
+    result = _run_handler(tool, tool_name, run_args)
 
     event = store.append_audit(
         {
@@ -1481,6 +1500,16 @@ def get_run(agent_id: str, run_id: str, actor: Actor = Depends(get_actor)) -> di
     return run.view()
 
 
+@app.get("/agents/{agent_id}/reports")
+def list_reports(
+    agent_id: str, limit: int = 50, actor: Actor = Depends(get_actor)
+) -> list[dict[str, Any]]:
+    """Reports this agent saved with report.save, newest first."""
+    _accessible_agent(agent_id, actor)
+    limit = max(1, min(limit, 200))
+    return [r.view() for r in store.reports.list(agent_id, limit)]
+
+
 @app.get("/audit")
 def audit(
     limit: int = 100,
@@ -1508,6 +1537,7 @@ def storage_status() -> dict[str, Any]:
         "agent_store": store.agent_backend,
         "audit_store": store.audit_backend,
         "approval_store": store.approval_backend,
+        "report_store": store.report_backend,
         "audit_write_errors": store.audit_write_errors,
         "last_audit_error": store.last_audit_error,
         "warnings": list(store.storage_warnings),
