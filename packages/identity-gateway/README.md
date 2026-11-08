@@ -112,6 +112,7 @@ assistant to ask the person to connect it.
 The code is `src/identity_gateway/connections.py`. How it keeps tokens safe:
 
 - Tokens stay on the server. No API response and no log line ever contains one.
+- Never run `botocore` at DEBUG in production: it logs request and response bodies, which hold tokens. `connections.py` raises the `boto3`/`botocore` floor to INFO on import.
 - Each token set is encrypted with AWS KMS before it is saved in DynamoDB. The encryption context
   names the staffer and the provider, so a copy of the ciphertext under another staffer or provider
   cannot be decrypted.

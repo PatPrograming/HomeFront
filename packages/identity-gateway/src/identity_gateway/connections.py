@@ -31,7 +31,8 @@ log = logging.getLogger("identity_gateway.connections")
 # The AWS SDK's DEBUG logs print whole request/response bodies: the PKCE verifier going into
 # DynamoDB and the decrypted tokens coming out of KMS. Keep them out of any log, even in debug runs.
 for _sdk_logger in ("boto3", "botocore"):
-    logging.getLogger(_sdk_logger).setLevel(logging.INFO)
+    _sdk = logging.getLogger(_sdk_logger)
+    _sdk.setLevel(max(_sdk.getEffectiveLevel(), logging.INFO))  # raise the floor, never lower a stricter level
 
 CONNECTABLE = ("gmail", "x")
 PROVIDERS = {"gmail": "Gmail", "x": "X", "linkedin": "LinkedIn", "facebook": "Facebook", "bluesky": "Bluesky"}
@@ -39,6 +40,7 @@ SCOPES = {
     "gmail": "openid email https://www.googleapis.com/auth/gmail.send",
     "x": "tweet.read tweet.write users.read offline.access",
 }
+REQUIRED_SCOPE = {"gmail": "https://www.googleapis.com/auth/gmail.send", "x": "tweet.write"}
 AUTH_URL = {"gmail": "https://accounts.google.com/o/oauth2/v2/auth", "x": "https://x.com/i/oauth2/authorize"}
 TOKEN_URL = {"gmail": "https://oauth2.googleapis.com/token", "x": "https://api.x.com/2/oauth2/token"}
 REVOKE_URL = {"gmail": "https://oauth2.googleapis.com/revoke", "x": "https://api.x.com/2/oauth2/revoke"}
@@ -62,6 +64,10 @@ class NeedsConnection(Exception):
 
 class ProviderError(Exception):
     """The provider's API failed for a reason that is not 'sign in again'."""
+
+
+class MissingPermission(ProviderError):
+    """The person signed in but did not tick the permission we need (send mail, post)."""
 
 
 class OAuthStateError(Exception):
@@ -155,7 +161,8 @@ class ConnectionService:
         rows = self.store.table.query(
             KeyConditionExpression=Key("pk").eq(f"CONNECTION#{staffer}"), ConsistentRead=True
         )["Items"]
-        by_provider = {row["sk"].removeprefix("PROVIDER#"): row for row in rows}
+        # A row without a handle is a half-written leftover (e.g. a refresh racing a disconnect); not a connection.
+        by_provider = {row["sk"].removeprefix("PROVIDER#"): row for row in rows if "handle" in row}
         entries = []
         for provider, label in PROVIDERS.items():
             row = by_provider.get(provider)
@@ -221,7 +228,22 @@ class ConnectionService:
             log.warning("token exchange failed provider=%s staffer=%s status=%s", provider, staffer, response.status_code)
             raise ProviderError(f"{provider} token exchange failed")
         body = response.json()
-        handle = self._gmail_handle(body["id_token"]) if provider == "gmail" else self._x_handle(body["access_token"])
+        required = ("access_token", "expires_in") + (("id_token",) if provider == "gmail" else ())
+        if any(field not in body for field in required):
+            log.warning("token response incomplete provider=%s staffer=%s", provider, staffer)
+            self._revoke_quietly(provider, body)
+            raise ProviderError(f"{provider} token response was incomplete")
+        # RFC 6749 5.1: a server may omit `scope` when it equals what we asked for.
+        scopes = body.get("scope") or SCOPES[provider]
+        if REQUIRED_SCOPE[provider] not in scopes.split():
+            log.warning("required permission not granted provider=%s staffer=%s", provider, staffer)
+            self._revoke_quietly(provider, body)
+            raise MissingPermission(f"{provider} permission was not granted")
+        try:
+            handle = self._gmail_handle(body["id_token"]) if provider == "gmail" else self._x_handle(body["access_token"])
+        except Exception:
+            self._revoke_quietly(provider, body)  # the grant exists at the provider but we will not store it
+            raise
         tokens = {
             "access_token": body["access_token"],
             "refresh_token": body.get("refresh_token"),
@@ -232,11 +254,11 @@ class ConnectionService:
             **_key(staffer, provider),
             "handle": handle,
             "connected_at": connected_at,
-            "scopes": SCOPES[provider],
+            "scopes": scopes,
             "ciphertext": self._encrypt(staffer, provider, tokens),
         })
         log.info("connected provider=%s staffer=%s", provider, staffer)
-        return Connection(staffer, provider, handle, connected_at, SCOPES[provider])
+        return Connection(staffer, provider, handle, connected_at, scopes)
 
     def disconnect(self, staffer: str, provider: str) -> bool:
         """Revoke at the provider (best effort) and delete our copy. True if there was a connection."""
@@ -244,14 +266,8 @@ class ConnectionService:
         if item is None:
             return False
         try:
-            tokens = self._decrypt(staffer, provider, item)
-            # Revoking the refresh token ends the whole grant (its access tokens too) at Google and X.
-            token, hint = (
-                (tokens["refresh_token"], "refresh_token") if tokens.get("refresh_token")
-                else (tokens["access_token"], "access_token")
-            )
-            self._send("POST", REVOKE_URL[provider], **self._client_auth(provider, {"token": token, "token_type_hint": hint}))
-        except (ClientError, ProviderError, NeedsConnection):
+            self._revoke(provider, self._decrypt(staffer, provider, item))
+        except Exception:  # KMS down, bad ciphertext, provider down: our copy must still go
             log.warning("provider revoke skipped provider=%s staffer=%s", provider, staffer)
         self._forget(staffer, provider)
         log.info("disconnected provider=%s staffer=%s", provider, staffer)
@@ -262,9 +278,14 @@ class ConnectionService:
         rows = self.store.table.query(
             KeyConditionExpression=Key("pk").eq(f"CONNECTION#{staffer}"), ConsistentRead=True
         )["Items"]
+        removed = 0
         for row in rows:
-            self.disconnect(staffer, row["sk"].removeprefix("PROVIDER#"))
-        return len(rows)
+            provider = row["sk"].removeprefix("PROVIDER#")
+            try:
+                removed += self.disconnect(staffer, provider)
+            except Exception:  # one provider failing must not leave the others connected
+                log.exception("disconnect failed provider=%s staffer=%s", provider, staffer)
+        return removed
 
     # --- using a connection ----------------------------------------------
 
@@ -297,6 +318,23 @@ class ConnectionService:
             return self.http.request(method, url, **kwargs)
         except httpx.HTTPError as e:
             raise ProviderError("provider unreachable") from e
+
+    def _revoke(self, provider: str, tokens: dict) -> None:
+        # Revoking the refresh token ends the whole grant (its access tokens too) at Google and X.
+        token, hint = (
+            (tokens["refresh_token"], "refresh_token") if tokens.get("refresh_token")
+            else (tokens["access_token"], "access_token")
+        )
+        self._send("POST", REVOKE_URL[provider], **self._client_auth(provider, {"token": token, "token_type_hint": hint}))
+
+    def _revoke_quietly(self, provider: str, tokens: dict) -> None:
+        """Hand back a grant we will not keep. Failure only means the grant lives until the person revokes it."""
+        if not (tokens.get("refresh_token") or tokens.get("access_token")):
+            return
+        try:
+            self._revoke(provider, tokens)
+        except ProviderError:
+            log.warning("provider revoke failed provider=%s", provider)
 
     def _client_auth(self, provider: str, form: dict[str, str]) -> dict[str, Any]:
         """Request kwargs for a token/revoke call: Google wants the secret in the form, X wants HTTP Basic."""
@@ -338,27 +376,46 @@ class ConnectionService:
             log.warning("decrypt failed provider=%s staffer=%s", provider, staffer)
             raise NeedsConnection(provider) from e
         if tokens["expires_at"] - REFRESH_WINDOW_SECONDS <= self.clock():
-            tokens = self._refresh(staffer, provider, tokens)
+            tokens = self._refresh(staffer, provider, item, tokens)
         return item, tokens
 
-    def _refresh(self, staffer: str, provider: str, tokens: dict) -> dict:
+    def _refresh(self, staffer: str, provider: str, item: dict, tokens: dict) -> dict:
         response = self._token_request(provider, {"grant_type": "refresh_token", "refresh_token": tokens["refresh_token"]})
-        if response.status_code != 200:
-            log.warning("refresh failed provider=%s staffer=%s status=%s", provider, staffer, response.status_code)
-            self._forget(staffer, provider)
+        if response.status_code in (400, 401):  # the provider says the grant is dead
+            log.warning("refresh rejected provider=%s staffer=%s status=%s", provider, staffer, response.status_code)
+            self._forget_if_unchanged(staffer, provider, item["ciphertext"])
+            self._revoke_quietly(provider, tokens)
             raise NeedsConnection(provider)
+        if response.status_code != 200:  # outage or rate limit: the grant may be fine, keep it
+            log.warning("refresh failed provider=%s staffer=%s status=%s", provider, staffer, response.status_code)
+            raise ProviderError(f"{provider} refresh failed")
         body = response.json()
         refreshed = {
             "access_token": body["access_token"],
             "refresh_token": body.get("refresh_token", tokens["refresh_token"]),  # Google only sends one at consent
             "expires_at": self.clock() + body["expires_in"],
         }
-        self.store.table.update_item(
-            Key=_key(staffer, provider),
-            UpdateExpression="SET ciphertext = :c",
-            ExpressionAttributeValues={":c": self._encrypt(staffer, provider, refreshed)},
-        )
+        try:
+            self.store.table.update_item(
+                Key=_key(staffer, provider),
+                UpdateExpression="SET ciphertext = :c",
+                ConditionExpression="attribute_exists(pk)",  # a disconnect mid-refresh must stay disconnected
+                ExpressionAttributeValues={":c": self._encrypt(staffer, provider, refreshed)},
+            )
+        except self.store.table.meta.client.exceptions.ConditionalCheckFailedException as e:
+            raise NeedsConnection(provider) from e
         return refreshed
+
+    def _forget_if_unchanged(self, staffer: str, provider: str, ciphertext: str) -> None:
+        """Delete the row only if it still holds what we read; otherwise a parallel refresh won."""
+        try:
+            self.store.table.delete_item(
+                Key=_key(staffer, provider),
+                ConditionExpression="ciphertext = :old",
+                ExpressionAttributeValues={":old": ciphertext},
+            )
+        except self.store.table.meta.client.exceptions.ConditionalCheckFailedException as e:
+            raise ProviderError(f"{provider} was refreshed or removed at the same time; try again") from e
 
     def _call(self, staffer: str, provider: str, url: str, payload: dict) -> dict:
         _, tokens = self._live_tokens(staffer, provider)
@@ -427,7 +484,7 @@ def post_x(staffer_id: str, text: str, reply_to: str | None = None) -> dict:
 
 
 def needs_connection_result(e: NeedsConnection) -> dict:
-    label = PROVIDERS[e.provider]
+    label = PROVIDERS.get(e.provider, e.provider)
     return {
         "status": "needs_connection",
         "provider": e.provider,

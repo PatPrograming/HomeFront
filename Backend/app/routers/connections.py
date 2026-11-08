@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from identity_gateway.connections import (
     PROVIDERS,
+    MissingPermission,
     NotConfigured,
     OAuthStateError,
     ProviderError,
@@ -40,6 +41,11 @@ def finish_connection(body: Callback, identity: StaffIdentity = Depends(require_
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid_state") from None
     except NotConfigured:
         raise HTTPException(status.HTTP_409_CONFLICT, "not_set_up") from None
+    except MissingPermission:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "missing_permission: you signed in but did not allow sending on your behalf. Connect again and tick every box.",
+        ) from None
     except ProviderError:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "provider_error") from None
     return next(entry for entry in service.list(identity.username) if entry["provider"] == connection.provider)
