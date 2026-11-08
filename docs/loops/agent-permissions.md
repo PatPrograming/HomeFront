@@ -1,6 +1,6 @@
 # Loop: agent-permissions
 
-Status: BUILDING
+Status: REVIEWING
 Profile: feature (security: trial full)
 Round: 1 / 4
 Base commit: 78824f6 (origin/main 23fa467 + Lane G roles merge f17833b + main-breakage fix)
@@ -375,29 +375,29 @@ Parallel groups (disjoint files):
 
 | # | Task | Role | Files it may touch | Done when | Depends on | Status |
 |---|------|------|--------------------|-----------|------------|--------|
-| 1 | Failing C1 parity tests | team-test-author | `packages/mandate-contracts/tests/test_capability_parity.py` | collects; fails on missing tools/helpers | — | todo |
-| 2 | Contracts: 15 tools + inputs, role sets, `mandate_tool_name`/`role_allows`/`TOOL_ACTIONS`, 5 starter + 15 role policy files, `DraftItem.tool` literal, Reason `"needs connection"`, schemas, TS, README | team-implementer | `packages/mandate-contracts/{src/**,policies/**,schemas/tools.json,ts/index.ts,README.md,tests/test_contracts.py}` | C1 + `test_contracts.py` pass | 1 | todo |
-| 3 | Failing C2 + gateway C4 tests (cedarpy + double) | team-test-author | `packages/identity-gateway/tests/{test_gw_agent_parity.py,test_gw_escalation.py,conftest.py}` | collect; fail for the right reason | 2 | todo |
-| 4 | `StarterPolicyAuthorizer` sync + intended updates to `test_gw_roles.py`, `test_gw_mcp.py` | team-implementer | `packages/identity-gateway/src/identity_gateway/authz.py`, `packages/identity-gateway/tests/{test_gw_roles.py,test_gw_mcp.py}` | `test_gw_roles.py` passes (C11 part) | 2 | todo |
-| 5 | Gateway: LEGACY/OUTBOUND, new categories + `CATEGORY_TOOL`, recipients from DynamoDB, `report_save` identity, ATLAS fallback, `send_draft` for new tools | team-implementer | `packages/identity-gateway/src/identity_gateway/{gateway.py,autonomy.py}`, `packages/identity-gateway/README.md` | C2, `test_gw_escalation.py`, C7 | 3, 4 | todo |
-| 6 | Lane I connection gate (Design 5) + double-based test | team-implementer (test first in same task) | `packages/identity-gateway/src/identity_gateway/{gateway.py,mcp_server.py}`, `packages/identity-gateway/tests/test_gw_needs_connection.py` | `test_gw_needs_connection.py` + C7 pass; with module absent C2 unchanged | 5 | todo |
-| 7 | `assistant.py`: `EDITABLE_FIELDS` + `_within_role` via `CATEGORY_TOOL`; least-privilege cases for new categories | team-implementer | `Backend/app/routers/assistant.py`, `Backend/tests/test_least_privilege.py` | `test_least_privilege.py` + C6 pass | 5 | todo |
-| 8 | Failing C3 + Backend C4 tests (production resolver, moto) | team-test-author | `Backend/tests/{test_agent_permissions_api.py,test_privilege_escalation.py}` | collect; fail on missing route/guards | 2 | todo |
-| 9 | Agents-tab server: `recommended_tools`, permissions route, exact-name/dup/extra=forbid, role cap on create/grants/`call_tool`/`approve`, ownerless rules, role resolver | team-implementer | `packages/identity-gateway/src/identity_gateway/{agents_api.py,agent_types.py}` | C3 + C4 Backend pass (with task 10) | 8 | todo |
-| 10 | Wiring: `Actor.is_admin`, resolver → mandate store, staff-write split; legacy test fixture + intended test updates | team-implementer | `Backend/app/agent_iam.py`, `Backend/tests/{conftest.py,test_route_auth.py,test_agent_ownership.py,test_agent_types.py}` | C3, C4 (Backend), C6 | 9 | todo |
-| 11 | Failing C5 tests | team-test-author | `agent/tests/test_assistant_parity.py` | collect; fail on prompt/stub | 2 | todo |
-| 12 | `CHAT_SYSTEM_PROMPT` + stub handlers for new tools + `StubState.role` | team-implementer | `agent/mandate_agent/runner.py`, `agent/stub_server.py`, `agent/README.md` | C5, C8 | 11 | todo |
-| 13 | Failing C9 tests | team-test-author | `Frontend/src/lib/permissions.test.ts`, `Frontend/src/pages/NewAgent.test.tsx` | vitest runs; fails on missing module | — | todo |
-| 14 | `permissions.ts`, API method + types, picker + side panel, responsive CSS | team-implementer | `Frontend/src/lib/{permissions.ts,agents.ts,agentsApi.ts}`, `Frontend/src/pages/{NewAgent.tsx,Agents.css}` | C9, C10 | 13 | todo |
-| 15 | setup.sh: new permits gated with role policies, `forbid-campaign-reply` always; header comment; tests | team-implementer | `Backend/infra/{setup.sh,README.md}`, `Backend/tests/test_setup_role_policies.py` | C11 (`test_setup_role_policies.py`) | 2 | todo |
-| 16 | Docs: ROLES.md table + guarantees rows for new tools and Agents-tab caps | team-implementer | `docs/ROLES.md` | `grep -c 'email_send_list' docs/ROLES.md` ≥ 1 and C1 still passes | 2, 9 | todo |
-| 17 | Full check C1–C11 + 375px/1280px screenshots | team-verifier | none | every C exits 0 | all | todo |
-| 18 | Failing tests: draft_revise contracts (C1 additions) + gateway (C13) | team-test-author | `packages/mandate-contracts/tests/test_capability_parity.py`, `packages/identity-gateway/tests/test_gw_draft_revise.py` | fail for the right reason | 17 | todo |
-| 19 | Failing tests: staffer draft edit API + escalation (C12) | team-test-author | `Backend/tests/test_draft_edit.py` | fail for the right reason | — | todo |
-| 20 | Failing tests: assistant draft workflow (C14) | team-test-author | `agent/tests/test_draft_workflow.py` | fail for the right reason | — | todo |
-| 21 | Contracts + gateway: version, draft_revise, permit, Reason | team-implementer | `packages/mandate-contracts/{src/**,policies/**,schemas/tools.json,ts/index.ts}`, `packages/identity-gateway/src/identity_gateway/{gateway.py,authz.py}` | C1, C13, C7 | 18 | todo |
-| 22 | Staffer API: GET fields, PATCH, expectedVersion | team-implementer | `Backend/app/routers/assistant.py` | C12, C6 | 19, 21 | todo |
-| 23 | Prompt + stub draft_revise | team-implementer | `agent/mandate_agent/runner.py`, `agent/stub_server.py` | C14, C8 | 20, 21 | todo |
+| 1 | Failing C1 parity tests | team-test-author | `packages/mandate-contracts/tests/test_capability_parity.py` | collects; fails on missing tools/helpers | — | done (56d3595) |
+| 2 | Contracts: 15 tools + inputs, role sets, `mandate_tool_name`/`role_allows`/`TOOL_ACTIONS`, 5 starter + 15 role policy files, `DraftItem.tool` literal, Reason `"needs connection"`, schemas, TS, README | team-implementer | `packages/mandate-contracts/{src/**,policies/**,schemas/tools.json,ts/index.ts,README.md,tests/test_contracts.py}` | C1 + `test_contracts.py` pass | 1 | done (8f7dba6, 3ff9446, 404cdff) |
+| 3 | Failing C2 + gateway C4 tests (cedarpy + double) | team-test-author | `packages/identity-gateway/tests/{test_gw_agent_parity.py,test_gw_escalation.py,conftest.py}` | collect; fail for the right reason | 2 | done (e6aeb86) |
+| 4 | `StarterPolicyAuthorizer` sync + intended updates to `test_gw_roles.py`, `test_gw_mcp.py` | team-implementer | `packages/identity-gateway/src/identity_gateway/authz.py`, `packages/identity-gateway/tests/{test_gw_roles.py,test_gw_mcp.py}` | `test_gw_roles.py` passes (C11 part) | 2 | done (0799095) |
+| 5 | Gateway: LEGACY/OUTBOUND, new categories + `CATEGORY_TOOL`, recipients from DynamoDB, `report_save` identity, ATLAS fallback, `send_draft` for new tools | team-implementer | `packages/identity-gateway/src/identity_gateway/{gateway.py,autonomy.py}`, `packages/identity-gateway/README.md` | C2, `test_gw_escalation.py`, C7 | 3, 4 | done (0799095, 78f564b) |
+| 6 | Lane I connection gate (Design 5) + double-based test | team-implementer (test first in same task) | `packages/identity-gateway/src/identity_gateway/{gateway.py,mcp_server.py}`, `packages/identity-gateway/tests/test_gw_needs_connection.py` | `test_gw_needs_connection.py` + C7 pass; with module absent C2 unchanged | 5 | done (0799095, 699a761, 6648f81, 48318d6) |
+| 7 | `assistant.py`: `EDITABLE_FIELDS` + `_within_role` via `CATEGORY_TOOL`; least-privilege cases for new categories | team-implementer | `Backend/app/routers/assistant.py`, `Backend/tests/test_least_privilege.py` | `test_least_privilege.py` + C6 pass | 5 | done (b240500) |
+| 8 | Failing C3 + Backend C4 tests (production resolver, moto) | team-test-author | `Backend/tests/{test_agent_permissions_api.py,test_privilege_escalation.py}` | collect; fail on missing route/guards | 2 | done (5da3b6b) |
+| 9 | Agents-tab server: `recommended_tools`, permissions route, exact-name/dup/extra=forbid, role cap on create/grants/`call_tool`/`approve`, ownerless rules, role resolver | team-implementer | `packages/identity-gateway/src/identity_gateway/{agents_api.py,agent_types.py}` | C3 + C4 Backend pass (with task 10) | 8 | done (ccb602e) |
+| 10 | Wiring: `Actor.is_admin`, resolver → mandate store, staff-write split; legacy test fixture + intended test updates | team-implementer | `Backend/app/agent_iam.py`, `Backend/tests/{conftest.py,test_route_auth.py,test_agent_ownership.py,test_agent_types.py}` | C3, C4 (Backend), C6 | 9 | done (ccb602e, 9fa4923, 7f7164b) |
+| 11 | Failing C5 tests | team-test-author | `agent/tests/test_assistant_parity.py` | collect; fail on prompt/stub | 2 | done (a1977a7) |
+| 12 | `CHAT_SYSTEM_PROMPT` + stub handlers for new tools + `StubState.role` | team-implementer | `agent/mandate_agent/runner.py`, `agent/stub_server.py`, `agent/README.md` | C5, C8 | 11 | done (9d785f4) |
+| 13 | Failing C9 tests | team-test-author | `Frontend/src/lib/permissions.test.ts`, `Frontend/src/pages/NewAgent.test.tsx` | vitest runs; fails on missing module | — | done (d21d076) |
+| 14 | `permissions.ts`, API method + types, picker + side panel, responsive CSS | team-implementer | `Frontend/src/lib/{permissions.ts,agents.ts,agentsApi.ts}`, `Frontend/src/pages/{NewAgent.tsx,Agents.css}` | C9, C10 | 13 | done (8443693) |
+| 15 | setup.sh: new permits gated with role policies, `forbid-campaign-reply` always; header comment; tests | team-implementer | `Backend/infra/{setup.sh,README.md}`, `Backend/tests/test_setup_role_policies.py` | C11 (`test_setup_role_policies.py`) | 2 | done (1a2c541) |
+| 16 | Docs: ROLES.md table + guarantees rows for new tools and Agents-tab caps | team-implementer | `docs/ROLES.md` | `grep -c 'email_send_list' docs/ROLES.md` ≥ 1 and C1 still passes | 2, 9 | done (6760ac8) |
+| 17 | Full check C1–C11 + 375px/1280px screenshots | team-verifier | none | every C exits 0 | all | partial: C1–C14 pass in round 1; 375px/1280px screenshots open |
+| 18 | Failing tests: draft_revise contracts (C1 additions) + gateway (C13) | team-test-author | `packages/mandate-contracts/tests/test_capability_parity.py`, `packages/identity-gateway/tests/test_gw_draft_revise.py` | fail for the right reason | 17 | done (d89a193, 99f8949) |
+| 19 | Failing tests: staffer draft edit API + escalation (C12) | team-test-author | `Backend/tests/test_draft_edit.py` | fail for the right reason | — | done (8b2c1aa) |
+| 20 | Failing tests: assistant draft workflow (C14) | team-test-author | `agent/tests/test_draft_workflow.py` | fail for the right reason | — | done (4e24074) |
+| 21 | Contracts + gateway: version, draft_revise, permit, Reason | team-implementer | `packages/mandate-contracts/{src/**,policies/**,schemas/tools.json,ts/index.ts}`, `packages/identity-gateway/src/identity_gateway/{gateway.py,authz.py}` | C1, C13, C7 | 18 | done (08dbdde) |
+| 22 | Staffer API: GET fields, PATCH, expectedVersion | team-implementer | `Backend/app/routers/assistant.py` | C12, C6 | 19, 21 | done (50c495c, 304f2f4) |
+| 23 | Prompt + stub draft_revise | team-implementer | `agent/mandate_agent/runner.py`, `agent/stub_server.py` | C14, C8 | 20, 21 | done (fc1e49a) |
 
 ## Rounds
 
