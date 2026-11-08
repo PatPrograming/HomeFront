@@ -13,6 +13,7 @@ max_steps range) are enforced by the API's request models.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from botocore.exceptions import ClientError
@@ -38,11 +39,30 @@ def agent_to_item(agent: AgentRecord) -> dict[str, Any]:
         "tool_grants": sorted(agent.tool_grants),
         "recipients": list(agent.recipients),
         "email_settings": agent.email_settings.view(),
+        # Floats aren't allowed in DynamoDB items; the bytes are in the logo store.
+        "email_logo": _logo_item(agent.email_logo),
         "token_version": agent.token_version,
         "active": agent.active,
         "created_at": _iso(agent.created_at),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _logo_item(logo: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not logo:
+        return None
+    return {k: Decimal(str(v)) if isinstance(v, float) else v for k, v in logo.items()}
+
+
+def _logo_from_item(item: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not item:
+        return None
+    out: dict[str, Any] = {}
+    for k, v in item.items():
+        if isinstance(v, Decimal):
+            v = int(v) if v == v.to_integral_value() and k != "uploaded_at" else float(v)
+        out[k] = v
+    return out
 
 
 def agent_from_item(item: dict[str, Any]) -> AgentRecord:
@@ -61,6 +81,7 @@ def agent_from_item(item: dict[str, Any]) -> AgentRecord:
         recipients=list(item.get("recipients") or []),
         # Rows written before email settings existed have none.
         email_settings=EmailSettings.from_dict(item.get("email_settings")),
+        email_logo=_logo_from_item(item.get("email_logo")),
         token_version=int(item["token_version"]),
         active=bool(item["active"]),
         created_at=datetime.fromisoformat(created).timestamp() if created else 0.0,

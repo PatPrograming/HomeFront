@@ -17,6 +17,8 @@ export interface Agent {
   recipients: string[];
   // Missing on APIs older than email settings; read via emailSettingsOf().
   email_settings?: EmailSettings;
+  // Agency logo at the top of every email; null/absent = none.
+  email_logo?: EmailLogo | null;
   token_version: number;
   active: boolean;
 }
@@ -26,6 +28,24 @@ export interface EmailSettings {
   from_name: string;
   reply_to: string;
   signature: string;
+}
+
+export interface EmailLogo {
+  content_type: string;
+  size: number;
+  width: number;
+  height: number;
+  uploaded_at: number;
+  filename?: string;
+}
+
+/** A sample email rendered in the agent's template (GET /agents/{id}/email-preview). */
+export interface EmailPreview {
+  subject: string;
+  from: string | null;
+  html: string;
+  text: string;
+  logo_data_url: string | null;
 }
 
 export const EMPTY_EMAIL_SETTINGS: EmailSettings = { from_email: "", from_name: "", reply_to: "", signature: "" };

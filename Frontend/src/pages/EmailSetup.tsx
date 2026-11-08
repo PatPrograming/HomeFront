@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi as api } from "../lib/agentsApi";
+import EmailBranding from "./EmailBranding";
 import EmailDelivery from "./EmailDelivery";
 import {
   describeError,
@@ -277,6 +278,8 @@ export default function EmailSetup({
             <dd>{settings.reply_to || <span className="muted">Same as sender</span>}</dd>
             <dt>Signature</dt>
             <dd>{settings.signature ? "Added to every email" : <span className="muted">None</span>}</dd>
+            <dt>Logo</dt>
+            <dd>{agent.email_logo ? "Shown in every email" : <span className="muted">None</span>}</dd>
             <dt>Recipients</dt>
             <dd>
               {recipients.length ? (
@@ -287,6 +290,7 @@ export default function EmailSetup({
             </dd>
           </dl>
           {reason && <p className="muted mailing-list-hint">{reason}</p>}
+          <EmailBranding agent={agent} onSaved={onSaved} />
           <EmailDelivery
             agent={agent}
             senderEmail={

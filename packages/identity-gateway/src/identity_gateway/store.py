@@ -11,6 +11,7 @@ from typing import Any, Callable, Iterable, Protocol
 
 from .approvals import ApprovalRepository, MemoryApprovalRepository
 from .audit import AuditRepository, MemoryAuditRepository, compact_atlas
+from .logo_store import LogoRepository, MemoryLogoRepository
 
 log = logging.getLogger(__name__)
 
@@ -123,6 +124,9 @@ class AgentRecord:
     # Mailing list (normalized, see normalize_recipients).
     recipients: list[str] = field(default_factory=list)
     email_settings: EmailSettings = field(default_factory=EmailSettings)
+    # Agency logo for the email template: logo_store.validate_logo()'s metadata
+    # plus "key" (the bytes live in the logo repository). None = no logo.
+    email_logo: dict[str, Any] | None = None
     token_version: int = 1
     active: bool = True
     created_at: float = field(default_factory=time.time)
@@ -166,6 +170,7 @@ def _copy(agent: AgentRecord) -> AgentRecord:
         tool_grants=set(agent.tool_grants),
         recipients=list(agent.recipients),
         email_settings=replace(agent.email_settings),
+        email_logo=dict(agent.email_logo) if agent.email_logo else None,
     )
 
 
@@ -236,6 +241,8 @@ class GatewayStore:
         # Set by the host app when a configured store couldn't be used.
         self.storage_warnings: list[str] = []
         self.tokens: dict[str, TokenRecord] = {}
+        # Logo bytes for the email template (S3 when the host app configures it).
+        self.logos: LogoRepository = MemoryLogoRepository()
 
     def use_agent_repository(self, repo: AgentRepository) -> None:
         with self._lock:
@@ -248,6 +255,14 @@ class GatewayStore:
     def use_approval_repository(self, repo: ApprovalRepository) -> None:
         with self._lock:
             self.approvals = repo
+
+    def use_logo_repository(self, repo: LogoRepository) -> None:
+        with self._lock:
+            self.logos = repo
+
+    @property
+    def logo_backend(self) -> str:
+        return getattr(self.logos, "backend", type(self.logos).__name__)
 
     @property
     def approval_backend(self) -> str:
@@ -323,6 +338,12 @@ class GatewayStore:
     def set_email_settings(self, agent_id: str, settings: EmailSettings) -> AgentRecord:
         def apply(agent: AgentRecord) -> None:
             agent.email_settings = replace(settings)
+
+        return self._mutate(agent_id, apply)
+
+    def set_email_logo(self, agent_id: str, logo: dict[str, Any] | None) -> AgentRecord:
+        def apply(agent: AgentRecord) -> None:
+            agent.email_logo = dict(logo) if logo else None
 
         return self._mutate(agent_id, apply)
 

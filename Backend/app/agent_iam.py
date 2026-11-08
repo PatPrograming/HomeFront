@@ -76,6 +76,7 @@ def include_agents_api(host_app: FastAPI, prefix: str = "") -> None:
     configure_bedrock_runner()
     if get_settings().agent_store == "dynamodb":
         use_dynamodb_stores(agents_api.store)
+    use_logo_bucket(agents_api.store)
 
     reads, writes = APIRouter(), APIRouter()
     for route in agents_api.router.routes:
@@ -139,6 +140,16 @@ def use_dynamodb_stores(store) -> None:
         msg = f"Approvals are in memory only: {table_name('approvals')} unavailable ({_aws_reason(exc)})"
         store.storage_warnings.append(msg)
         log.warning("%s; full error: %s. %s", msg, exc, hint)
+
+
+def use_logo_bucket(store) -> None:
+    """Keep email logos in S3 when HOMEFRONT_LOGO_BUCKET is set (memory otherwise)."""
+    bucket = get_settings().homefront_logo_bucket.strip()
+    if not bucket:
+        return
+    from identity_gateway.logo_store import S3LogoRepository
+
+    store.use_logo_repository(S3LogoRepository(bucket, region=get_settings().resolved_aws_region or None))
 
 
 def configure_bedrock_runner() -> None:

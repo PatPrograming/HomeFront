@@ -10,6 +10,7 @@ import type {
   AuditEvent,
   EmailAccount,
   EmailPermissions,
+  EmailPreview,
   EmailSettings,
   EmailVerification,
   RecipientVerification,
@@ -98,6 +99,12 @@ export const agentsApi = {
   // "" clears a field
   setEmailSettings: (agentId: string, body: EmailSettings) =>
     request<Agent>(`${agentPath(agentId)}/email-settings`, { method: "PUT", body }),
+  // PNG/JPEG/GIF, 512 KB max, sent as base64 (a data: URL is fine).
+  uploadEmailLogo: (agentId: string, dataBase64: string, filename: string) =>
+    request<Agent>(`${agentPath(agentId)}/email-logo`, { method: "PUT", body: { data_base64: dataBase64, filename } }),
+  deleteEmailLogo: (agentId: string) => request<Agent>(`${agentPath(agentId)}/email-logo`, { method: "DELETE" }),
+  emailPreview: (agentId: string, listMail = false) =>
+    request<EmailPreview>(`${agentPath(agentId)}/email-preview${listMail ? "?list_mail=true" : ""}`),
   emailVerification: (agentId: string) => request<EmailVerification>(`${agentPath(agentId)}/email-settings/verification`),
   // SES CreateEmailIdentity for the sender (AWS emails it a verification link).
   verifySender: (agentId: string) =>

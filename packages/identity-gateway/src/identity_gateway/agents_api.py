@@ -12,7 +12,9 @@ resolver below is set there too; until it is, every call is refused (401).
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import logging
 import sys
 import time
 from pathlib import Path
@@ -40,6 +42,7 @@ from mcp_tools.handlers import invoke_tool, resolve_sender, ses_identity_status 
 from mcp_tools.registry import get_tool, list_tools, tool_public_view  # noqa: E402
 
 from . import email_admin  # noqa: E402
+from . import logo_store  # noqa: E402
 
 from .agent_types import (
     AGENT_TYPES,
@@ -75,6 +78,7 @@ runner: AgentRunner | None = None
 enricher = AtlasEnricher()
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 class AuthRequest(BaseModel):
@@ -130,6 +134,13 @@ class EmailSettingsUpdate(BaseModel):
     signature: str = Field(default="", max_length=MAX_SIGNATURE * 2)
 
 
+class EmailLogoUpload(BaseModel):
+    """A PNG, JPEG or GIF, base64-encoded (a data: URL is fine too)."""
+
+    data_base64: str = Field(min_length=8, max_length=(logo_store.MAX_LOGO_BYTES * 4) // 3 + 64)
+    filename: str = Field(default="", max_length=255)
+
+
 class TestEmailRequest(BaseModel):
     to: str = Field(min_length=3, max_length=254)
 
@@ -164,9 +175,37 @@ def _agent_view(agent: AgentRecord) -> dict[str, Any]:
         "tool_grants": sorted(agent.tool_grants),
         "recipients": list(agent.recipients),
         "email_settings": agent.email_settings.view(),
+        "email_logo": _logo_view(agent),
         "token_version": agent.token_version,
         "active": agent.active,
     }
+
+
+def _logo_view(agent: AgentRecord) -> dict[str, Any] | None:
+    logo = agent.email_logo
+    if not logo:
+        return None
+    return {k: logo.get(k) for k in ("content_type", "size", "width", "height", "uploaded_at", "filename")}
+
+
+def _load_logo(agent: AgentRecord) -> dict[str, Any] | None:
+    """The logo for a send or preview. A storage failure drops the logo, never the email."""
+    meta = agent.email_logo
+    if not meta or not meta.get("key"):
+        return None
+    try:
+        data = store.logos.get(meta["key"])
+    except Exception as exc:
+        log.warning("Couldn't load logo %s for %s (%s); sending without it", meta["key"], agent.agent_id, exc)
+        return None
+    if not data:
+        return None
+    return {"data": data, "content_type": meta["content_type"], "width": meta["width"], "height": meta["height"]}
+
+
+def _sender_settings(agent: AgentRecord) -> dict[str, Any]:
+    """What the email handlers get as `sender`: the stored settings plus template branding."""
+    return {**agent.email_settings.view(), "agency": agent.agency, "logo": _load_logo(agent)}
 
 
 def _recipients_error(exc: InvalidRecipientsError) -> HTTPException:
@@ -483,6 +522,98 @@ def replace_email_settings(
     return _agent_view(agent)
 
 
+@router.put("/agents/{agent_id}/email-logo")
+def upload_email_logo(
+    agent_id: str, body: EmailLogoUpload, actor: Actor = Depends(get_actor)
+) -> dict[str, Any]:
+    """Store the agency logo shown at the top of every email (PNG/JPEG/GIF, 512 KB max)."""
+    agent = _accessible_agent(agent_id, actor)
+    try:
+        data = logo_store.decode_upload(body.data_base64)
+        meta = logo_store.validate_logo(data)
+    except logo_store.InvalidLogoError as exc:
+        raise HTTPException(status_code=400, detail={"error": "invalid_logo", "message": str(exc)})
+    meta["key"] = logo_store.object_key(agent_id, meta)
+    meta["filename"] = " ".join(body.filename.split())[:255]
+    try:
+        store.logos.put(meta["key"], data, meta["content_type"])
+    except Exception as exc:
+        log.warning("Logo upload to %s failed: %s", store.logo_backend, exc)
+        raise HTTPException(
+            status_code=502,
+            detail={"error": "logo_storage_failed", "message": f"Couldn't store the logo ({type(exc).__name__})."},
+        )
+    old = agent.email_logo
+    agent = store.set_email_logo(agent_id, meta)
+    if old and old.get("key") and old["key"] != meta["key"]:
+        try:
+            store.logos.delete(old["key"])
+        except Exception as exc:  # an orphaned object is harmless
+            log.warning("Couldn't delete old logo %s: %s", old["key"], exc)
+    store.append_audit(
+        {
+            "type": "email_logo_updated",
+            "decision": "info",
+            "agent_id": agent_id,
+            "actor": actor.label,
+            "detail": f"Email setup: logo set ({meta['width']}×{meta['height']} {meta['content_type']}, "
+            f"{meta['size'] // 1024 or 1} KB)",
+        }
+    )
+    return _agent_view(agent)
+
+
+@router.delete("/agents/{agent_id}/email-logo")
+def delete_email_logo(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    agent = _accessible_agent(agent_id, actor)
+    old = agent.email_logo
+    if not old:
+        return _agent_view(agent)
+    agent = store.set_email_logo(agent_id, None)
+    try:
+        store.logos.delete(old["key"])
+    except Exception as exc:
+        log.warning("Couldn't delete logo %s: %s", old.get("key"), exc)
+    store.append_audit(
+        {
+            "type": "email_logo_updated",
+            "decision": "info",
+            "agent_id": agent_id,
+            "actor": actor.label,
+            "detail": "Email setup: logo removed",
+        }
+    )
+    return _agent_view(agent)
+
+
+PREVIEW_SUBJECT = "Service update"
+PREVIEW_BODY = (
+    "Residents of the north district: scheduled water main maintenance will take place on "
+    "Tuesday from 9 a.m. to 3 p.m. Water service may be interrupted during this time.\n\n"
+    "For the latest updates, visit https://example.gov/updates."
+)
+
+
+@router.get("/agents/{agent_id}/email-preview")
+def email_preview(agent_id: str, list_mail: bool = False, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    """A sample email in the agent's template (logo inlined as a data: URL for display)."""
+    agent = _accessible_agent(agent_id, actor)
+    sender = {**resolve_sender(_sender_settings(agent)), "bulk": list_mail}
+    body = email_handlers.compose_body(PREVIEW_BODY, sender["signature"])
+    logo = sender.get("logo")
+    data_url = (
+        f"data:{logo['content_type']};base64,{base64.b64encode(logo['data']).decode('ascii')}" if logo else None
+    )
+    rendered = email_handlers.render_email(sender, PREVIEW_SUBJECT, body, logo_src=data_url)
+    return {
+        "subject": PREVIEW_SUBJECT,
+        "from": sender["from_header"] or None,
+        "html": rendered["html"],
+        "text": rendered["text"],
+        "logo_data_url": data_url,
+    }
+
+
 @router.get("/agents/{agent_id}/email-settings/verification")
 def email_settings_verification(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
     """Is the effective sender verified in SES? verified=null when it can't be checked."""
@@ -542,8 +673,7 @@ def send_test_email(
     """A person-triggered test send through SES: proves the sender, permissions and
     sandbox status. `to` must be on the mailing list or be the sender itself."""
     agent = _accessible_agent(agent_id, actor)
-    settings = agent.email_settings.view()
-    sender = email_handlers.resolve_sender(settings)
+    sender = email_handlers.resolve_sender(_sender_settings(agent))
     to = normalize_email(body.to)
     if not sender["from_email"]:
         raise HTTPException(
@@ -557,10 +687,10 @@ def send_test_email(
                 "message": f"{to} isn't on this agent's mailing list or its sender address.",
             },
         )
-    subject = f"Test email from {agent.name}"
+    subject = f"Test message from {agent.agency}"
     text = email_handlers.compose_body(
-        f"This is a test email from the HomeFront agent \"{agent.name}\" ({agent.agency}).\n"
-        f"If you received it, {sender['from_email']} can send through Amazon SES.",
+        f"This message confirms that {sender['from_email']} is set up to send email on behalf of "
+        f"{agent.agency}.\n\nNo action is needed.",
         sender["signature"],
     )
     base = {"to": to, "from": sender["from_header"], "subject": subject}
@@ -1298,7 +1428,7 @@ def approve(
     if rec.tool in EMAIL_TOOLS:
         # Sender and audience come from the agent's record, never from the
         # agent's or reviewer's arguments.
-        run_args["sender"] = agent.email_settings.view()
+        run_args["sender"] = _sender_settings(agent)
     if rec.tool == EMAIL_SEND_LIST:
         run_args["recipients"] = list(agent.recipients)
     try:
@@ -1491,6 +1621,7 @@ def storage_status() -> dict[str, Any]:
         "agent_store": store.agent_backend,
         "audit_store": store.audit_backend,
         "approval_store": store.approval_backend,
+        "logo_store": store.logo_backend,
         "audit_write_errors": store.audit_write_errors,
         "last_audit_error": store.last_audit_error,
         "warnings": list(store.storage_warnings),

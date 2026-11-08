@@ -6,8 +6,11 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from email.utils import formataddr
+from email.message import EmailMessage
+from email.utils import formataddr, formatdate, make_msgid
 from typing import Any, Callable
+
+from . import email_template
 
 DATAGOV_SEARCH_URL = "https://api.gsa.gov/technology/datagov/v4/search"
 
@@ -45,6 +48,10 @@ def resolve_sender(sender: dict[str, Any] | None) -> dict[str, Any]:
         "reply_to": str(sender.get("reply_to") or "").strip(),
         "signature": str(sender.get("signature") or "").strip(),
         "source": "agent" if agent_from else ("env" if from_email else None),
+        # Template branding, injected by the gateway alongside the settings.
+        "agency": str(sender.get("agency") or "").strip(),
+        "logo": sender.get("logo") if isinstance(sender.get("logo"), dict) else None,
+        "bulk": bool(sender.get("bulk")),
     }
 
 
@@ -103,17 +110,67 @@ def _ses_client(quick: bool = False) -> Any:
     return boto3.client("sesv2", region_name=_ses_region(), config=config)
 
 
+def _split_signature(body: str, signature: str) -> str:
+    """compose_body() in reverse: the template sets the signature apart."""
+    if signature and body.endswith(signature):
+        return body[: -len(signature)].rstrip()
+    return body
+
+
+def render_email(sender: dict[str, Any], subject: str, body: str, logo_src: str | None = None) -> dict[str, str]:
+    """{"text", "html"} as sent. `sender` is resolve_sender()'s result; `body`
+    already carries the signature. `logo_src` defaults to the inline cid."""
+    signature = sender.get("signature") or ""
+    main = _split_signature(body, signature)
+    logo = sender.get("logo")
+    size = (int(logo["width"]), int(logo["height"])) if logo and logo.get("width") and logo.get("height") else None
+    return {
+        "text": email_template.render_text(main, signature, sender, bulk=sender.get("bulk", False)),
+        "html": email_template.render_html(
+            subject,
+            main,
+            signature,
+            sender,
+            logo_src=(logo_src or "cid:logo") if logo else None,
+            logo_size=size,
+            bulk=sender.get("bulk", False),
+        ),
+    }
+
+
+def build_message(sender: dict[str, Any], to: str, subject: str, body: str) -> EmailMessage:
+    """multipart/alternative (text + HTML), the logo attached inline to the HTML part."""
+    domain = sender["from_email"].rsplit("@", 1)[-1] if sender.get("from_email") else None
+    logo = sender.get("logo")
+    cid = make_msgid("logo", domain=domain)
+    rendered = render_email(sender, subject, body, logo_src=f"cid:{cid[1:-1]}")
+
+    msg = EmailMessage()
+    msg["From"] = sender["from_header"]
+    msg["To"] = to
+    msg["Subject"] = subject
+    msg["Date"] = formatdate(localtime=False)
+    msg["Message-ID"] = make_msgid(domain=domain)
+    if sender.get("reply_to"):
+        msg["Reply-To"] = sender["reply_to"]
+    unsubscribe = sender.get("reply_to") or sender.get("from_email")
+    if sender.get("bulk") and unsubscribe:
+        msg["List-Unsubscribe"] = f"<mailto:{unsubscribe}?subject=unsubscribe>"
+    msg.set_content(rendered["text"], charset="utf-8")
+    msg.add_alternative(rendered["html"], subtype="html", charset="utf-8")
+    if logo and logo.get("data"):
+        maintype, _, subtype = str(logo.get("content_type") or "image/png").partition("/")
+        html_part = msg.get_payload()[1]
+        html_part.add_related(logo["data"], maintype=maintype, subtype=subtype, cid=cid, filename=f"logo.{subtype}")
+    return msg
+
+
 def _ses_send(ses: Any, sender: dict[str, Any], to: str, subject: str, body: str) -> str | None:
     """`sender` is resolve_sender()'s result; `body` already carries the signature."""
     request: dict[str, Any] = {
         "FromEmailAddress": sender["from_header"],
         "Destination": {"ToAddresses": [to]},
-        "Content": {
-            "Simple": {
-                "Subject": {"Data": subject, "Charset": "UTF-8"},
-                "Body": {"Text": {"Data": body, "Charset": "UTF-8"}},
-            }
-        },
+        "Content": {"Raw": {"Data": build_message(sender, to, subject, body).as_bytes()}},
     }
     if sender.get("reply_to"):
         request["ReplyToAddresses"] = [sender["reply_to"]]
@@ -164,7 +221,7 @@ def handle_email_send_list(args: dict[str, Any]) -> dict[str, Any]:
     """
     recipients = [r for r in (args.get("recipients") or []) if isinstance(r, str) and r]
     subject = args.get("subject") or "(no subject)"
-    sender = resolve_sender(args.get("sender"))
+    sender = {**resolve_sender(args.get("sender")), "bulk": True}
     body = compose_body(args.get("body") or "", sender["signature"])
     if not recipients:
         raise ValueError("The mailing list is empty")

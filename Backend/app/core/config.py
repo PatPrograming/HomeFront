@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # Outbound email (SES). Fallback sender when an agent has none of its own.
     homefront_email_from: str = ""
     homefront_ses_region: str = ""
+    # Private S3 bucket for agency logos in the email template (LogoBucket in
+    # infra/cloudformation/homefront.yaml). Empty = logos kept in memory.
+    homefront_logo_bucket: str = ""
 
     # api.data.gov — gateway-held only; never returned to agents (AML.M0026).
     data_gov_api_key: str = ""

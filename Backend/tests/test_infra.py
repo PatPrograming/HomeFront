@@ -45,7 +45,8 @@ def test_tables_match_code():
 
 def test_backend_policy_covers_every_table_and_operation_used():
     resources = _template()["Resources"]
-    [stmt] = resources["BackendDataPolicy"]["Properties"]["PolicyDocument"]["Statement"]
+    statements = resources["BackendDataPolicy"]["Properties"]["PolicyDocument"]["Statement"]
+    [stmt] = [s for s in statements if s["Sid"] == "HomeFrontTables"]
     table_resources = {k for k, r in resources.items() if r["Type"] == "AWS::DynamoDB::Table"}
     assert {g["!GetAtt"].split(".")[0] for g in stmt["Resource"]} == table_resources
     # Every DynamoDB call the backend makes (TransactWriteItems is authorized
@@ -66,3 +67,13 @@ def test_web_client_is_public_srp_client():
     assert client["GenerateSecret"] is False
     assert "ALLOW_USER_PASSWORD_AUTH" not in client["ExplicitAuthFlows"]
     assert "ALLOW_USER_SRP_AUTH" in client["ExplicitAuthFlows"]
+
+
+def test_logo_bucket_is_private_and_backend_can_use_it():
+    resources = _template()["Resources"]
+    bucket = resources["LogoBucket"]["Properties"]
+    assert all(bucket["PublicAccessBlockConfiguration"].values())
+    statements = resources["BackendDataPolicy"]["Properties"]["PolicyDocument"]["Statement"]
+    [stmt] = [s for s in statements if s["Sid"] == "HomeFrontLogos"]
+    # Exactly what identity_gateway.logo_store.S3LogoRepository calls.
+    assert set(stmt["Action"]) == {"s3:GetObject", "s3:PutObject", "s3:DeleteObject"}

@@ -175,6 +175,27 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  # Agency logos for the email template. Private: emails embed the logo as an
+  # inline attachment, so nothing is ever served from the bucket.
+  LogoBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${Prefix}logos-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
   # --- Access -----------------------------------------------------------
   # Attach to whatever runs the backend (an IAM user for local dev, or the
   # App Runner / ECS / Lambda role). Browsers never touch DynamoDB: this
@@ -182,7 +203,7 @@ Resources:
   BackendDataPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      Description: HomeFront backend access to its DynamoDB tables only.
+      Description: HomeFront backend access to its DynamoDB tables and logo bucket only.
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -202,6 +223,14 @@ Resources:
               - !GetAtt AgentsTable.Arn
               - !GetAtt AuditTable.Arn
               - !GetAtt ApprovalsTable.Arn
+          - Sid: HomeFrontLogos
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource:
+              - !Sub "${LogoBucket.Arn}/logos/*"
 
 Outputs:
   Region:
@@ -214,3 +243,6 @@ Outputs:
     Value: !Ref Prefix
   BackendDataPolicyArn:
     Value: !Ref BackendDataPolicy
+  LogoBucketName:
+    Description: HOMEFRONT_LOGO_BUCKET
+    Value: !Ref LogoBucket
