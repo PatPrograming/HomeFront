@@ -36,9 +36,11 @@ export default function Navbar() {
               {l.label}
             </NavLink>
           ))}
-          <Link to={session ? "/account" : "/login"} className="nav-cta" onClick={close}>
-            {session ? session.username : "Sign in"}
-          </Link>
+          {!session && (
+            <Link to="/login" className="nav-cta" onClick={close}>
+              Sign in
+            </Link>
+          )}
         </nav>
       </div>
     </header>

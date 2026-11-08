@@ -5,8 +5,7 @@ export interface NavLink {
 
 export const NAV_LINKS: NavLink[] = [
   { label: "Home", href: "/" },
-  { label: "Emails", href: "/emails" },
-  { label: "Social Platform", href: "/social-platform" },
+  // Emails and Social Platform moved off the nav into the home page's "Start a communication" menu (main).
   // HomeFront's chat console: the staffer's own assistant (mandate token, Cedar, review queue).
   { label: "Your assistant", href: "/console" },
   // The teammates' agent tabs (old-gateway agent store, behind our Cognito login).
@@ -14,6 +13,7 @@ export const NAV_LINKS: NavLink[] = [
   { label: "Monitoring", href: "/monitoring" },
   { label: "Approvals", href: "/approvals" },
   { label: "Activity", href: "/activity" },
+  { label: "Account", href: "/account" },
 ];
 
 // Shown only to the Cognito group "admin".
