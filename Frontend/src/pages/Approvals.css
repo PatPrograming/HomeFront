@@ -178,3 +178,13 @@
   font-family: inherit;
   white-space: pre-wrap;
 }
+
+.sandbox-warning {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: #fff6e5;
+  border: 1px solid #f0d28a;
+  color: #5c4100;
+  word-break: break-word;
+}

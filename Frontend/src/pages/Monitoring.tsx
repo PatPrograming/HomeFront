@@ -13,6 +13,7 @@ import {
   type Tool,
 } from "../lib/agents";
 import EmailSetup, { NoEmailNote, emailSetupPath } from "./EmailSetup";
+import RunTask from "./RunTask";
 import "./Agents.css";
 import "./Monitoring.css";
 
@@ -394,6 +395,15 @@ export default function Monitoring() {
               ) : (
                 <NoEmailNote agent={agent} types={types} />
               )}
+            </section>
+
+            <section className="panel run-panel">
+              <h2>Run a task</h2>
+              <p className="hint">
+                Give the agent a task in plain words and watch each tool call it makes. Anything it wants to send
+                waits on the <Link to="/approvals">Approvals</Link> page.
+              </p>
+              {agent ? <RunTask key={agent.agent_id} agent={agent} /> : <p>Loading agent…</p>}
             </section>
 
             <section className="panel actions">

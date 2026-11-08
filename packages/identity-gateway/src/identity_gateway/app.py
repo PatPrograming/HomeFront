@@ -25,8 +25,11 @@ for rel in (
 from atlas_enricher import AnnotateRequest, AtlasEnricher  # noqa: E402
 from atlas_enricher.enricher import AnnotateEvent  # noqa: E402
 from atlas_enricher.router import build_router  # noqa: E402
+from mcp_tools import handlers as email_handlers  # noqa: E402
 from mcp_tools.handlers import invoke_tool, resolve_sender, ses_identity_status  # noqa: E402
 from mcp_tools.registry import get_tool, list_tools, tool_public_view  # noqa: E402
+
+from . import email_admin  # noqa: E402
 
 from .agent_types import (
     AGENT_TYPES,
@@ -129,6 +132,10 @@ class EmailSettingsUpdate(BaseModel):
     from_name: str = Field(default="", max_length=MAX_FROM_NAME * 2)
     reply_to: str = Field(default="", max_length=254)
     signature: str = Field(default="", max_length=MAX_SIGNATURE * 2)
+
+
+class TestEmailRequest(BaseModel):
+    to: str = Field(min_length=3, max_length=254)
 
 
 class RecipientsUpdate(BaseModel):
@@ -507,6 +514,146 @@ def email_settings_verification(agent_id: str, actor: Actor = Depends(get_actor)
         return {"from_email": None, "source": None, "verified": None, "reason": "No sender email is set."}
     status = ses_identity_status(sender["from_email"])
     return {"from_email": sender["from_email"], "source": sender["source"], **status}
+
+
+def _ses_http_error(exc: email_admin.SesActionError) -> HTTPException:
+    return HTTPException(status_code=exc.status, detail={"error": exc.code, "message": str(exc)})
+
+
+@app.get("/email/account")
+def email_account(actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    """SES sandbox status and sending quota (cached ~60s). Nulls + reason when it can't be read."""
+    return email_admin.account_status()
+
+
+@app.get("/email/permissions")
+def email_permissions(actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    """Whether the server's AWS role may send email / request verification (IAM simulation)."""
+    return email_admin.permissions()
+
+
+@app.post("/agents/{agent_id}/email-settings/verify-sender")
+def verify_sender(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    """Ask SES to email the sender address a verification link (CreateEmailIdentity)."""
+    agent = _accessible_agent(agent_id, actor)
+    sender = resolve_sender(agent.email_settings.view())
+    if not sender["from_email"]:
+        raise HTTPException(
+            status_code=400, detail={"error": "no_sender", "message": "Set a sender email first."}
+        )
+    try:
+        out = email_admin.request_verification(sender["from_email"])
+    except email_admin.SesActionError as exc:
+        raise _ses_http_error(exc)
+    store.append_audit(
+        {
+            "type": "sender_verification_requested",
+            "decision": "info",
+            "agent_id": agent_id,
+            "actor": actor.label,
+            "detail": out["message"],
+        }
+    )
+    return out
+
+
+@app.post("/agents/{agent_id}/email-settings/test")
+def send_test_email(
+    agent_id: str, body: TestEmailRequest, actor: Actor = Depends(get_actor)
+) -> dict[str, Any]:
+    """A person-triggered test send through SES: proves the sender, permissions and
+    sandbox status. `to` must be on the mailing list or be the sender itself."""
+    agent = _accessible_agent(agent_id, actor)
+    settings = agent.email_settings.view()
+    sender = email_handlers.resolve_sender(settings)
+    to = normalize_email(body.to)
+    if not sender["from_email"]:
+        raise HTTPException(
+            status_code=400, detail={"error": "no_sender", "message": "Set a sender email first."}
+        )
+    if to not in agent.recipients and to != normalize_email(sender["from_email"]):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "recipient_not_allowed",
+                "message": f"{to} isn't on this agent's mailing list or its sender address.",
+            },
+        )
+    subject = f"Test email from {agent.name}"
+    text = email_handlers.compose_body(
+        f"This is a test email from the HomeFront agent \"{agent.name}\" ({agent.agency}).\n"
+        f"If you received it, {sender['from_email']} can send through Amazon SES.",
+        sender["signature"],
+    )
+    base = {"to": to, "from": sender["from_header"], "subject": subject}
+    try:
+        message_id = email_handlers._ses_send(email_handlers._ses_client(quick=True), sender, to, subject, text)
+        out = {**base, "ok": True, "message_id": message_id, "error": None, "error_code": None}
+    except Exception as exc:
+        out = {
+            **base,
+            "ok": False,
+            "message_id": None,
+            "error_code": email_admin.error_code(exc),
+            "error": email_admin.error_text(exc)
+            if not email_admin._no_credentials(exc)
+            else email_admin._unavailable_reason(exc),
+        }
+    store.append_audit(
+        {
+            "type": "email_test",
+            "decision": "allow" if out["ok"] else "deny",
+            "agent_id": agent_id,
+            "actor": actor.label,
+            "tool": "email.send",
+            "detail": f"Test email to {to}: "
+            + (f"sent ({out['message_id']})" if out["ok"] else out["error"]),
+        }
+    )
+    return out
+
+
+@app.get("/agents/{agent_id}/recipients/verification")
+def recipients_verification(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    """Per-recipient SES verification status (matters only in the sandbox)."""
+    agent = _accessible_agent(agent_id, actor)
+    result = email_admin.address_statuses(agent.recipients)
+    statuses = result["statuses"]
+    return {
+        "available": result["available"],
+        "reason": result["reason"],
+        "total": len(agent.recipients),
+        "verified": sum(1 for s in statuses.values() if s == "verified"),
+        "recipients": [{"address": a, "status": statuses.get(a)} for a in agent.recipients],
+    }
+
+
+@app.post("/agents/{agent_id}/recipients/verify")
+def verify_recipients(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    """Ask SES to send verification links to unverified recipients, up to
+    email_admin.CREATE_BATCH per call (SES allows ~1 such request per second).
+    Call again while `remaining` > 0."""
+    agent = _accessible_agent(agent_id, actor)
+    if not agent.recipients:
+        raise HTTPException(
+            status_code=400, detail={"error": "empty_list", "message": "The mailing list is empty."}
+        )
+    try:
+        out = email_admin.request_verifications(list(agent.recipients))
+    except email_admin.SesActionError as exc:
+        raise _ses_http_error(exc)
+    if out["requested"] or out["failed"]:
+        store.append_audit(
+            {
+                "type": "recipients_verification_requested",
+                "decision": "info",
+                "agent_id": agent_id,
+                "actor": actor.label,
+                "detail": f"Verification emails requested for {len(out['requested'])} recipient(s)"
+                + (f", {len(out['failed'])} failed" if out["failed"] else ""),
+            }
+        )
+    return out
 
 
 @app.post("/auth/token", response_model=AuthResponse)
@@ -961,7 +1108,30 @@ def _approval_view(rec: ApprovalRecord, agent: AgentRecord | None) -> dict[str, 
     view["recipients"] = list(agent.recipients) if agent and rec.tool == EMAIL_SEND_LIST else None
     # The sender and signature the gateway adds if approved now.
     view["sender"] = _sender_preview(agent) if agent and rec.tool in EMAIL_TOOLS else None
+    view["delivery"] = _delivery_check(rec, agent) if agent and rec.status == "pending" else None
     return view
+
+
+def _delivery_check(rec: ApprovalRecord, agent: AgentRecord) -> dict[str, Any] | None:
+    """In the SES sandbox, which recipients SES would reject. A warning, never a block."""
+    if rec.tool not in EMAIL_TOOLS:
+        return None
+    if rec.tool == EMAIL_SEND:
+        recipients = [normalize_email(str(rec.arguments.get("to") or ""))]
+    else:
+        recipients = list(agent.recipients)
+    if not recipients or _sender_preview(agent)["simulated"]:
+        return None
+    account = email_admin.account_status()
+    if account["sandbox"] is not True:
+        return {"sandbox": account["sandbox"], "unverified": [], "reason": account["reason"]}
+    missing = email_admin.unverified(recipients)
+    return {
+        "sandbox": True,
+        "unverified": missing,  # None = couldn't tell
+        "recipient_count": len(recipients),
+        "reason": "SES sandbox: unverified recipients will be rejected by SES.",
+    }
 
 
 def _accessible_approval(approval_id: str, actor: Actor) -> tuple[ApprovalRecord, AgentRecord]:

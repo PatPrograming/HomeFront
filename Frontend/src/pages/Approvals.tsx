@@ -123,6 +123,20 @@ function ApprovalCard({ approval, onDone }: { approval: Approval; onDone: () => 
         </dl>
       )}
 
+      {approval.delivery?.sandbox === true && (approval.delivery.unverified?.length ?? 0) > 0 && (
+        <p className="sandbox-warning" role="status">
+          <strong>SES sandbox:</strong> {approval.delivery.unverified!.length} of{" "}
+          {approval.delivery.recipient_count ?? approval.delivery.unverified!.length} recipient
+          {(approval.delivery.recipient_count ?? 0) === 1 ? "" : "s"} aren't verified, so SES will reject them:{" "}
+          {approval.delivery.unverified!.slice(0, 5).join(", ")}
+          {approval.delivery.unverified!.length > 5 ? ", …" : ""}. You can still approve.{" "}
+          <Link to={emailSetupPath(approval.agent_id)}>Verify recipients</Link>
+        </p>
+      )}
+      {approval.delivery?.sandbox === true && approval.delivery.unverified === null && (
+        <p className="muted approval-sub">SES sandbox: couldn't check which recipients are verified.</p>
+      )}
+
       <div className="approval-fields">
         {fields.map((f) => {
           const label = FIELD_LABELS[f] || f;

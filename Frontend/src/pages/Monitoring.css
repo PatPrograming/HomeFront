@@ -118,6 +118,7 @@
   grid-template-areas:
     'identity actions atlas'
     'identity email atlas'
+    'run run run'
     'audit audit audit';
   align-items: start;
   gap: 1rem;
@@ -175,6 +176,43 @@
 .monitoring-console .email-panel button.btn-primary:hover:not(:disabled) {
   background: var(--blue-800);
   border-color: var(--blue-800);
+}
+
+.monitoring-console .run-panel {
+  grid-area: run;
+  min-width: 0;
+  animation-delay: 0.09s;
+}
+
+.monitoring-console .run-panel .run-task {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.monitoring-console .run-panel button.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.monitoring-console .run-panel button.btn-primary:hover:not(:disabled) {
+  background: var(--blue-800);
+  border-color: var(--blue-800);
+}
+
+/* History rows are list items, not console buttons. */
+.monitoring-console .run-panel button.run-history-item {
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  font-weight: 400;
+  padding: 6px 8px;
+}
+
+.monitoring-console .run-panel button.run-history-item:hover,
+.monitoring-console .run-panel button.run-history-item.is-current {
+  background: var(--canvas);
+  border-color: var(--line);
 }
 
 .monitoring-console .atlas {
@@ -508,6 +546,7 @@
       'identity'
       'actions'
       'email'
+      'run'
       'atlas'
       'audit';
   }

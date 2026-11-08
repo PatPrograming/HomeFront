@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api.js";
+import EmailDelivery from "./EmailDelivery";
 import {
   describeError,
   emailSettingsOf,
@@ -72,7 +73,7 @@ function VerificationBadge({ status }: { status: EmailVerification | null | "loa
   if (status.verified === false)
     return (
       <span className="ses-badge ses-bad" title={status.reason}>
-        Not verified: verify it in the SES console
+        Not verified in SES
       </span>
     );
   return (
@@ -286,6 +287,16 @@ export default function EmailSetup({
             </dd>
           </dl>
           {reason && <p className="muted mailing-list-hint">{reason}</p>}
+          <EmailDelivery
+            agent={agent}
+            senderEmail={
+              settings.from_email ||
+              (verification && verification !== "loading" ? verification.from_email : null) ||
+              null
+            }
+            verification={verification}
+            onSenderChanged={checkVerification}
+          />
           <div className="form-actions">
             <button className="btn btn-primary" type="button" onClick={open}>
               {needsSetup ? "Set sender & recipients" : "Edit email setup"}

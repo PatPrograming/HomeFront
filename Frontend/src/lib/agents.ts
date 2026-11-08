@@ -154,6 +154,9 @@ export const EVENT_LABELS: Record<string, string> = {
   grant_denied: "Grant blocked",
   recipients_updated: "Mailing list changed",
   email_settings_updated: "Email setup changed",
+  email_test: "Test email",
+  sender_verification_requested: "Sender verification sent",
+  recipients_verification_requested: "Recipient verification sent",
   run_started: "Run started",
   run_finished: "Run finished",
   approval_requested: "Approval requested",
@@ -197,4 +200,82 @@ export interface Approval {
     signature: string | null;
     simulated: boolean;
   } | null;
+  // Pending email approvals: in the SES sandbox, recipients SES would reject.
+  delivery?: {
+    sandbox: boolean | null;
+    // null = couldn't tell
+    unverified: string[] | null;
+    recipient_count?: number;
+    reason: string | null;
+  } | null;
+}
+
+export interface EmailAccount {
+  sandbox: boolean | null;
+  sending_enabled: boolean | null;
+  max_24h: number | null;
+  max_rate: number | null;
+  sent_last_24h: number | null;
+  region?: string;
+  console_url?: string;
+  reason: string | null;
+}
+
+export interface EmailPermissions {
+  send: boolean | null;
+  create_identity: boolean | null;
+  principal?: string | null;
+  reason: string | null;
+}
+
+export type RecipientStatus = "verified" | "pending" | "failed" | "not_requested" | null;
+
+export interface RecipientVerification {
+  available: boolean;
+  reason: string | null;
+  total: number;
+  verified: number;
+  recipients: { address: string; status: RecipientStatus }[];
+}
+
+export interface TestEmailResult {
+  ok: boolean;
+  to: string;
+  from: string;
+  message_id: string | null;
+  error: string | null;
+  error_code: string | null;
+}
+
+export type RunStatus = "queued" | "running" | "completed" | "max_steps" | "revoked" | "refused" | "failed";
+
+export const TERMINAL_RUN_STATUSES: RunStatus[] = ["completed", "max_steps", "revoked", "refused", "failed"];
+
+export interface RunStep {
+  type: "tool_call" | "model_fallback" | string;
+  tool?: string;
+  input?: Record<string, unknown>;
+  decision?: "allow" | "deny" | "pending_approval" | string;
+  error?: string;
+  message?: string;
+  result_preview?: string;
+  approval_id?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface Run {
+  run_id: string;
+  agent_id: string;
+  task: string;
+  model: string;
+  status: RunStatus;
+  output: string | null;
+  error: string | null;
+  steps: RunStep[];
+  model_turns: number;
+  usage: { input_tokens: number; output_tokens: number };
+  created_at: number;
+  started_at: number | null;
+  finished_at: number | null;
 }

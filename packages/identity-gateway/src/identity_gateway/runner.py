@@ -36,6 +36,9 @@ RunStatus = Literal[
     "failed",  # API or runtime error
 ]
 
+# How much of a tool result / deny message a run step keeps for the UI.
+STEP_PREVIEW = 400
+
 # Tool names the API accepts can't contain dots; map registry names.
 def api_tool_name(gateway_name: str) -> str:
     return gateway_name.replace(".", "_")
@@ -330,6 +333,7 @@ class AgentRunner:
                     if out.get("approval_id"):
                         step["approval_id"] = out["approval_id"]
                     content, is_error = json.dumps(out.get("result"), default=str), False
+                    step["result_preview"] = content[:STEP_PREVIEW]
                 except HTTPException as exc:
                     detail = exc.detail if isinstance(exc.detail, dict) else {"message": exc.detail}
                     step.update(
@@ -337,6 +341,8 @@ class AgentRunner:
                         error=detail.get("error") or f"http_{exc.status_code}",
                         audit_id=detail.get("audit_id"),
                     )
+                    if detail.get("message"):
+                        step["message"] = str(detail["message"])[:STEP_PREVIEW]
                     content = json.dumps(
                         {"error": step["error"], "message": detail.get("message")}, default=str
                     )

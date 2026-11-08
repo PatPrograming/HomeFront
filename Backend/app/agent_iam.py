@@ -38,7 +38,7 @@ _PACKAGE_SRC = [
 # Gateway paths that manage agents rather than act as one.
 # /approvals is user-only on purpose: an agent's workload token can never
 # approve its own request.
-_ADMIN_PREFIXES = ("/agents", "/auth/token", "/audit", "/approvals")
+_ADMIN_PREFIXES = ("/agents", "/auth/token", "/audit", "/approvals", "/email")
 # Served by the host app's own router instead.
 _SKIP_PATHS = {"/health"}
 

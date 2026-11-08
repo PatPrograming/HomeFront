@@ -4,6 +4,7 @@ import Layout from "../components/Layout";
 import { api } from "../lib/api.js";
 import { describeError, kindLabel, sendsEmail, type Agent, type AgentType } from "../lib/agents";
 import EmailSetup, { NoEmailNote } from "./EmailSetup";
+import RunTask from "./RunTask";
 import "./Agents.css";
 
 export default function Agents() {
@@ -83,6 +84,7 @@ export default function Agents() {
                   ) : (
                     <NoEmailNote agent={a} types={types} />
                   )}
+                  <RunTask agent={a} collapsible />
                   <Link
                     to={`/monitoring?agent=${encodeURIComponent(a.agent_id)}`}
                     className="btn btn-outline"
