@@ -42,13 +42,37 @@ Resume prompt:
   rows (now fixed), `noqa: E402` imports and Frontend `toBeTruthy` asserts.
 - Falsifier and advocate were launched with Huy's two messages word for word plus the lead rulings.
   - Falsifier: stopped at its 40-turn limit with no report (44 tool calls). Not resumed, per the usage stop.
-  - Advocate: PENDING.
+  - Advocate: reported PARTIAL (summary under "Trial results").
 - Judge: NOT RUN (lead ruling: no new agents past 85%).
 
 ## Trial results
 
 - Falsifier: no report (turn limit). Re-run it fresh next session; tell it to report by turn 30.
-- Advocate: see below if filled in.
+- Advocate: PARTIAL, strong on the backend, gateway and agent. It ran 9 in-memory mutation probes and every one
+  was caught:
+  - Locked tool: emptying `LOCKED_TOOLS` failed 3 tests; adding `email_send_list` to the caseworker failed 15.
+  - Each role-check site in `agents_api` failed tests when bypassed: create/grant (24), `call_tool` (7) and
+    `approve` (1).
+  - Removing the draft_revise session check failed 4.
+  - Dropping the SES fallback failed 8.
+  - Unlocking the mailing-list category failed 5.
+  - Gating the hold path failed 3.
+  - Making `_recipient_known` always True failed many.
+  - Stripping the prompt text failed 5.
+
+  Its suite counts: branch Backend 1001 passed, 3 skipped; gateway 831 passed, 1 skipped; agent 122; Frontend
+  106 + build. The merged tree (Backend + gateway) passed 1845, with 3 skipped.
+
+  It did not prove these:
+  - The picker and side panel in a real browser at 375px and desktop (jsdom only).
+  - The Connect button and the editable draft card in the console. Neither is in this branch: Lane I owns the
+    `ConnectPrompt` mount and Lane F owns the `DraftCard`, by design. A judge should check them on the merged
+    branches.
+  - A real Bedrock model following the prompt.
+  - Mutations of the Frontend tests (it could not write files).
+  - The real AVP rollout, which is Huy's step.
+
+  Scan flags were judged BENIGN, except that the `toBeTruthy` asserts are shallow.
 
 ## Next steps
 
