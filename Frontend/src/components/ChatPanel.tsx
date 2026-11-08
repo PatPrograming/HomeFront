@@ -8,6 +8,10 @@ const SUGGESTIONS = [
 
 const time = (ts: string) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+// After this long without a reply, stop showing "Working…": no agent is attached to the session.
+export const STALL_MS = 20_000;
+export const isStalled = (lastTs: string, now: number) => now - new Date(lastTs).getTime() > STALL_MS;
+
 // The conversation with the agent. The agent's replies come from its own process, so after the staffer sends
 // a message the panel shows "Working…" until the next assistant message arrives.
 export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: string | null; disabled: boolean }) {
@@ -17,6 +21,15 @@ export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: st
   const endRef = useRef<HTMLDivElement>(null);
   const last = chat.messages[chat.messages.length - 1];
   const waiting = last?.role === "user";
+  const [now, setNow] = useState(() => Date.now());
+  const stalled = waiting && isStalled(last.ts, now);
+
+  // Re-check every few seconds while waiting, so a missing agent shows up without a reload.
+  useEffect(() => {
+    if (!waiting) return;
+    const id = setInterval(() => setNow(Date.now()), 2000);
+    return () => clearInterval(id);
+  }, [waiting]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "nearest" });
@@ -67,7 +80,7 @@ export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: st
                   The assistant answers here once it is running: <code>python agent/agent.py --sid {sid} --chat</code>
                 </>
               ) : (
-                "Your first message starts a 15-minute session for the assistant, with only the tools your office allows."
+                "Your first message starts a session for the assistant, with only the tools your office allows, for the task you give it."
               )}
             </p>
           </div>
@@ -81,9 +94,15 @@ export default function ChatPanel({ chat, sid, disabled }: { chat: Chat; sid: st
             </div>
           ))
         )}
-        {waiting && !disabled && (
+        {waiting && !disabled && !stalled && (
           <p className="chat-working" role="status">
             Working…
+          </p>
+        )}
+        {stalled && !disabled && (
+          <p className="alert" role="status">
+            No reply yet: the assistant isn't connected to this session. Start it with{" "}
+            <code>python agent/agent.py --sid {sid} --chat</code>
           </p>
         )}
         <div ref={endRef} />
