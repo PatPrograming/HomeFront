@@ -5,23 +5,50 @@ in Amazon Verified Permissions enforces it on every tool call. The console only 
 
 ## Where the role lives and who checks it
 
-- The role is stored in DynamoDB as `officeRole` on the staffer's `STAFFER#<username>` / `META` item. Only
-  `Backend/infra/test-users.sh` (admin credentials) and `seed.py` write it.
+- The role is stored in DynamoDB as `officeRole` on the staffer's `STAFFER#<username>` / `META` item. An admin
+  sets it in the "People & roles" tab; `Backend/infra/test-users.sh` and `seed.py` also write it.
+- What each role may do is also data: an admin can replace a role's tool list in the same tab. It is stored as
+  `ROLE#<role>` / `META`. A role with no such item uses the reviewed default, the table below.
 - On every tool call, the gateway reads the role fresh from that item and sends it to Cedar as `principal.role`.
   It never takes the role from the mandate token, the request body or tool input, so a role change applies on
   the very next call.
-- Every role rule is a Cedar `forbid`: `forbid(action == X) unless { principal has role && [roles].contains(principal.role) }`.
-  Cedar lets any forbid win, so:
+- On every tool call the gateway also reads the role's tool list and sends it to Cedar as `principal.roleTools`.
+- Every role rule is a Cedar `forbid` that names no role:
+  `forbid(action == X) unless { principal has roleTools && principal.roleTools.contains("X") }`. So editing a role
+  never edits a policy; the policies stay reviewed code. Cedar lets any forbid win, so:
   - a role can only take tools away; it never grants one the starter policies would refuse.
   - The starter forbids, `forbid-bulk-export` and `forbid-campaign-post`, still bind every role, the Chief of
     Staff included.
-  - A missing, empty or unknown role matches no list, so Cedar denies every tool (fail closed).
+  - A missing, empty or unknown role gets an empty `roleTools`, so Cedar denies every tool (fail closed).
 - The Cognito group (`staffer` or `admin`) is separate. It only decides who sees the admin pages.
 
 Code: `packages/mandate-contracts/src/mandate_contracts/roles.py`. Policies:
 `packages/mandate-contracts/policies/role-*.cedar`.
 
+## Changing roles in the console ("People & roles")
+
+Admins only. The server checks the Cognito `admin` group on the token and, fresh from DynamoDB, that the caller's
+STAFFER item is an active admin, so a demoted admin loses the tab at once.
+
+- **Assign a role or group.** Writes `officeRole` (and the Cognito group plus its copy on the STAFFER item). The
+  person's assistant uses the new role on its next tool call, even mid-conversation. Someone with a login but no
+  STAFFER item gets one in the admin's office. The last enabled admin cannot be moved to `staffer`.
+- **Change what a role may do.** The editor shows, before saving, what the change lets every person in that role
+  newly do or stop doing, and who it reaches. The server refuses:
+  - an always-denied tool (`records_bulk_export`);
+  - an admin-only tool for any role but the Chief of Staff (`ADMIN_ONLY_TOOLS` in `roles.py`);
+  - an unknown or duplicated tool, or a role that does not exist.
+  The gateway also drops any such tool from a stored list, so a bad item written straight to DynamoDB still
+  cannot reach Cedar.
+- **Every change is logged** with who made it and what changed, in plain words, under "Changes".
+
+Request bodies accept only `officeRole`/`group` and `tools`; any other field (a forged `role`, `office`,
+`username`) is a 422. Proofs: `Backend/tests/test_people_roles.py`, `packages/identity-gateway/tests/test_gw_role_table.py`,
+`packages/mandate-contracts/tests/test_role_table.py`.
+
 ## Role and permission table
+
+The reviewed defaults (`ROLE_TOOLS` in `roles.py`). An admin's edits in the console replace a row.
 
 | Tool | Chief of Staff | Caseworker | Communications Director | Legislative Aide | Intern |
 |---|---|---|---|---|---|
@@ -132,6 +159,11 @@ queue for a call Cedar has already allowed for the staffer's role (guarantees 1 
 a category outside the role.
 
 ## Turn it on in AWS
+
+For the admin-editable table, after the steps below have been done once: run the new gateway code, then
+`bash Backend/infra/setup.sh --apply --update-role-policies`, which rewrites the six `role-*` policies to read
+`principal.roleTools`. The order matters: the old gateway does not send `roleTools`, so the new policies would deny
+it everything.
 
 The role policies go into the shared policy store only on request, and only when every staffer already has a role.
 Applied too early, they would deny every call for staffers whose role is not written yet. Order:

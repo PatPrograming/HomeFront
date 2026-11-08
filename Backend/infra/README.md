@@ -140,6 +140,8 @@ and never deletes.
    description is its readable name. The six office-role policies (`role-*.cedar`, see
    `docs/ROLES.md`) are added only with `--with-role-policies`, and only after a read of every
    STAFFER item finds a valid `officeRole` on each one. Run `test-users.sh --apply` first.
+   `--update-role-policies` rewrites a `role-*` policy already in the store when its text differs
+   from the file (same policy id). It is needed once for the admin-editable role table.
 4. `Backend/infra/.env.aws` (untracked): `AVP_POLICY_STORE_ID` and `AVP_POLICY_NAMES`, the map
    from AVP's generated policy ids to the readable names that decision events show.
 
@@ -151,7 +153,23 @@ active after an Offboard.
 bash Backend/infra/setup.sh                    # dry run: print the commands only
 bash Backend/infra/setup.sh --apply
 bash Backend/infra/setup.sh --apply --with-role-policies   # after test-users.sh --apply wrote every role
+bash Backend/infra/setup.sh --update-role-policies         # dry run: which role policies would change
+bash Backend/infra/setup.sh --apply --update-role-policies # after the new gateway code is running
 set -a; source Backend/infra/.env.aws; set +a
 .venv/bin/python Backend/infra/seed.py                  # dry run
 .venv/bin/python Backend/infra/seed.py --apply
 ```
+
+## People & roles (admin tab)
+
+The admin "People & roles" tab (`Backend/app/routers/people.py`) lists the Cognito users with their group
+and office role, assigns either one, and edits what each office role may do. The server needs these IAM
+permissions on the user pool, in addition to what it already has on the `mandate` table:
+
+- `cognito-idp:ListUsers`
+- `cognito-idp:ListUsersInGroup`
+- `cognito-idp:AdminAddUserToGroup`
+- `cognito-idp:AdminRemoveUserFromGroup`
+
+Without them the tab shows the AWS error and changes nothing. Role edits are stored as `ROLE#<role>` items in
+`mandate`; admin changes are logged as `ADMINLOG#<day>` items. See `docs/ROLES.md` for how Cedar enforces them.
