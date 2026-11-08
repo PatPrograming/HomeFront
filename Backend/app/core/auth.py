@@ -15,7 +15,7 @@ __all__ = ["CurrentUser", "bearer", "get_current_user"]
 
 @dataclass(frozen=True)
 class CurrentUser:
-    id: str  # Cognito username, e.g. "maya" (the staffer id used across Mandate)
+    id: str  # Cognito username, e.g. "maya" (the staffer id used across HomeFront)
     email: str | None
     token: str  # raw access token
     claims: dict

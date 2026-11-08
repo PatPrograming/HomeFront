@@ -4,7 +4,7 @@ Scripts that build the AWS resources the backend depends on.
 
 ## Cognito
 
-`cognito.sh` builds the Mandate sign-in system in `us-east-1`. It is safe to run twice: each step looks the resource up first and creates it only if missing. It never deletes anything.
+`cognito.sh` builds the HomeFront sign-in system in `us-east-1`. It is safe to run twice: each step looks the resource up first and creates it only if missing. It never deletes anything.
 
 | Resource | Name | Purpose |
 |---|---|---|
@@ -43,7 +43,7 @@ The agent client secret (`COGNITO_AGENT_CLIENT_SECRET`) goes only into the git-i
 
 `staff-web` is a public browser client with no secret. A human logs in on Cognito's managed login page with the authorization code flow, and the browser sends the resulting access token. Cognito does not force PKCE on a public client, so the frontend must send a PKCE code challenge itself (any standard OIDC library does).
 
-`mandate-agent` is a confidential client with a secret. It uses `client_credentials`, so the agent proves its own workload identity with scope `mandate/tools`. No user is involved.
+`mandate-agent` is a confidential client with a secret. It allows only `client_credentials` (no user sign-in flows), so the agent proves its own workload identity with scope `mandate/tools`. No user is involved.
 
 ### What the backend checks
 
@@ -71,7 +71,7 @@ Revocation is therefore lane B's job: a DynamoDB session and staffer status chec
 read -rs PW   # type the password; it stays out of shell history
 aws cognito-idp admin-initiate-auth --region us-east-1 --user-pool-id "$COGNITO_USER_POOL_ID" \
   --client-id "$COGNITO_STAFF_CLIENT_ID" --auth-flow ADMIN_USER_PASSWORD_AUTH \
-  --auth-parameters "USERNAME=maya,PASSWORD=$PW"
+  --auth-parameters "{\"USERNAME\":\"maya\",\"PASSWORD\":\"$PW\"}"
 ```
 
 ### Get an agent token

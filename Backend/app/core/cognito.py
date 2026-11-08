@@ -56,7 +56,7 @@ def _jwks_client(url: str) -> jwt.PyJWKClient:
 
 
 def _signing_key(token: str):
-    """The pool's public key for this token's `kid` (tests patch this one function)."""
+    """The pool's public key for this token's `kid` (tests patch `jwt.PyJWKClient.fetch_data`)."""
     return _jwks_client(f"{_issuer()}/.well-known/jwks.json").get_signing_key_from_jwt(token).key
 
 
