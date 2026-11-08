@@ -20,6 +20,7 @@ export default defineConfig(({ command, mode }) => {
     plugins: [react()],
     server: {
       port: 3000,
+      strictPort: true,
       // The console imports packages/mandate-contracts (types, tool names, sample events).
       fs: { allow: [repoRoot] },
       // Same-origin in dev: /api/v1/* is forwarded to FastAPI (scripts/run-gateway.sh).
