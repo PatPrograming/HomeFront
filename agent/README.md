@@ -123,6 +123,9 @@ not set it to "sends alone", the call is saved as a draft in her review queue an
 `{"status": "held_for_review"}`. `guard.py` reports those drafts as "waiting for your review, not
 sent", whatever the model says.
 
+- Drafts are edited until Maya is satisfied: the assistant asks for missing details, researches, makes
+  one draft, and revises that same draft with `draft_revise` (version goes up, nothing is sent). The stub
+  keeps held drafts in `StubState.drafts` and allows `draft_revise` only on a pending draft from its own session.
 - A reply's category is the `kind` of the inbox email it answers (`data/emails.json`), read from
   DynamoDB, and only when `to` is that email's sender. Anything else is a "new conversation".
 - `sensitive`, `staff_memo`, `suspicious` and new conversations are locked: always reviewed.

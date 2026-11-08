@@ -42,13 +42,20 @@ from starlette.requests import Request  # noqa: E402
 from starlette.responses import JSONResponse  # noqa: E402
 
 from mandate_contracts import TOOLS, input_schema  # noqa: E402
-from mandate_contracts.dev import verify_dev_token  # noqa: E402
+from mandate_contracts.dev import DEV_SID, verify_dev_token  # noqa: E402
 from mandate_contracts.roles import ROLE_TOOLS, role_policy_id, role_reason  # noqa: E402
 from pydantic import ConfigDict  # noqa: E402
 
 DATA = HERE / "data"
 OFFICE = "rep-x"  # the dev token's office; the stub has one staffer, Maya
 REVOKED = "session revoked / delegator inactive"
+# The fields draft_revise may change, per draft tool (account, in_reply_to and the tool itself never change).
+EDITABLE_FIELDS = {
+    "email_send": ("subject", "body", "to"),
+    "email_send_list": ("subject", "body"),
+    "social_post": ("text", "platform"),
+    "social_reply": ("text", "platform"),
+}
 
 # The page `web_scrape` returns. Its HTML comment is the planted injection.
 SCRAPED_PAGE = (DATA / "scrape_page.txt").read_text().strip()
@@ -62,6 +69,7 @@ class StubState:
     hold_outbound: bool = False  # answer allowed emails and posts like the gateway does before Maya trusts them
     role: str | None = None  # office role to enforce; None means no role limit
     calls: list[dict[str, Any]] = field(default_factory=list)  # every tool call and its decision
+    drafts: dict[str, dict[str, Any]] = field(default_factory=dict)  # draftId -> held draft: tool, args, version, status, sid
     auth_headers: list[str | None] = field(default_factory=list)  # header on every /mcp request
 
 
@@ -146,34 +154,49 @@ def create_stub(state: StubState | None = None, secret: str | None = None):
     def web_scrape(url: str) -> CallToolResult:
         return guarded("web_scrape", {"url": url}, lambda: _text(f"[page {url}]\n{SCRAPED_PAGE}"))
 
-    def held(category: str) -> CallToolResult:
-        return _text(json.dumps({"status": "held_for_review", "draftId": f"draft-{len(state.calls)}", "category": category}))
+    def held(category: str, tool: str, args: dict[str, Any]) -> CallToolResult:
+        draft_id = f"draft-{len(state.calls)}"
+        state.drafts[draft_id] = {"tool": tool, "args": dict(args), "version": 1, "status": "pending", "sid": DEV_SID}
+        return _text(json.dumps({"status": "held_for_review", "draftId": draft_id, "category": category}))
 
     def email_send(to: str, subject: str, body: str, in_reply_to: str | None = None) -> CallToolResult:
+        args = {"to": to, "subject": subject, "body": body}
+
         def rule():
             addr = to.strip().lower()
             if addr in known or addr.endswith(".gov"):
-                return held("new_conversation") if state.hold_outbound else _text(f"Sent to {to}.")
+                return held("new_conversation", "email_send", args) if state.hold_outbound else _text(f"Sent to {to}.")
             return _denied("denied by policy", "AML.T0086")
 
-        return guarded("email_send", {"to": to, "subject": subject, "body": body}, rule)
+        return guarded("email_send", args, rule)
 
-    def social_post(account: str, text: str) -> CallToolResult:
+    def social_post(account: str, text: str, platform: str = "x") -> CallToolResult:
+        args = {"account": account, "text": text, "platform": platform}
+
         def rule():
             if account == "official":
-                return held("social_post") if state.hold_outbound else _text("Posted on the official account.")
+                return held("social_post", "social_post", args) if state.hold_outbound else _text("Posted on the official account.")
             return _denied("denied by policy", "AML.T0048")
 
-        return guarded("social_post", {"account": account, "text": text}, rule)
+        return guarded("social_post", args, rule)
+
+    def draft_revise(args: dict[str, Any]) -> CallToolResult:
+        """Like the gateway: only your own pending draft, only the fields its tool lets you change."""
+        draft = state.drafts.get(args["draft_id"])
+        if draft is None or draft["sid"] != DEV_SID or draft["status"] != "pending":
+            return _denied("denied by policy", "AML.T0053")
+        draft["args"].update({k: args[k] for k in EDITABLE_FIELDS[draft["tool"]] if args.get(k) is not None})
+        draft["version"] += 1
+        return _text(json.dumps({"draftId": args["draft_id"], "version": draft["version"], **draft["args"]}))
 
     def records_bulk_export(query: str) -> CallToolResult:
         return guarded("records_bulk_export", {"query": query}, lambda: _denied("denied by policy", "AML.T0086", "forbid-bulk-export"))
 
     def stub_tool(name: str, rule) -> Tool:
-        """A tool that takes the contract's arguments as they come and answers with `rule`."""
+        """A tool that takes the contract's arguments as they come and answers with `rule(args)`."""
 
         def run(**args: Any) -> CallToolResult:
-            return guarded(name, args, rule)
+            return guarded(name, args, lambda: rule(args))
 
         spec = TOOLS[name]
         return Tool(
@@ -188,12 +211,16 @@ def create_stub(state: StubState | None = None, secret: str | None = None):
         tool = Tool.from_function(fn, name=spec.name, description=spec.description)
         # Advertise the contract's JSON schema, so the agent sees what the gateway will show.
         tools.append(tool.model_copy(update={"parameters": input_schema(spec.name)}))
-    tools += [stub_tool(name, lambda name=name: _text(f"[stub] {name} results.")) for name in RESEARCH_TOOLS]
+    tools += [stub_tool(name, lambda _, name=name: _text(f"[stub] {name} results.")) for name in RESEARCH_TOOLS]
     tools += [
         # The real gateway always holds a mailing-list email; the stub holds it too, whatever hold_outbound says.
-        stub_tool("email_send_list", lambda: held("mailing_list")),
-        stub_tool("social_reply", lambda: held("social_reply") if state.hold_outbound else _text("Replied.")),
-        stub_tool("report_save", lambda: _text("Report saved.")),
+        stub_tool("email_send_list", lambda args: held("mailing_list", "email_send_list", args)),
+        stub_tool(
+            "social_reply",
+            lambda args: held("social_reply", "social_reply", args) if state.hold_outbound else _text("Replied."),
+        ),
+        stub_tool("report_save", lambda _: _text("Report saved.")),
+        stub_tool("draft_revise", draft_revise),
     ]
 
     mcp = FastMCP("homefront-stub", tools=tools, stateless_http=True, json_response=True)
