@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the Mandate Cognito user pool in us-east-1. Safe to run twice: each step looks the
+# Builds the HomeFront Cognito user pool in us-east-1. Safe to run twice: each step looks the
 # resource up first and creates it only if it is missing. Nothing is ever deleted.
 #
 #   bash Backend/infra/cognito.sh --dry-run     print every command, touch nothing (no aws needed)
@@ -125,7 +125,7 @@ fi
 step "Resource server mandate with scope mandate/tools"
 if [ -z "$(lookup describe-resource-server --user-pool-id "$POOL_ID" --identifier mandate --query ResourceServer.Identifier)" ]; then
   run create-resource-server --user-pool-id "$POOL_ID" --identifier mandate --name mandate \
-    --scopes 'ScopeName=tools,ScopeDescription=Call Mandate MCP tools' > /dev/null
+    --scopes 'ScopeName=tools,ScopeDescription=Call HomeFront MCP tools' > /dev/null
 fi
 
 # The agent client is built first. It has a secret and only the client_credentials flow.
@@ -133,9 +133,12 @@ step "App client mandate-agent (confidential, client_credentials, scope mandate/
 AGENT_CLIENT_ID=$(list_lookup list-user-pool-clients --user-pool-id "$POOL_ID" --max-results 60 \
   --query "UserPoolClients[?ClientName=='mandate-agent'].ClientId | [0]")
 if [ -z "$AGENT_CLIENT_ID" ]; then
+  # Without --explicit-auth-flows Cognito also enables user sign-in flows (SRP, custom auth);
+  # refresh-token auth is the minimum allowed and client_credentials never issues refresh tokens.
   # --query keeps ClientSecret out of the output; it is fetched later and written only to the env file.
   AGENT_CLIENT_ID=$(run create-user-pool-client --user-pool-id "$POOL_ID" --client-name mandate-agent \
     --generate-secret \
+    --explicit-auth-flows ALLOW_REFRESH_TOKEN_AUTH \
     --allowed-o-auth-flows client_credentials --allowed-o-auth-flows-user-pool-client \
     --allowed-o-auth-scopes mandate/tools \
     --supported-identity-providers COGNITO \
@@ -192,6 +195,7 @@ if [ "$DRY_RUN" = false ]; then
   # Build the new content in a private temp file first, so a failed read never truncates the .env.
   # grep exits 1 when no line is left to keep (fine); any other failure aborts the script.
   tmp_file=$(mktemp "$ENV_FILE.XXXXXX")
+  trap 'rm -f "$tmp_file"' EXIT  # never leave a copy of the secret behind on failure
   { [ ! -f "$ENV_FILE" ] || grep -v '^COGNITO_' "$ENV_FILE" || [ $? -eq 1 ]; } > "$tmp_file"
   { public_env; echo "COGNITO_AGENT_CLIENT_SECRET=$AGENT_CLIENT_SECRET"; } >> "$tmp_file"
   if [ -f "$ENV_FILE" ]; then
