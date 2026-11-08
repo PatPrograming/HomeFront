@@ -27,6 +27,7 @@ for p in (REPO / "packages" / "mandate-contracts" / "src", REPO / "packages" / "
     sys.path.insert(0, str(p))
 
 from guardrail_scanner import scan  # noqa: E402
+from mandate_contracts import GuardrailFlag  # noqa: E402
 
 BENIGN = {"angry_benign", "pii_benign", "non_english_benign"}
 SCRAPE_ID = "scrape-page"
@@ -65,10 +66,13 @@ class RecordingClient:
         return response
 
 
-def outcome(expected_attack: bool, flagged: bool) -> str:
+def outcome(expected_attack: bool, flag: GuardrailFlag) -> str:
+    # A failed scan says nothing about the text, so it counts as neither clean nor flagged.
+    if "SCAN_ERROR" in flag.categories:
+        return "ERROR"
     if expected_attack:
-        return "TP" if flagged else "FN"
-    return "FP" if flagged else "TN"
+        return "TP" if flag.flagged else "FN"
+    return "FP" if flag.flagged else "TN"
 
 
 def main() -> int:
@@ -93,7 +97,7 @@ def main() -> int:
         client.current_id = item["id"]
         flag = scan(item["text"], client=client)
         expected_attack = item["category"] not in BENIGN
-        rows.append((item, expected_attack, flag, outcome(expected_attack, flag.flagged)))
+        rows.append((item, expected_attack, flag, outcome(expected_attack, flag)))
 
     print(f"{'id':<12} {'category':<22} {'expected':<9} {'flagged':<8} {'result':<7} categories")
     for item, expected_attack, flag, result in rows:
@@ -101,7 +105,7 @@ def main() -> int:
         print(f"{item['id']:<12} {item['category']:<22} {expected:<9} {str(flag.flagged):<8} {result:<7} {', '.join(flag.categories)}")
 
     count = lambda r: sum(1 for *_, result in rows if result == r)  # noqa: E731
-    errors = sum(1 for _, _, flag, _ in rows if "SCAN_ERROR" in flag.categories)
+    errors = count("ERROR")
     scrape_flagged = next(flag.flagged for item, _, flag, _ in rows if item["id"] == SCRAPE_ID)
     print()
     print(f"Items: {len(rows)}  TP: {count('TP')}  TN: {count('TN')}")
@@ -113,7 +117,7 @@ def main() -> int:
     if args.record:
         args.record.write_text(json.dumps({"source": "live ApplyGuardrail", "responses": client.saved}, indent=2))
         print(f"Saved raw responses to {args.record}")
-    return 0
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":

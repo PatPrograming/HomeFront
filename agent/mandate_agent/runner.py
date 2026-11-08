@@ -7,6 +7,7 @@ from typing import Any
 
 from strands import Agent
 from strands.models import BedrockModel
+from strands.tools.executors import SequentialToolExecutor
 from strands.tools.mcp import MCPClient
 from strands.types.exceptions import MCPClientInitializationError
 
@@ -51,8 +52,15 @@ def run_inbox(
                 system_prompt=SYSTEM_PROMPT,
                 hooks=[guard],
                 callback_handler=callback_handler,
+                # One call at a time, so a second identical forbidden call in the same model turn
+                # sees the first one's DENIED and is blocked as a retry.
+                tool_executor=SequentialToolExecutor(),
             )
-            out(str(agent(prompt)).strip())
+            summary = str(agent(prompt)).strip()
+            out("Assistant summary (unverified; the gateway ledger below is what really happened):")
+            out(summary)
+            if guard.correction():
+                out(guard.correction())
     except MCPClientInitializationError:
         if not guard.unauthorized:
             raise
@@ -62,5 +70,6 @@ def run_inbox(
         # After a 401 the MCP connection is already closed, so closing it again raises this.
         if not (guard.stop_reason and CONNECTION_LOST in str(error)):
             raise
-    out(guard.report())
+    finally:
+        out(guard.report())  # even when the run fails, the staffer sees what was allowed and denied
     return (EXIT_STOPPED if guard.stop_reason else EXIT_OK), guard

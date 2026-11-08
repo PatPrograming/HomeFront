@@ -89,8 +89,8 @@ is set; then it checks the token like the gateway.
 ## Guardrail (WP5)
 
 ```bash
-bash agent/guardrail/create.sh --dry-run    # show the config, call nothing
-bash agent/guardrail/create.sh              # create it in us-east-1 (ask Huy first)
+bash agent/guardrail/create.sh --dry-run    # show the config, call nothing (no flag does the same)
+bash agent/guardrail/create.sh --apply      # create it in us-east-1 (ask Huy first)
 export GUARDRAIL_ID=... GUARDRAIL_VERSION=...
 agent/.venv/bin/python agent/guardrail/eval.py --record agent/guardrail/fixtures/recorded_live.json
 agent/.venv/bin/python agent/guardrail/eval.py --from-recorded agent/guardrail/fixtures/recorded_live.json

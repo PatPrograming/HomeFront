@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Create (or update) Mandate's Bedrock guardrail and publish a version.
 #
+#   bash agent/guardrail/create.sh --apply     # create or update in us-east-1, then publish a version
 #   bash agent/guardrail/create.sh --dry-run   # print the config and the commands, call nothing
-#   bash agent/guardrail/create.sh             # create or update in us-east-1, then publish a version
+#   bash agent/guardrail/create.sh             # same as --dry-run: nothing changes in AWS without --apply
 #
 # Idempotent: it looks the guardrail up by name. If it already exists with a published
-# version, a re-run changes nothing and prints the same id and version. Pass --update to
-# push this file's config to the existing guardrail and publish a new version.
+# version, a re-run changes nothing and prints the same id and version. Pass --update
+# (with --apply) to push this file's config to the existing guardrail and publish a new version.
+# GUARDRAIL_READY_TRIES (default 30, 2 s apart) bounds the wait for READY before publishing.
 #
 # Policies:
 #   - PROMPT_ATTACK on input at HIGH (Standard tier, so Vietnamese and Spanish are covered).
@@ -19,11 +21,12 @@ set -euo pipefail
 REGION="${AWS_REGION:-us-east-1}"
 NAME="${GUARDRAIL_NAME:-mandate-untrusted-input}"
 PROFILE_ID="us.guardrail.v1:0"   # US cross-region guardrail profile, required by the Standard tier
-DRY_RUN=false
+APPLY=false
 UPDATE=false
 for arg in "$@"; do
   case "$arg" in
-    --dry-run) DRY_RUN=true ;;
+    --dry-run) APPLY=false ;;
+    --apply) APPLY=true ;;
     --update) UPDATE=true ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
@@ -44,7 +47,7 @@ COMMON_ARGS=(
   --blocked-outputs-messaging "$BLOCKED_MSG"
 )
 
-if $DRY_RUN; then
+if ! $APPLY; then
   echo "[dry-run] region: $REGION, name: $NAME"
   echo "[dry-run] content policy: $CONTENT_POLICY"
   echo "[dry-run] PII policy (ANONYMIZE): $PII_POLICY"
@@ -54,6 +57,7 @@ if $DRY_RUN; then
   echo "[dry-run] would run: aws bedrock create-guardrail-version --guardrail-identifier <id>   (only when created or updated)"
   echo "GUARDRAIL_ID=<dry-run>"
   echo "GUARDRAIL_VERSION=<dry-run>"
+  echo "[dry-run] nothing was changed. Pass --apply to create or update the guardrail in AWS."
   exit 0
 fi
 
@@ -77,12 +81,14 @@ LATEST=$(aws bedrock list-guardrails --region "$REGION" --guardrail-identifier "
 
 if $PUBLISH || [[ "$LATEST" == "None" || -z "$LATEST" ]]; then
   # A new or updated guardrail is CREATING/UPDATING for a few seconds; publish once READY.
-  for _ in $(seq 30); do
+  STATUS=""
+  for _ in $(seq "${GUARDRAIL_READY_TRIES:-30}"); do
     STATUS=$(aws bedrock get-guardrail --region "$REGION" --guardrail-identifier "$ID" --query status --output text)
     [[ "$STATUS" == "READY" ]] && break
     [[ "$STATUS" == "FAILED" ]] && { echo "Guardrail $ID is FAILED; check the console." >&2; exit 1; }
     sleep 2
   done
+  [[ "$STATUS" == "READY" ]] || { echo "Guardrail $ID is still $STATUS; not publishing." >&2; exit 1; }
   echo "Publishing a new version ..." >&2
   VERSION=$(aws bedrock create-guardrail-version --region "$REGION" --guardrail-identifier "$ID" \
     --description "mandate $(date -u +%Y-%m-%dT%H:%MZ)" --query version --output text)

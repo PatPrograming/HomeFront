@@ -1,5 +1,6 @@
-"""Shared test setup: make `mandate_contracts`, `guardrail_scanner` and the agent package importable."""
+"""Shared test setup: no AWS access, and `mandate_contracts`, `guardrail_scanner` and the agent importable."""
 
+import os
 import socket
 import sys
 import threading
@@ -20,6 +21,13 @@ for p in (
 ):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
+
+# No test may reach real AWS or Bedrock: drop every credential source before anything runs.
+# Subprocesses started by tests inherit this environment.
+for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE"):
+    os.environ.pop(name, None)
+os.environ["AWS_CONFIG_FILE"] = os.environ["AWS_SHARED_CREDENTIALS_FILE"] = "/dev/null"
+os.environ["AWS_EC2_METADATA_DISABLED"] = "true"
 
 TOKEN = "test-mandate-token"
 

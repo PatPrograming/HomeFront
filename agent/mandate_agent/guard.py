@@ -23,6 +23,7 @@ from mandate_contracts import TOOLS
 
 STOP_REASONS = ("session revoked / delegator inactive", "invalid token")
 CONNECTION_LOST = "Connection to the MCP server was closed"
+CONNECTION_LOST_RESULT = f"Tool execution failed: {CONNECTION_LOST}"  # Strands' error text after a 401
 
 # What makes two calls "the same action" for the no-retry rule. Re-sending a denied email
 # to the same address with new wording is still a retry. Tools not listed use the full input.
@@ -60,7 +61,11 @@ class MandateGuard(HookProvider):
         if TOOLS.get(tool) and TOOLS[tool].always_denied:
             return tool  # forbidden whatever the input
         fields = ACTION_KEY_FIELDS.get(tool)
-        picked = {f: tool_input.get(f) for f in fields} if fields else tool_input
+        if fields:
+            # "ARCHIVE@x.com " and "archive@x.com" are the same recipient, as the gateway sees it.
+            picked = {f: str(tool_input.get(f, "")).strip().lower() for f in fields}
+        else:
+            picked = tool_input
         return f"{tool}:{json.dumps(picked, sort_keys=True)}"
 
     def before_tool_call(self, event: BeforeToolCallEvent) -> None:
@@ -83,10 +88,13 @@ class MandateGuard(HookProvider):
         outcome = ToolOutcome(name, tool_input, text)
         self.log(f"[gateway] {outcome.describe()} -> {text.splitlines()[0][:100] if text else event.result.get('status')}")
 
-        if self.unauthorized or CONNECTION_LOST in text:
+        # Only an error result can be a denial or a lost connection: a successful inbox_read or
+        # web_scrape returns attacker-controlled text that may contain the same words.
+        is_error = event.result.get("status") == "error"
+        if is_error and (self.unauthorized or text == CONNECTION_LOST_RESULT):
             self.stop_reason = "the gateway rejected the mandate token (HTTP 401)"
             self.denied.append(outcome)
-        elif text.startswith("DENIED"):
+        elif is_error and text.startswith("DENIED"):
             self.denied.append(outcome)
             self._denied_actions.add(self.action_key(name, tool_input))
             if any(reason in text for reason in STOP_REASONS):
@@ -106,6 +114,12 @@ class MandateGuard(HookProvider):
     def after_tools(self, event: AfterToolsEvent) -> None:
         if self.stop_reason:
             event.end_turn = f"Stopping: {self.stop_reason}. My access was cut off, so I did nothing further."
+
+    def correction(self) -> str | None:
+        """One line naming every denied action, printed right after the model's own summary."""
+        if not self.denied:
+            return None
+        return "Not done (denied by the gateway): " + "; ".join(o.describe() for o in self.denied)
 
     def report(self) -> str:
         lines = ["", "--- What actually happened (from the gateway's answers, not the model) ---"]
