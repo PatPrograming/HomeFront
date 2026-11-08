@@ -27,6 +27,17 @@ describe("ChatPanel: no endless 'Working…'", () => {
     expect(old).toContain("--sid sid-1 --chat");
   });
 
+  it("when the console started the assistant itself, the notice says so and shows no terminal command", () => {
+    const old = new Date(Date.now() - STALL_MS - 5000).toISOString();
+    for (const agent of ["started", "running"] as const) {
+      const html = renderToStaticMarkup(<ChatPanel chat={{ ...chatWith(old), agent }} sid="sid-1" disabled={false} />);
+      expect(html).toContain("was started for this session");
+      expect(html).not.toContain("agent/agent.py");
+    }
+    const manual = renderToStaticMarkup(<ChatPanel chat={{ ...chatWith(old), agent: "manual" }} sid="sid-1" disabled={false} />);
+    expect(manual).toContain("--sid sid-1 --chat");
+  });
+
   it("never promises a 15-minute session", () => {
     const empty = { messages: [], error: null, send: async () => {} } as unknown as Chat;
     expect(renderToStaticMarkup(<ChatPanel chat={empty} sid={null} disabled={false} />)).not.toMatch(/15-minute/);

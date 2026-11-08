@@ -5,7 +5,7 @@ import ChatPanel from "../components/ChatPanel";
 import EventFeed, { FeedSummary } from "../components/EventFeed";
 import IdentityCard from "../components/IdentityCard";
 import ReviewQueue from "../components/ReviewQueue";
-import { api, type SessionCard } from "../lib/api";
+import { api, type AgentStatus, type SessionCard } from "../lib/api";
 import { useSession } from "../lib/AuthProvider";
 import { sessionEvents } from "../lib/events";
 import { needsNewSession, sendInSession } from "../lib/chatSession";
@@ -37,6 +37,7 @@ export default function Console() {
   const events = sessionEvents(feed.events, card?.sid ?? null); // the admin Audit log shows every session
   const revoked = useSessionRevoked(card?.sid ?? null) || events.some((e) => e.reason === REVOKED);
   const chat = useChat(card?.sid ?? null);
+  const [firstSend, setFirstSend] = useState<AgentStatus | null>(null);
   const review = useReview();
   const reloadReview = review.reload;
 
@@ -53,6 +54,7 @@ export default function Console() {
     if (next.card.sid !== card?.sid) {
       sessionStorage.setItem(CARD_KEY, JSON.stringify(next.card));
       setCard(next.card);
+      setFirstSend(next.message.agent ?? null); // the new session's chat starts empty, so keep this send's answer
     }
   }
   // A revoked session stays on screen as proof; this lets the staffer leave it and start over (the broker
@@ -60,8 +62,9 @@ export default function Console() {
   function newConversation() {
     sessionStorage.removeItem(CARD_KEY);
     setCard(null);
+    setFirstSend(null);
   }
-  const chatWithSession: Chat = { ...chat, send };
+  const chatWithSession: Chat = { ...chat, agent: chat.agent ?? firstSend, send };
   const locked = new Set(review.categories.filter((c) => c.locked).map((c) => c.category));
 
   return (

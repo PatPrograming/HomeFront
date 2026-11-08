@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from identity_gateway.gateway import get_gateway
 
+from app.services.agent_supervisor import get_supervisor
+
 try:
     from app.core.cognito import StaffIdentity, require_admin
 except ModuleNotFoundError as exc:  # STUB until lane A (WP1) merges Backend/app/core/cognito.py
@@ -23,4 +25,7 @@ def offboard(staffer_id: str, admin: StaffIdentity = Depends(require_admin)) -> 
     # revoking the sessions as well makes the audit trail say so explicitly.
     store.set_staffer_active(staffer_id, False)
     revoked = store.revoke_sessions_for(staffer_id)
+    supervisor = get_supervisor()
+    if supervisor:  # the agent would stop at its next call anyway; this ends the process now
+        supervisor.stop_staffer(staffer_id, "staffer offboarded")
     return {"staffer": staffer_id, "active": False, "revokedSessions": revoked}
