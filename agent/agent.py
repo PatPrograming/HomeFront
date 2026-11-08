@@ -1,4 +1,4 @@
-"""Run Mandate's AI staffer on the office inbox.
+"""Run HomeFront's AI staffer on the office inbox.
 
 Real flow (Maya pressed "Start assistant" and the console showed a session id):
     python agent/agent.py --sid <sid>
@@ -45,18 +45,22 @@ def build_prompt(email_ids: list[str]) -> str:
 
 
 def resolve_token(args: argparse.Namespace, settings: Settings) -> str:
-    """--token, then MANDATE_TOKEN, then the broker for --sid."""
+    """--token, then the broker for --sid, then MANDATE_TOKEN.
+
+    An explicit --sid beats a MANDATE_TOKEN left in the shell or agent/.env: otherwise the agent
+    would quietly run under the dev session, and offboarding Maya would not stop it.
+    """
     if args.token:
         return args.token
-    if os.environ.get("MANDATE_TOKEN"):
-        return os.environ["MANDATE_TOKEN"]
     if args.sid:
         return fetch_mandate_token(settings.api_url, args.sid)
+    if os.environ.get("MANDATE_TOKEN"):
+        return os.environ["MANDATE_TOKEN"]
     raise SystemExit("Give --sid <session id> (real flow) or --token / MANDATE_TOKEN (dev flow).")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Mandate AI staffer")
+    parser = argparse.ArgumentParser(description="HomeFront AI staffer")
     parser.add_argument("--sid", help="session id shown to the staffer; the broker issues the mandate token")
     parser.add_argument("--token", help="mandate token for dev runs (or set MANDATE_TOKEN)")
     parser.add_argument("--gateway", help="MCP endpoint (default: MANDATE_GATEWAY_URL or http://127.0.0.1:8080/mcp)")
@@ -77,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from mandate_agent.runner import run_inbox  # imported late so --help works without Strands
 
-    print(f"Mandate agent -> {settings.gateway_url} (model {settings.model_id}, {settings.region})")
+    print(f"HomeFront agent -> {settings.gateway_url} (model {settings.model_id}, {settings.region})")
     prompt = args.prompt or build_prompt(args.emails.split(","))
     code, _ = run_inbox(prompt, token, settings)
     return code

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create (or update) Mandate's Bedrock guardrail and publish a version.
+# Create (or update) HomeFront's Bedrock guardrail and publish a version.
 #
 #   bash agent/guardrail/create.sh --apply     # create or update in us-east-1, then publish a version
 #   bash agent/guardrail/create.sh --dry-run   # print the config and the commands, call nothing
@@ -35,11 +35,11 @@ done
 CONTENT_POLICY='{"filtersConfig":[{"type":"PROMPT_ATTACK","inputStrength":"HIGH","outputStrength":"NONE"}],"tierConfig":{"tierName":"STANDARD"}}'
 PII_POLICY='{"piiEntitiesConfig":[{"type":"US_SOCIAL_SECURITY_NUMBER","action":"ANONYMIZE"},{"type":"PHONE","action":"ANONYMIZE"}]}'
 CROSS_REGION="{\"guardrailProfileIdentifier\":\"$PROFILE_ID\"}"
-BLOCKED_MSG="Flagged by Mandate guardrail."
+BLOCKED_MSG="Flagged by HomeFront guardrail."
 COMMON_ARGS=(
   --region "$REGION"
   --name "$NAME"
-  --description "Mandate: flag prompt attacks in untrusted tool output (flag and log only)"
+  --description "HomeFront: flag prompt attacks in untrusted tool output (flag and log only)"
   --content-policy-config "$CONTENT_POLICY"
   --sensitive-information-policy-config "$PII_POLICY"
   --cross-region-config "$CROSS_REGION"

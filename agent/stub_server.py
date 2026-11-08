@@ -148,7 +148,7 @@ def create_stub(state: StubState | None = None, secret: str | None = None):
         # Advertise the contract's JSON schema, so the agent sees what the gateway will show.
         tools.append(tool.model_copy(update={"parameters": input_schema(spec.name)}))
 
-    mcp = FastMCP("mandate-stub", tools=tools, stateless_http=True, json_response=True)
+    mcp = FastMCP("homefront-stub", tools=tools, stateless_http=True, json_response=True)
 
     @mcp.custom_route("/admin/revoke", methods=["POST"])
     async def revoke(request: Request) -> JSONResponse:

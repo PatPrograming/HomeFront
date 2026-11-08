@@ -62,14 +62,14 @@ def test_broker_refusal_raises(clean_env, cognito_status, broker_status):
         fetch_mandate_token("http://127.0.0.1:8080", "sid-123", http=http)
 
 
-def test_token_order_flag_then_env_then_sid(clean_env, monkeypatch):
+def test_token_order_flag_then_sid_then_env(clean_env, monkeypatch):
     settings = Settings.from_env()
     monkeypatch.setattr(cli, "fetch_mandate_token", lambda api, sid: f"broker:{sid}")
+    monkeypatch.setenv("MANDATE_TOKEN", "stale-dev-token")
     assert cli.resolve_token(cli.parse_args(["--token", "t1", "--sid", "s"]), settings) == "t1"
-    monkeypatch.setenv("MANDATE_TOKEN", "t2")
-    assert cli.resolve_token(cli.parse_args(["--sid", "s"]), settings) == "t2"
-    monkeypatch.delenv("MANDATE_TOKEN")
+    # A real session id must never be silently replaced by a dev token left in the environment.
     assert cli.resolve_token(cli.parse_args(["--sid", "s"]), settings) == "broker:s"
+    assert cli.resolve_token(cli.parse_args([]), settings) == "stale-dev-token"
 
 
 def test_no_token_source_exits_with_help(clean_env):
