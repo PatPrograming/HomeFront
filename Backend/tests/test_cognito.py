@@ -1,7 +1,8 @@
 """Cognito token verification (lane A -> B interface in docs/LANES.md).
 
-Offline only: tokens are signed with a locally generated RSA key and the single JWKS
-patch point (`cognito._signing_key`) returns the matching public key. No AWS calls.
+Offline only: tokens are signed with a locally generated RSA key (with a `kid`) and
+`jwt.PyJWKClient.fetch_data` is patched to serve the matching public JWK, so the real
+key lookup, kid matching and JWKS URL construction all run. No AWS calls.
 """
 
 import base64
@@ -23,10 +24,16 @@ POOL_ID = "us-east-1_TEST"
 ISSUER = f"https://cognito-idp.{REGION}.amazonaws.com/{POOL_ID}"
 STAFF_CLIENT = "staff-client"
 AGENT_CLIENT = "agent-client"
+KID = "test-kid"
+JWKS_URL = f"{ISSUER}/.well-known/jwks.json"
 
 _PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 _OTHER_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 PUBLIC_KEY = _PRIVATE_KEY.public_key()
+PUBLIC_JWK = {
+    **jwt.algorithms.RSAAlgorithm.to_jwk(PUBLIC_KEY, as_dict=True),
+    "kid": KID, "alg": "RS256", "use": "sig",
+}
 
 
 def make_token(key=None, headers=None, algorithm="RS256", **claims) -> str:
@@ -50,7 +57,7 @@ def make_token(key=None, headers=None, algorithm="RS256", **claims) -> str:
         else:
             body[name] = value
     return jwt.encode(body, key or _PRIVATE_KEY, algorithm=algorithm,
-                      headers={"kid": "test-kid", **(headers or {})})
+                      headers={"kid": KID, **(headers or {})})
 
 
 def agent_token(**claims) -> str:
@@ -65,13 +72,28 @@ def bearer(token: str) -> dict:
 
 
 @pytest.fixture(autouse=True)
-def cognito_env(monkeypatch):
+def jwks(monkeypatch):
+    """Serve the test public JWK instead of calling AWS; records every fetch's URL."""
     from app.core import cognito
+
+    fetched: list[str] = []
+
+    def fake_fetch_data(self):
+        fetched.append(self.uri)
+        return {"keys": [PUBLIC_JWK]}
+
+    monkeypatch.setattr(jwt.PyJWKClient, "fetch_data", fake_fetch_data)
+    cognito._jwks_client.cache_clear()
+    yield fetched
+    cognito._jwks_client.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def cognito_env(monkeypatch, jwks):
 
     monkeypatch.setenv("COGNITO_USER_POOL_ID", POOL_ID)
     monkeypatch.setenv("COGNITO_STAFF_CLIENT_ID", STAFF_CLIENT)
     monkeypatch.setenv("COGNITO_AGENT_CLIENT_ID", AGENT_CLIENT)
-    monkeypatch.setattr(cognito, "_signing_key", lambda token: PUBLIC_KEY)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -155,8 +177,33 @@ def test_verify_staff_rejects_wrong_client(cognito_mod):
 
 
 def test_verify_staff_rejects_id_token(cognito_mod):
+    # Everything valid (including client_id) except token_use: only that check can reject it.
+    assert_401(cognito_mod.verify_staff_token, make_token(token_use="id"))
+
+
+def test_verify_staff_rejects_real_id_token_shape(cognito_mod):
     id_token = make_token(token_use="id", aud=STAFF_CLIENT, client_id=None)
     assert_401(cognito_mod.verify_staff_token, id_token)
+
+
+def test_verify_staff_rejects_token_without_exp(cognito_mod):
+    assert_401(cognito_mod.verify_staff_token, make_token(exp=None))
+
+
+def test_verify_staff_rejects_token_without_token_use(cognito_mod):
+    assert_401(cognito_mod.verify_staff_token, make_token(token_use=None))
+
+
+def test_verify_staff_rejects_kid_not_in_jwks(cognito_mod, guarded_client):
+    unknown = make_token(headers={"kid": "unknown-kid"})
+    assert_401(cognito_mod.verify_staff_token, unknown)
+    assert guarded_client.get("/staff", headers=bearer(unknown)).status_code == 401
+
+
+def test_jwks_url_is_the_pool_well_known_endpoint(cognito_mod, jwks):
+    cognito_mod.verify_staff_token(make_token())
+    assert jwks == [JWKS_URL]
+    assert JWKS_URL == "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST/.well-known/jwks.json"
 
 
 def test_verify_staff_rejects_hs256_token(cognito_mod):
@@ -164,7 +211,7 @@ def test_verify_staff_rejects_hs256_token(cognito_mod):
     assert_401(cognito_mod.verify_staff_token, hs_token)
 
 
-def test_verify_rejects_everything_when_pool_unconfigured(cognito_mod, monkeypatch):
+def test_verify_rejects_everything_when_pool_unconfigured(cognito_mod, monkeypatch, jwks):
     # Empty env vars override any .env file; the settings cache must be rebuilt.
     monkeypatch.setenv("COGNITO_USER_POOL_ID", "")
     monkeypatch.setenv("COGNITO_STAFF_CLIENT_ID", "")
@@ -172,6 +219,7 @@ def test_verify_rejects_everything_when_pool_unconfigured(cognito_mod, monkeypat
     get_settings.cache_clear()
     assert_401(cognito_mod.verify_staff_token, make_token())
     assert_401(cognito_mod.verify_agent_client_token, agent_token())
+    assert jwks == []  # the JWKS was never fetched: no network call when unconfigured
 
 
 def test_verify_401_detail_is_identical_for_every_failure(cognito_mod):
