@@ -55,6 +55,12 @@ export default function Console() {
       setCard(next.card);
     }
   }
+  // A revoked session stays on screen as proof; this lets the staffer leave it and start over (the broker
+  // still refuses if they are offboarded).
+  function newConversation() {
+    sessionStorage.removeItem(CARD_KEY);
+    setCard(null);
+  }
   const chatWithSession: Chat = { ...chat, send };
   const locked = new Set(review.categories.filter((c) => c.locked).map((c) => c.category));
 
@@ -70,6 +76,15 @@ export default function Console() {
             </p>
           </div>
         </header>
+
+        {card && revoked && (
+          <p className="alert" role="status">
+            This conversation's session was revoked.{" "}
+            <button type="button" className="btn-primary" onClick={newConversation}>
+              Start a new conversation
+            </button>
+          </p>
+        )}
 
         <div className="assistant-grid">
           <ChatPanel chat={chatWithSession} sid={card?.sid ?? null} disabled={revoked} />

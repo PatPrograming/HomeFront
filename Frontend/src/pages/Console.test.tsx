@@ -84,5 +84,11 @@ describe("Console: the chat replaces 'Start a session'", () => {
     const html = renderToStaticMarkup(<Console />);
     expect(html).toContain("Revoked");
     expect(html).toContain('data-chat-disabled="true"');
+    expect(html).toContain("Start a new conversation"); // the way out of a revoked session
+  });
+
+  it("a live session offers no 'new conversation' button", () => {
+    storage.set("mandate.card", JSON.stringify(card("sid-live")));
+    expect(renderToStaticMarkup(<Console />)).not.toContain("Start a new conversation");
   });
 });
