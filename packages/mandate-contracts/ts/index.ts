@@ -62,6 +62,7 @@ export type Reason =
   | "cancelled by staff"
   | "edited by staff"
   | "needs connection"
+  | "handed off to X"
   | "AWS credentials expired on the server"
   | "server lacks AWS permission"
   | "permission service unavailable"

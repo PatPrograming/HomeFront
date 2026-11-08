@@ -441,17 +441,29 @@ def test_approving_an_x_post_sends_through_x(gw_, store, make_token, poster, con
     assert conn.x == [("maya", "Thanks", "https://x.com/a/status/1")] and handler_spy.calls == []
 
 
-def test_approving_an_x_post_without_x_returns_the_draft_to_pending_even_with_an_office_sender(
+def test_approving_an_x_post_without_x_hands_off_to_x_compose_with_the_text(
     gw_, store, make_token, world, poster, conn, handler_spy, ses, office_sender
 ):
-    """Without the gate at approval, an unconnected X post would fall to the share-link handler and be marked sent."""
+    """No X account connected: the approval opens X's compose page with the text, and the staffer presses Post."""
     held = gw_.guarded("social_post", POST_ARGS, make_token())
     conn.missing = {"x"}
     draft_id, out = _approve(gw_, store, held)
-    assert out.event.reason == NEEDS and out.result["provider"] == "x"
+    assert out.allowed and out.event.decision == "ALLOW" and out.event.reason == "handed off to X"
+    assert out.result["status"] == "share_link"
+    assert out.result["url"] == "https://x.com/intent/post?text=Town%20hall%20Tuesday"
     assert conn.x == [] and ses.sent == [] and handler_spy.calls == []
+    assert store.get_draft(draft_id).status == "sent"
+    assert _chat(store, world.sid) == []
+
+
+def test_a_denied_x_post_without_x_is_denied_and_gets_no_share_link(gw_, store, make_token, world, poster, conn):
+    held = gw_.guarded("social_post", POST_ARGS, make_token())
+    store.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer", office_role="intern"))
+    conn.missing = {"x"}
+    draft_id, out = _approve(gw_, store, held)
+    assert out.allowed is False and out.event.decision == "DENY" and out.event.reason == "denied by policy"
+    assert not out.result or "url" not in out.result
     assert store.get_draft(draft_id).status == "pending"
-    assert [(m.text, m.connect) for m in _chat(store, world.sid)] == [(_said("maya", "X"), "x")]
 
 
 def test_approving_a_share_link_post_is_never_gated(gw_, store, make_token, world, poster, conn, handler_spy):

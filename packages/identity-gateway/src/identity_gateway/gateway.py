@@ -27,6 +27,7 @@ from atlas_enricher import AnnotateRequest, AtlasEnricher
 from atlas_enricher.enricher import TOOL_RESIDUAL_RISK, AnnotateEvent
 from mcp_tools import handlers as report_handlers
 from mcp_tools.handlers import invoke_tool
+from mcp_tools import share_links
 from mcp_tools.registry import get_tool
 
 from mandate_contracts import TOOLS, DecisionEvent, GuardrailFlag, MandateClaims, Reason, cedar
@@ -314,6 +315,12 @@ class Gateway:
         try:
             result = self._run(tool, params, None, claims)
         except ConnectionMissing as missing:
+            if tool == "social_post" and getattr(params, "platform", "x") == "x":
+                # No X account connected: hand off to X's own compose page. The draft stays "sent"
+                # (handed off); the staffer presses Post on X themselves.
+                link = share_links.build_post_link("x", params.text)
+                result = {"status": "share_link", "url": link["share_url"], "handoff": True}
+                return self._record(claims, tool, resource, "ALLOW", "handed off to X", decision.policy_ids, result=result)
             self.store.put_draft(draft_id, draft)
             return self._deny_needs_connection(claims, tool, resource, missing)
         except Exception:

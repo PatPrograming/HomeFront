@@ -134,7 +134,8 @@ export type SessionPatch = { title?: string; pinned?: boolean; group?: string | 
 /** POST /drafts/{id}/approve */
 export type ApproveResult =
   | { id: string; status: "sent"; edited?: boolean }
-  | { id: string; status: "needs_connection"; provider: string; label: string; connectUrl: string; note: string };
+  | { id: string; status: "needs_connection"; provider: string; label: string; connectUrl: string; note: string }
+  | { id: string; status: "share_link"; url: string; edited?: boolean }; // X not connected: open X's compose page
 
 /** What the staffer may change before approving: the text, never the recipient or account. */
 export type DraftEdits = { subject?: string; body?: string; text?: string };

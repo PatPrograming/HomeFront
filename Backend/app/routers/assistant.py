@@ -368,6 +368,8 @@ def approve_draft(draft_id: str, body: ApproveIn, staff: StaffIdentity = Depends
         raise HTTPException(status.HTTP_403_FORBIDDEN, outcome.deny_text())
     edited = draft.edited or get_gateway().store.get_draft(draft_id).edited  # send_draft only sees this call's text
     _count_review(staff.username, draft.category, "edited" if edited else "approved_unchanged")
+    if outcome.result and outcome.result.get("status") == "share_link":  # X not connected: the staffer posts on X
+        return {"id": draft_id, "status": "share_link", "url": outcome.result["url"], "edited": edited}
     return {"id": draft_id, "status": "sent", "edited": edited}
 
 

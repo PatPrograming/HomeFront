@@ -35,6 +35,7 @@ export default function ReviewPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [connect, setConnect] = useState<{ label: string; url: string; note: string } | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null); // approved X post: the staffer presses Post on X
   const headingRef = useRef<HTMLHeadingElement>(null);
   const isEmail = draft.tool === "email_send";
   const title = draftTitle(draft);
@@ -43,6 +44,7 @@ export default function ReviewPanel({
   useEffect(() => {
     setEdits({});
     setError(null);
+    setShareUrl(null);
     headingRef.current?.focus();
   }, [draft.id]);
 
@@ -52,6 +54,15 @@ export default function ReviewPanel({
     setConnect(null);
     try {
       const result = await action();
+      // X isn't connected: the approved text opens in X's compose page, and the staffer presses Post there.
+      if (status === "sent" && result && (result as ApproveResult).status === "share_link") {
+        const url = (result as { url: string }).url;
+        window.open(url, "_blank", "noopener");
+        setShareUrl(url);
+        onDecided?.(status);
+        await onDone();
+        return;
+      }
       // Lane I: a platform that isn't connected yet; nothing was sent, so the draft stays open here.
       const outcome = status === "sent" && result ? approveOutcome(result as ApproveResult) : { done: true as const };
       if (!outcome.done) {
@@ -116,6 +127,14 @@ export default function ReviewPanel({
       </div>
 
       <footer className="review-panel-actions">
+        {shareUrl && (
+          <p className="alert" role="status">
+            Opened on X — press Post there.{" "}
+            <a className="btn-primary" href={shareUrl} target="_blank" rel="noopener noreferrer">
+              Open on X
+            </a>
+          </p>
+        )}
         {connect && (
           <p className="alert" role="status">
             {connect.note} <a href={connect.url}>Connect {connect.label}</a>
@@ -127,7 +146,7 @@ export default function ReviewPanel({
           </p>
         )}
         <div className="draft-actions">
-          <button type="button" className="btn-primary" disabled={busy} onClick={() => decide(() => api.approveDraft(draft.id, edits, draft.version), "sent")}>
+          <button type="button" className="btn-primary" disabled={busy || !!shareUrl} onClick={() => decide(() => api.approveDraft(draft.id, edits, draft.version), "sent")}>
             {isEmail ? "Approve and send" : "Approve and post"}
           </button>
           {draft.sid && !locked && (
