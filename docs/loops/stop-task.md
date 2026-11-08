@@ -2,7 +2,7 @@
 
 Status: REVIEWING
 Profile: feature (auth-relevant: owner-only revoke route)
-Round: 1 / 4
+Round: 2 / 4
 Base commit: 0457fb7
 Branch: Stop-Task-Huy (from claude/chat-huy-lane-e-fb8e00)
 
@@ -60,6 +60,13 @@ Guard mutations run by hand in round 1, each restored afterwards: dropping the o
 - Built: tasks 1–2.
 - Outcome checks: C1 10 passed; C2 832 passed, 3 skipped; C3–C5 118 frontend tests pass, tsc clean.
 - Review: lite /trial (see Decisions / report).
+- Trial finding: the "agent message saying stop triggers nothing" test used renderToStaticMarkup, which never runs effects, so a stop wired to incoming messages through useEffect would still pass. Fixed in e3987f5 (the Console stop tests run effects during render).
+
+### Round 2 — 2026-11-08
+- Built: e3987f5 (test hardening for the agent-message guard; whitespace fix in `Console.tsx`).
+- Outcome checks: 5/5 pass. C1 10 passed; C2 832 passed, 3 skipped; C3 29 passed; C4 tsc clean; C5 118 passed. Fixed [], regressed []. Scoreboard `docs/loops/stop-task.rounds/round-2.json`.
+- Review: lite /trial on 69733ff..e3987f5, integrity scan 0 flags. Falsifier stopped at its turn limit before reporting; no verdict yet. No judge launched (lead ruling: usage limit, no new agents).
+- Verdict: PENDING (trial falsifier report outstanding). See `docs/loops/stop-task-HANDOFF.md`.
 
 ## Decisions
 
