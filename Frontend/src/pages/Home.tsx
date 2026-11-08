@@ -4,10 +4,17 @@ import Hero from "../components/Hero/Hero";
 import { api } from "../lib/api.js";
 import "./Home.css";
 
+<<<<<<< Updated upstream
 // "Agentic Outreach / for Federal Agencies." — second line is accented in the hero.
 const MISSION = ["Agentic Outreach for", "Federal Agencies."];
 
 const DEFAULTS: { mission: string[]; buttons?: string[] } = { mission: MISSION };
+=======
+const DEFAULTS = {
+  mission: ["Agentic Outreach for", "Federal Agencies."],
+  buttons: ["Start a communication", "View agents"],
+};
+>>>>>>> Stashed changes
 
 const STEPS = [
   {
