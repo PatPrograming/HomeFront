@@ -1,0 +1,13 @@
+[project]
+name = "guardrail-scanner"
+version = "0.1.0"
+description = "Mandate WP5: flag untrusted tool output with Bedrock ApplyGuardrail (flag and log only)"
+requires-python = ">=3.11"
+dependencies = ["mandate-contracts", "boto3>=1.40"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
