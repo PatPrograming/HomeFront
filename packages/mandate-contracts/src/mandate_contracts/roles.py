@@ -11,6 +11,7 @@ no list, so every role forbid fires: fail closed.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Literal
 
 from .tools import TOOLS
@@ -62,6 +63,9 @@ ROLE_TOOLS: dict[str, tuple[str, ...]] = {
     "intern": ("datagov_search", "web_scrape", "census_query", "nasa_search", "nps_parks", "noaa_climate"),
 }
 
+# Tools only the listed roles may hold. An admin role editor can override ROLE_TOOLS but never grant these.
+LOCKED_TOOLS: dict[str, frozenset[str]] = {"email_send_list": frozenset({"chief_of_staff"})}
+
 # What each tool does, for a staffer reading why their assistant was blocked.
 TOOL_ACTIONS = {
     "inbox_read": "read the office inbox",
@@ -96,9 +100,22 @@ def mandate_tool_name(dotted: str) -> str:
     return _DOTTED_TO_MANDATE[dotted]
 
 
-def role_allows(role: str | None, dotted: str) -> bool:
-    """True if this office role may use the registry tool. A missing or unknown role is False (fail closed)."""
-    return mandate_tool_name(dotted) in ROLE_TOOLS.get(role or "", ())
+def effective_role_tools(role: str | None, tools: Iterable[str] | None = None) -> frozenset[str]:
+    """The tools a role may use: the override (or the ROLE_TOOLS default), governed tools only, minus
+    locked tools the role may not hold. A missing or unknown role gets none, override or not (fail closed)."""
+    if role not in ROLE_TOOLS:
+        return frozenset()
+    chosen = ROLE_TOOLS[role] if tools is None else tools
+    return frozenset(
+        tool
+        for tool in chosen
+        if tool in ROLE_GOVERNED_TOOLS and role in LOCKED_TOOLS.get(tool, {role})
+    )
+
+
+def role_allows(role: str | None, dotted: str, tools: Iterable[str] | None = None) -> bool:
+    """True if this office role may use the registry tool, given an optional per-role tool override."""
+    return mandate_tool_name(dotted) in effective_role_tools(role, tools)
 
 
 def role_policy_id(tool: str) -> str:
@@ -106,7 +123,10 @@ def role_policy_id(tool: str) -> str:
 
 
 def _role_policy(tool: str) -> str:
-    roles = ", ".join(f'"{r}"' for r, tools in ROLE_TOOLS.items() if tool in tools)
+    # A locked tool names only its allowed roles, derived from ROLE_TOOLS so the two cannot drift.
+    roles = ", ".join(
+        f'"{r}"' for r, tools in ROLE_TOOLS.items() if tool in tools and r in LOCKED_TOOLS.get(tool, {r})
+    )
     return f"""forbid(principal, action == Mandate::Action::"{tool}", resource)
   unless {{ principal has role && [{roles}].contains(principal.role) }};"""
 
