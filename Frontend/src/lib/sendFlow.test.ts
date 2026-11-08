@@ -8,7 +8,7 @@ const cap = apiError(503, { message: "stopped 3 times", code: "agent_start_cap",
 describe("sending, and Try again", () => {
   it("a refused send keeps the reason and the ways back the server offered", async () => {
     const failed = await attemptSend(async () => Promise.reject(cap), "hello");
-    expect(failed).toEqual({ error: "x", actions: ["retry", "new_conversation"] });
+    expect(failed).toEqual({ error: "x", actions: ["retry", "new_conversation"], text: "hello" });
     expect(await attemptSend(async () => {}, "hello")).toBeNull();
   });
 

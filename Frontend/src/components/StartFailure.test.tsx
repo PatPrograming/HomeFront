@@ -36,7 +36,7 @@ describe("when the assistant can't start", () => {
 
 describe("the chat box after a refused message", () => {
   const empty = { messages: [], error: null, send: async () => {} } as unknown as Chat;
-  const failure = { error: "The assistant could not start: it stopped 3 times", actions: ["retry", "new_conversation"] as const };
+  const failure = { error: "The assistant could not start: it stopped 3 times", actions: ["retry", "new_conversation"] as const, text: "check my email" };
 
   it("shows the reason with Try again and Start a new conversation", () => {
     const html = renderToStaticMarkup(

@@ -124,9 +124,9 @@ export default function ChatPanel({
   // "Try again": the server resets this conversation's restart count (limited and audited), then the message
   // that was refused is sent again.
   async function retry() {
-    if (!retryAgent || retrying || !draft.trim()) return;
+    if (!retryAgent || retrying || !failure) return;
     setRetrying(true);
-    const failed = await retryThenResend(retryAgent, chat.send, draft.trim());
+    const failed = await retryThenResend(retryAgent, chat.send, failure.text);
     setFailure(failed);
     if (!failed) setDraft("");
     setRetrying(false);

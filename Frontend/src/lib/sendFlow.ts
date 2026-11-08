@@ -4,10 +4,11 @@ import { agentActions, connectionMessage, type AgentAction } from "./errors";
 export interface SendFailure {
   error: string;
   actions: AgentAction[];
+  text: string; // the message that was refused, so Try again resends it even if the box was cleared
 }
 
-function failureOf(e: unknown): SendFailure {
-  return { error: connectionMessage(e, false), actions: agentActions(e) };
+function failureOf(e: unknown, text: string): SendFailure {
+  return { error: connectionMessage(e, false), actions: agentActions(e), text };
 }
 
 // Send once. null means it went through.
@@ -16,7 +17,7 @@ export async function attemptSend(send: (text: string) => Promise<void>, text: s
     await send(text);
     return null;
   } catch (e) {
-    return failureOf(e);
+    return failureOf(e, text);
   }
 }
 
@@ -30,7 +31,7 @@ export async function retryThenResend(
   try {
     await retryAgent();
   } catch (e) {
-    return failureOf(e);
+    return failureOf(e, text);
   }
   return attemptSend(send, text);
 }
