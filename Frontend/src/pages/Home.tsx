@@ -1,13 +1,9 @@
-import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Hero from "../components/Hero/Hero";
-import { api } from "../lib/api.js";
 import "./Home.css";
 
-const DEFAULTS = {
-  mission: ["Mission", "statement."],
-  buttons: ["button1", "button2"],
-};
+// "Agentic Outreach / for Federal Agencies." — second line is accented in the hero.
+const MISSION = ["Agentic Outreach for", "Federal Agencies."];
 
 const STEPS = [
   {
@@ -28,15 +24,9 @@ const STEPS = [
 ];
 
 export default function Home() {
-  const [content, setContent] = useState(DEFAULTS);
-
-  useEffect(() => {
-    api.home().then(setContent).catch(() => setContent(DEFAULTS));
-  }, []);
-
   return (
     <Layout>
-      <Hero mission={content.mission} />
+      <Hero mission={MISSION} />
 
       <section id="how-it-works" className="how">
         <div className="container">
