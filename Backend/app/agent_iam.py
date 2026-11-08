@@ -14,8 +14,9 @@ the agent's own client credentials.
 It also mounts the teammates' agent-management API (`identity_gateway.agents_api`:
 agents, grants, email setup, runs, approvals, activity log) behind our Cognito
 login, whatever `AGENT_ADMIN_REQUIRES_LOGIN` says: GET routes need
-`require_staff`, every other method (create, edit, grant, mint a workload token,
-SES admin, test email, approve, start a run) needs `require_admin`.
+`require_staff`, and so do create-agent and the two grant routes (the API caps what a
+staffer may grant by their office role); every other write (edit, mint a workload
+token, revoke, SES admin, test email, approve, start a run) needs `require_admin`.
 """
 
 from __future__ import annotations
@@ -64,25 +65,44 @@ def actor_from_login(authorization: str | None):
     identity = verify_staff_token(token.strip())
     if not identity.groups & STAFF_GROUPS:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a staff member")
-    return Actor(user_id=identity.username)
+    return Actor(user_id=identity.username, is_admin="admin" in identity.groups)
+
+
+def staffer_for(user_id: str):
+    """The staffer's item, read fresh from the mandate store on every call (never cached)."""
+    from identity_gateway.gateway import get_gateway
+
+    return get_gateway().store.get_staffer(user_id)
+
+
+# Writes a plain staffer may make: agents_api caps what they can grant by their office role.
+STAFF_WRITES = {
+    ("/agents", "POST"),
+    ("/agents/{agent_id}/grants", "PUT"),
+    ("/agents/{agent_id}/grants/{tool_name}", "POST"),
+}
 
 
 def include_agents_api(host_app: FastAPI, prefix: str = "") -> None:
-    """Mount the teammates' agent-management routes: reads for staff, writes for admins."""
+    """Mount the teammates' agent-management routes: reads and the capped writes for staff, the rest for admins."""
     from app.core.cognito import require_admin, require_staff
     from identity_gateway import agents_api
 
     agents_api.set_actor_resolver(actor_from_login)
+    agents_api.set_role_resolver(staffer_for)
     configure_bedrock_runner()
     if get_settings().agent_store == "dynamodb":
         use_dynamodb_stores(agents_api.store)
 
-    reads, writes = APIRouter(), APIRouter()
+    staff, writes = APIRouter(), APIRouter()
     for route in agents_api.router.routes:
         if not isinstance(route, APIRoute):
             continue
-        (reads if route.methods <= {"GET", "HEAD"} else writes).routes.append(route)
-    host_app.include_router(reads, prefix=prefix, dependencies=[Depends(require_staff)])
+        is_staff_route = route.methods <= {"GET", "HEAD"} or any(
+            (route.path, method) in STAFF_WRITES for method in route.methods
+        )
+        (staff if is_staff_route else writes).routes.append(route)
+    host_app.include_router(staff, prefix=prefix, dependencies=[Depends(require_staff)])
     host_app.include_router(writes, prefix=prefix, dependencies=[Depends(require_admin)])
 
 

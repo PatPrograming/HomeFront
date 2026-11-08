@@ -31,6 +31,9 @@ class AgentType:
     default_max_steps: int
     # Default web.scrape domain allowlist for new agents; empty = any public host.
     default_scrape_domains: tuple[str, ...] = ()
+    # Least privilege: what the permission picker pre-ticks and what a create without
+    # tool_grants gets. None = same as default_tools (see recommended_tools()).
+    recommended_override: frozenset[str] | None = None
 
     def allows(self, tool: str) -> bool:
         return self.allowed_tools is None or tool in self.allowed_tools
@@ -51,6 +54,8 @@ AGENT_TYPES: dict[str, AgentType] = {
         default_tools=frozenset({"email.send", "email.send_list"}),
         allowed_tools=frozenset({"email.send", "email.send_list", "datagov.search"}),
         default_max_steps=6,
+        # email.send_list mails every constituent: never pre-ticked.
+        recommended_override=frozenset({"email.send"}),
     ),
     "social": AgentType(
         kind="social",
@@ -195,6 +200,11 @@ def get_agent_type(kind: str) -> AgentType:
         allowed_tools=frozenset(),
         default_max_steps=1,
     )
+
+
+def recommended_tools(kind: str) -> frozenset[str]:
+    agent_type = get_agent_type(kind)
+    return agent_type.default_tools if agent_type.recommended_override is None else agent_type.recommended_override
 
 
 def disallowed_tools(kind: str, tools: Iterable[str]) -> list[str]:
