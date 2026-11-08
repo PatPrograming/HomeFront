@@ -1,9 +1,15 @@
+import contextlib
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.agent_iam import include_agent_iam
+from app.agent_iam import ensure_package_paths, include_agent_iam
 from app.core.config import apply_datagov_env, get_settings
-from app.routers import health, home, profiles
+
+ensure_package_paths()  # the routers below import the gateway packages
+
+from app.routers import events, health, home, profiles, sessions, staff  # noqa: E402
+from identity_gateway.app import lifespan  # noqa: E402
 
 API_PREFIX = "/api/v1"
 
@@ -13,10 +19,9 @@ def create_app() -> FastAPI:
     apply_datagov_env()
     app = FastAPI(
         title="HomeFront API",
-        description=(
-            "Supabase user auth + agent workload identity with MITRE ATLAS-tagged MCP authorization"
-        ),
-        version="0.1.0",
+        description="HomeFront: delegated agent identity, Cedar-authorized MCP tools, instant offboarding",
+        version="0.2.0",
+        lifespan=lifespan,  # starts the MCP endpoint's session manager
     )
 
     app.add_middleware(
@@ -31,7 +36,12 @@ def create_app() -> FastAPI:
     app.include_router(home.router, prefix=API_PREFIX)
     app.include_router(profiles.router, prefix=API_PREFIX)
 
-    # Prompt 1: agent identity, tool grants/revoke, ATLAS enrichment (all under /api/v1)
+    # HomeFront broker and admin API (WP2)
+    app.include_router(sessions.router, prefix=API_PREFIX)
+    app.include_router(staff.router, prefix=API_PREFIX)
+    app.include_router(events.router, prefix=API_PREFIX)
+
+    # Gateway: tool catalog, ATLAS, dashboard tool calls under /api/v1; MCP at /mcp (WP3)
     include_agent_iam(app, prefix=API_PREFIX)
 
     return app
