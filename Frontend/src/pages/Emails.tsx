@@ -66,6 +66,7 @@ export default function Emails() {
   const [mailType, setMailType] = useState(""); // Q3 (single)
   const [perDay, setPerDay] = useState(""); // Q4 (integer, kept as string for input)
   const [agentAction, setAgentAction] = useState(""); // Q5 (single)
+  const [emailTopic, setEmailTopic] = useState(""); // Q6 (required free text)
   // Q6: free-text restrictions for the built-in AI agent.
   // TODO: pass this to the backend as an agent restriction.
   const [restrictions, setRestrictions] = useState("");
@@ -79,7 +80,7 @@ export default function Emails() {
 
   const step1Valid = mailboxes.length > 0 && mailPlatforms.length > 0 && mailType !== "";
   const step2Valid = /^\d+$/.test(perDay);
-  const step3Valid = agentAction !== "";
+  const step3Valid = agentAction !== "" && emailTopic.trim() !== "";
 
   return (
     <Layout>
@@ -192,6 +193,26 @@ export default function Emails() {
                 isOn={(o) => agentAction === o}
                 onChange={setAgentAction}
               />
+            </div>
+
+            <div className="card">
+              <div className="field">
+                <label className="field-label" htmlFor="email-topic">
+                  Main message
+                </label>
+                <p className="field-hint" id="email-topic-hint">The minimum information that must be communicated, such as current figures, affected areas, and required actions.</p>
+                <textarea
+                  id="email-topic"
+                  className="textarea"
+                  rows={4}
+                  required
+                  aria-describedby="email-topic-hint"
+                  placeholder="e.g. Notify residents of the new benefits enrollment deadline…"
+                  value={emailTopic}
+                  onChange={(e) => setEmailTopic(e.target.value)}
+                />
+                <span className="field-count">{emailTopic.length} characters</span>
+              </div>
             </div>
 
             <div className="card">
