@@ -7,6 +7,7 @@ router = APIRouter(tags=["home"])
 def home() -> dict:
     """Landing-page content. Public. Replaces the old Flask `/api/home` stub."""
     return {
-        "mission": ["Mission", "statement."],
-        "buttons": ["button1", "button2"],
+        # Same copy as the frontend's fallback in Frontend/src/pages/Home.tsx.
+        "mission": ["Agentic Outreach for", "Federal Agencies."],
+        "buttons": ["Social Platform", "button2"],
     }
