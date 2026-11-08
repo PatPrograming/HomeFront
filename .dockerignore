@@ -1,0 +1,32 @@
+# Secrets never go into the image: App Runner injects them at start (deploy/apprunner/deploy.py).
+.env
+.env.*
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+Backend/infra/*.local.txt
+
+# Local environments and build output
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+Frontend/dist
+.git
+.claude
+.vscode
+.idea
+**/.DS_Store
+
+# Finder duplicates ("foo 2.py", "data 2/")
+**/* 2
+**/* 2.*
+
+# Not needed at runtime
+docs
+references
+infra
+**/tests
+**/loop
+Frontend/docs

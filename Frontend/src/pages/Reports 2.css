@@ -1,0 +1,122 @@
+.reports-page {
+  padding: 40px 0 64px;
+}
+
+.reports-page .page-head {
+  margin-bottom: 24px;
+}
+
+.reports-page .lede {
+  margin: 6px 0 0;
+  max-width: 62ch;
+}
+
+.reports-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.reports-list {
+  position: sticky;
+  top: 88px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100vh - 110px);
+  min-width: 0;
+}
+
+.reports-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reports-filters select {
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font: inherit;
+  font-size: 15px;
+}
+
+.reports-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.report-item:hover {
+  border-color: var(--line-strong);
+}
+
+.report-item.is-current {
+  border-color: var(--blue-700);
+  box-shadow: inset 3px 0 0 var(--blue-700);
+}
+
+.report-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.report-item-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.report-item-meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.report-item-snippet {
+  font-size: 13px;
+  color: var(--ink-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.reports-view {
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .reports-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .reports-list {
+    position: static;
+    max-height: none;
+  }
+
+  .reports-list ul {
+    max-height: 320px;
+  }
+}

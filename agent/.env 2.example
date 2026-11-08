@@ -1,0 +1,22 @@
+# Agent settings. Copy to agent/.env (git-ignored) and fill in the secret.
+# agent.py reads agent/.env at start; variables already set in your shell win.
+
+# Gateway (lane B). The stub server is http://127.0.0.1:8000/mcp.
+MANDATE_GATEWAY_URL=http://127.0.0.1:8080/mcp
+
+# Model: Claude Sonnet 5 through the us. inference profile, us-east-1.
+BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-5
+AWS_REGION=us-east-1
+
+# Guardrail used by scan() and eval.py. Huy kept this one as the demo guardrail.
+GUARDRAIL_ID=l74ju5pcrcdg
+GUARDRAIL_VERSION=2
+
+# The agent's own Cognito identity (public values from lane A).
+COGNITO_DOMAIN=https://mandate-a10-hack-2026.auth.us-east-1.amazoncognito.com
+COGNITO_AGENT_CLIENT_ID=7aslk40jv9ikchoouqd00avdnp
+# Secret: copy from lane A's .env at run time. Never commit it.
+COGNITO_AGENT_CLIENT_SECRET=
+
+# Dev only: a mandate token from `python -m mandate_contracts.dev`, used only when --sid is not given.
+# MANDATE_TOKEN=

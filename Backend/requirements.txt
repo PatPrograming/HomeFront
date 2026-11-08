@@ -11,3 +11,5 @@ boto3[crt]>=1.43,<2  # crt: needed for `aws login` credentials (main)
 mcp>=1.23,<2
 moto[dynamodb]>=5.0
 certifi>=2024.2
+anthropic>=2.6,<3  # agent runner (Run a task): Claude on Bedrock
+mangum==0.19.0  # AWS Lambda adapter (app/lambda_handler.py)

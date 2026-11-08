@@ -1,0 +1,13 @@
+{
+  "iss": "mandate-broker",
+  "sub": "agent-1",
+  "act": "maya",
+  "office": "rep-x",
+  "mode": "official",
+  "sid": "00000000-0000-4000-8000-000000000001",
+  "scope": [
+    "mandate/tools"
+  ],
+  "iat": 1794081600,
+  "exp": 1794082500
+}
