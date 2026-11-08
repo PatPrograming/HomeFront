@@ -270,6 +270,18 @@ export interface RunStep {
   to?: string;
 }
 
+// A report saved with report.save (GET /agents/{id}/reports). body is Markdown.
+export interface Report {
+  report_id: string;
+  agent_id: string;
+  title: string;
+  body: string;
+  // Run id for agent runs, or the workload-token session for manual calls.
+  trace_id: string | null;
+  run_id: string | null;
+  created_at: number;
+}
+
 export interface Run {
   run_id: string;
   agent_id: string;

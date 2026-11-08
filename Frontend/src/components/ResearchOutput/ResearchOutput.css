@@ -1,0 +1,362 @@
+.research-output {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  min-width: 0;
+}
+
+.ro-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.ro-tab {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 12px;
+  margin-bottom: -1px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ro-tab:hover {
+  color: var(--ink);
+}
+
+.ro-tab.is-active {
+  color: var(--blue-700);
+  border-bottom-color: var(--blue-700);
+}
+
+.ro-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.ro-panel {
+  padding-top: 14px;
+  min-width: 0;
+}
+
+.ro-subhead {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 6px;
+}
+
+.ro-subhead .muted {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.ro-btn {
+  min-height: 34px;
+  font-size: 14px;
+  padding: 0 10px;
+}
+
+.ro-report-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.ro-chip {
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  cursor: pointer;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ro-chip.is-active {
+  border-color: var(--blue-700);
+  background: var(--blue-50);
+  color: var(--blue-800);
+}
+
+/* ---------- report document ---------- */
+.report-doc {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  min-width: 0;
+}
+
+.report-head {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.report-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+
+.report-title {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1.2;
+  margin: 0;
+  flex: 1 1 280px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.report-meta {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.report-provenance {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #7a5600;
+  background: #fff6e5;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+.report-toc {
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 18px;
+}
+
+.report-toc ol {
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: 14px;
+  columns: 2 220px;
+}
+
+.report-toc li {
+  margin: 2px 0;
+  break-inside: avoid;
+}
+
+.report-toc .toc-l3 {
+  list-style: circle;
+  margin-left: 1em;
+}
+
+.report-body {
+  max-width: 78ch;
+}
+
+/* ---------- links + sources ---------- */
+.cited-links {
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.cited-links ul,
+.source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cited-links li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  min-width: 0;
+}
+
+.cited-links a {
+  font-weight: 600;
+  color: var(--blue-700);
+  white-space: nowrap;
+}
+
+.cited-path {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.src-badge {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.src-official {
+  background: #e8f4ec;
+  color: var(--success);
+}
+
+.src-external {
+  background: #fff6e5;
+  color: #7a5600;
+}
+
+.source-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.source-list li.is-blocked {
+  border-color: #f0c9c6;
+  background: var(--red-50);
+}
+
+.source-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.source-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.source-detail {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.source-why {
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.source-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sources-foot {
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+.ro-summary {
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  .report-doc {
+    padding: 16px;
+  }
+
+  .report-title {
+    font-size: 1.35rem;
+  }
+}
+
+/* ---------- print just the report ---------- */
+@media print {
+  body.printing-report * {
+    visibility: hidden;
+  }
+
+  body.printing-report .print-target,
+  body.printing-report .print-target * {
+    visibility: visible;
+  }
+
+  body.printing-report .print-target {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    border: 0;
+    padding: 0;
+  }
+
+  body.printing-report .print-target .report-actions,
+  body.printing-report .print-target .report-toc {
+    display: none;
+  }
+
+  body.printing-report .print-target .md a::after {
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+    color: #555;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ---------- folded tool-call trail under a finished run ---------- */
+.run-trail {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.run-trail > summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.run-trail[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.run-trail > .run-steps {
+  padding: 8px 12px;
+  margin: 0;
+}

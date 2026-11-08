@@ -97,6 +97,9 @@ export const api = {
   runs: (agentId) => request(`/agents/${encodeURIComponent(agentId)}/runs`),
   run: (agentId, runId) =>
     request(`/agents/${encodeURIComponent(agentId)}/runs/${encodeURIComponent(runId)}`),
+  // Reports the agent saved with report.save, newest first.
+  reports: (agentId, limit = 50) =>
+    request(`/agents/${encodeURIComponent(agentId)}/reports?limit=${limit}`),
   replaceGrants: (agentId, tools) =>
     request(`/agents/${encodeURIComponent(agentId)}/grants`, { method: "PUT", body: { tools } }),
   // filters: { agent_id, trace_id, decision, type } (any subset)

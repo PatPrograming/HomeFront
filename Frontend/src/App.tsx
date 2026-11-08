@@ -11,6 +11,7 @@ import NewAgent from "./pages/NewAgent";
 import Activity from "./pages/Activity";
 import Approvals from "./pages/Approvals";
 import SocialPlatform from "./pages/SocialPlatform";
+import Reports from "./pages/Reports";
 
 // /agents/<id>/email: open that agent's Email setup on My agents.
 function AgentEmailRedirect() {
@@ -64,6 +65,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <Approvals />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <RequireAuth>
+                <Reports />
               </RequireAuth>
             }
           />
