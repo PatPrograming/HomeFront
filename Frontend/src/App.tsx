@@ -24,7 +24,14 @@ export default function App() {
           <Route path="/" element={<HomeOrCallback />} />
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/social-platform" element={<SocialPlatform />} />
+          <Route
+            path="/social-platform"
+            element={
+              <RequireAuth>
+                <SocialPlatform />
+              </RequireAuth>
+            }
+          />
           <Route
             path="/console"
             element={

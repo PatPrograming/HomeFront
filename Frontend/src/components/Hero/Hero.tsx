@@ -1,13 +1,14 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "../../lib/AuthProvider";
 import PlatformIcon from "../PlatformIcons/PlatformIcons";
 import "./Hero.css";
 
 interface HeroProps {
   mission: string[];
-  buttons: string[];
 }
 
-export default function Hero({ mission, buttons }: HeroProps) {
+export default function Hero({ mission }: HeroProps) {
+  const { session } = useAuth();
   return (
     <section className="hero">
       <div className="container hero-grid">
@@ -23,14 +24,20 @@ export default function Hero({ mission, buttons }: HeroProps) {
           </p>
           <div className="hero-buttons">
             <Link className="btn btn-primary" to="/social-platform">
-              {buttons[0]}
+              Start a communication
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
                 <path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </Link>
-            <a className="btn btn-outline" href="#how-it-works">
-              {buttons[1]}
-            </a>
+            {session ? (
+              <Link className="btn btn-outline" to="/monitoring">
+                View agent activity
+              </Link>
+            ) : (
+              <Link className="btn btn-outline" to="/login">
+                Sign in
+              </Link>
+            )}
           </div>
         </div>
 

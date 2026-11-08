@@ -25,6 +25,10 @@
   letter-spacing: -0.025em;
 }
 
+.mission span {
+  display: block;
+}
+
 .mission .line-2 {
   color: var(--red-600);
 }
