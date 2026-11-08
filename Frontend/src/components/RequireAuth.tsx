@@ -22,8 +22,8 @@ export default function RequireAuth({ role, children }: { role?: Role; children:
               ? "This page is for the Chief of Staff (Cognito group admin)."
               : "Your account is not in the staffer or admin group."}
           </p>
-          <Link to={role === "admin" ? "/console" : "/account"}>
-            {role === "admin" ? "Back to Your assistant" : "Your account and sign out"}
+          <Link to={role === "admin" ? "/" : "/account"}>
+            {role === "admin" ? "Back to Home" : "Your account and sign out"}
           </Link>
         </section>
       </Layout>

@@ -15,7 +15,7 @@ export default function Login() {
   const from = (useLocation().state as { from?: string } | null)?.from ?? null;
   const [error, setError] = useState<string | null>(null);
 
-  if (session) return <Navigate to={from || (isAdmin(session) ? "/admin" : "/console")} replace />;
+  if (session) return <Navigate to={from || (isAdmin(session) ? "/admin" : "/")} replace />;
 
   async function cognitoSignIn() {
     try {

@@ -30,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const returnTo = await auth.completeLogin(search);
     const next = auth.loadSession();
     setSession(next);
-    return returnTo || (isAdmin(next) ? "/admin" : "/console");
+    return returnTo || (isAdmin(next) ? "/admin" : "/");
   }, []);
 
   const value = useMemo<AuthContextValue>(
