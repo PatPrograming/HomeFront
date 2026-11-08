@@ -2,6 +2,7 @@
 # Build the gateway image and check it on this machine with NO AWS credentials:
 #   - the image holds no .env file and no secret in its config,
 #   - the container answers GET /api/v1/health,
+#   - with HOMEFRONT_AGENT_ROLE_ARN set (as ECS sets it) the gateway does not warn that agents share its keys,
 #   - agent/.env is written at start with mode 600, and the gateway process does not keep the
 #     agent's client secret in its environment,
 #   - the agent's virtualenv can import its SDK (so the supervisor can start agents).
@@ -36,6 +37,7 @@ docker run -d --init --name "$NAME" -p "127.0.0.1:${PORT}:8080" \
   -e AGENT_STORE=dynamodb -e HOMEFRONT_AUTOSTART_AGENT=1 \
   -e ALLOWED_ORIGINS=https://example.cloudfront.net,http://localhost:3000 \
   -e COGNITO_AGENT_CLIENT_SECRET="$DUMMY" \
+  -e HOMEFRONT_AGENT_ROLE_ARN=arn:aws:iam::111122223333:role/homefront-agent \
   "$IMAGE" >/dev/null
 
 status=""
@@ -63,6 +65,11 @@ if docker exec "$NAME" sh -c "tr '\0' '\n' < /proc/${gateway_pid}/environ" | gre
 fi
 if docker logs "$NAME" 2>&1 | grep -q "$DUMMY"; then
   fail "the container log printed the agent secret"
+fi
+
+# The stack sets the agent role, so the supervisor must not warn that agents share the server's credentials.
+if docker logs "$NAME" 2>&1 | grep -q "shares the server's AWS credentials"; then
+  fail "the gateway ignored HOMEFRONT_AGENT_ROLE_ARN"
 fi
 
 # 4. The supervisor's agent interpreter works.

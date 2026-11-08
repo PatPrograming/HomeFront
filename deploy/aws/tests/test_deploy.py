@@ -125,6 +125,24 @@ def test_the_gateway_and_the_agents_do_not_share_an_identity():
     assert "AWS_CONTAINER_CREDENTIALS" not in supervisor  # the child never inherits the task role
 
 
+def test_the_stack_and_lane_es_agent_role_script_name_the_same_roles():
+    script = HERE.parents[1] / "Backend/infra/agent-role.sh"
+    if not script.exists():
+        pytest.skip("Lane E's Backend/infra/agent-role.sh is not merged into this checkout")
+    out = subprocess.run(["bash", str(script)], capture_output=True, text=True, check=True,
+                         env={"PATH": os.environ["PATH"], "AWS_ACCOUNT_ID": "111122223333"}).stdout
+    trust = json.loads(out.split("--- trust policy ---\n")[1].split("\n--- permissions")[0])
+    (statement,) = trust["Statement"]
+    assert statement["Condition"]["ArnEquals"]["aws:PrincipalArn"] == [
+        "arn:aws:iam::111122223333:role/" + RES["TaskRole"]["Properties"]["RoleName"]]
+    agent_role = APP["Parameters"]["AgentRoleName"]["Default"]
+    assert f"HOMEFRONT_AGENT_ROLE_ARN=arn:aws:iam::111122223333:role/{agent_role}" in out
+    (assume,) = [st for st in statements("homefront-gateway") if "sts:AssumeRole" in as_list(st["Action"])]
+    assert assume["Action"] == "sts:AssumeRole"  # nothing more for the agent role: no TagSession, no PassRole
+    assert assume["Resource"] == {"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AgentRoleName}"}
+    assert "sts:" not in text([st for st in statements("homefront-gateway") if st is not assume])
+
+
 def test_connections_key_is_opt_in_and_needs_the_encryption_context():
     policy = next(p for p in RES["TaskRole"]["Properties"]["Policies"]
                   if "Fn::If" in p and p["Fn::If"][0] == "HasConnectionsKey")
@@ -397,6 +415,27 @@ def test_add_tester_apply_makes_user_group_and_active_staffer_without_a_password
     assert group["GroupName"] == "staffer"
     staffer = store.staffers["judge1"]
     assert staffer.active and staffer.office == "rep-x" and staffer.role == "staffer"
+
+
+def test_add_tester_gives_the_office_role_once_the_contracts_have_it(monkeypatch):
+    # Lane G's role forbids deny every tool to a staffer with no officeRole, so a judge must get one.
+    from typing import Literal
+
+    import mandate_contracts.ddb as ddb
+
+    class StafferWithRole(ddb.StafferItem):
+        office_role: Literal["chief_of_staff", "caseworker", "intern"] | None = None
+
+    monkeypatch.setattr(ddb, "StafferItem", StafferWithRole)
+    store = FakeStore()
+    add_tester.main(["judge1", "judge1@example.com", "--apply"], FakeAdminCognito(), store)
+    assert store.staffers["judge1"].office_role == "caseworker"
+    add_tester.main(["judge2", "j2@example.com", "--office-role", "intern", "--apply"], FakeAdminCognito(), store)
+    assert store.staffers["judge2"].office_role == "intern"
+    cognito = FakeAdminCognito()
+    with pytest.raises(ValueError):
+        add_tester.main(["judge3", "j3@example.com", "--office-role", "mayor", "--apply"], cognito, store)
+    assert "judge3" not in store.staffers and cognito.calls == []  # no half-made account
 
 
 def test_add_tester_rejects_odd_usernames():

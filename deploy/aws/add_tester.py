@@ -1,11 +1,12 @@
 """Create a judge's or tester's account. Dry run unless --apply.
 
-    python deploy/aws/add_tester.py <username> <email> [--office rep-x] [--admin] [--apply]
+    python deploy/aws/add_tester.py <username> <email> [--office rep-x] [--office-role caseworker] [--admin] [--apply]
 
 Three things, the same as the demo users get:
 1. a Cognito user in the mandate pool; Cognito emails them a temporary password (nothing is printed),
 2. membership in the `staffer` group (or `admin` with --admin),
-3. an active STAFFER#<username> item in the `mandate` table (the office lives there, not in Cognito).
+3. an active STAFFER#<username> item in the `mandate` table (the office lives there, not in Cognito), with the
+   office role (docs/ROLES.md) once the contracts have it: Cedar denies every tool to a staffer with no role.
 Offboarding them later is the console's Offboard button, as in the demo.
 """
 
@@ -30,6 +31,7 @@ def main(argv: list[str] | None = None, cognito=None, store=None) -> int:
     parser.add_argument("username", help="lowercase sign-in name, e.g. judge1 (becomes the staffer id)")
     parser.add_argument("email", help="where Cognito sends the temporary password")
     parser.add_argument("--office", default="rep-x")
+    parser.add_argument("--office-role", default="caseworker", help="job in the office (docs/ROLES.md); maya's role")
     parser.add_argument("--admin", action="store_true", help="admin group (can offboard) instead of staffer")
     parser.add_argument("--apply", action="store_true", help="create the account (default: dry run)")
     args = parser.parse_args(argv)
@@ -39,12 +41,18 @@ def main(argv: list[str] | None = None, cognito=None, store=None) -> int:
         raise SystemExit("email doesn't look like an address")
     role = "admin" if args.admin else "staffer"
 
-    print(f"user {args.username} <{args.email}> in group {role}, STAFFER#{args.username} office={args.office} active")
+    print(f"user {args.username} <{args.email}> in group {role}, STAFFER#{args.username} office={args.office} "
+          f"office_role={args.office_role} active")
     if not args.apply:
         print("DRY RUN: nothing created. Re-run with --apply.")
         return 0
 
-    from mandate_contracts.ddb import StafferItem
+    from mandate_contracts import ddb
+
+    item = {"active": True, "office": args.office, "role": role}
+    if "office_role" in ddb.StafferItem.model_fields:  # Lane G's contracts; the model rejects an unknown role
+        item["office_role"] = args.office_role
+    staffer = ddb.StafferItem(**item)  # checked before anything is created
 
     if cognito is None:
         import boto3
@@ -61,7 +69,7 @@ def main(argv: list[str] | None = None, cognito=None, store=None) -> int:
         UserAttributes=[{"Name": "email", "Value": args.email}, {"Name": "email_verified", "Value": "true"}],
     )
     cognito.admin_add_user_to_group(UserPoolId=USER_POOL_ID, Username=args.username, GroupName=role)
-    store.put_staffer(args.username, StafferItem(active=True, office=args.office, role=role))
+    store.put_staffer(args.username, staffer)
     print(f"created. {args.email} gets a temporary password from Cognito; they set a new one at first sign-in.")
     return 0
 

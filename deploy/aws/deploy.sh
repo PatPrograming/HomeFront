@@ -86,7 +86,7 @@ if aws iam get-role --role-name homefront-agent --query Role.Arn --output text >
   echo "agent role homefront-agent exists"
 else
   echo "WARNING: role homefront-agent is missing, so agents will have no AWS access until you create it:"
-  echo "  bash Backend/infra/agent-role.sh --apply --trust-principal arn:aws:iam::$ACCOUNT:role/homefront-gateway-task"
+  echo "  bash Backend/infra/agent-role.sh --apply   (it already trusts homefront-gateway-task)"
 fi
 # Only for a redeploy in another account (README, "If the event account is wiped"); the template's
 # defaults are this event's IDs.

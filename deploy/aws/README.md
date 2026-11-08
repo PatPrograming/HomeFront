@@ -36,7 +36,9 @@ browser ──HTTPS──> CloudFront ──┬── /            ──> S3 bu
 
 `homefront-agent` (created by `Backend/infra/agent-role.sh`, the same role laptops use): `bedrock:InvokeModel`,
 `bedrock:InvokeModelWithResponseStream` on the Sonnet 5 and Haiku 5.5 inference profiles, and `bedrock:ApplyGuardrail`
-on `l74ju5pcrcdg`. Nothing else.
+on `l74ju5pcrcdg`. Nothing else. Its trust policy lets only `homefront-gateway-task` (and an optional laptop role)
+assume it. The gateway assumes it once per conversation (session `agent-<sid>`, one hour) with a session policy that
+narrows it further to Sonnet 5 and the guardrail, and hands the agent process only those temporary credentials.
 
 `homefront-gateway-task` (this stack; it cannot call Sonnet 5):
 
@@ -53,8 +55,7 @@ on `l74ju5pcrcdg`. Nothing else.
 | Secrets Manager | nothing | ECS's execution role reads `homefront/runtime` and injects it before the app starts. |
 | Cognito, after the Admin-Roles merge | `ListUsers`, `ListUsersInGroup`, `AdminAddUserToGroup`, `AdminRemoveUserFromGroup` | the mandate pool only; turn on with `GRANT_COGNITO_ADMIN=true deploy/aws/deploy.sh --apply` |
 
-The agent-role script's flag name `--trust-principal` is Lane E's; check `bash Backend/infra/agent-role.sh --help`
-after that merge. Connected accounts also need `https://<id>.cloudfront.net/account/connected` added as a redirect URI in
+Connected accounts also need `https://<id>.cloudfront.net/account/connected` added as a redirect URI in
 the Google and X developer consoles.
 
 Not granted, on purpose: the teammates' "Run a task" runner (Opus 5.5 through Bedrock Mantle), and the IAM permission
@@ -85,12 +86,16 @@ check on the Agents tab's email setup. Both report an error in the console inste
 - The AWS CLI v2, Node 20 and the repo's `.venv` (created by `scripts/run-gateway.sh`).
 - Fresh Workshop Studio credentials for the event account in your shell, region `us-east-1`. They expire after a few
   hours; on `ExpiredToken`, fetch new ones from the event portal and repeat the step.
-- This branch merged into the checkout you run from (or run from this worktree), together with Lane E's agent-role
-  work (`HOMEFRONT_AGENT_ROLE_ARN` in the supervisor and `Backend/infra/agent-role.sh`). Without it, deployed agents
-  get no AWS credentials and cannot answer.
+- This branch merged into the checkout you run from, together with Lane G (office roles), Lane H (agent
+  permissions), Lane I (connected accounts) and Lane E (the agent role: `HOMEFRONT_AGENT_ROLE_ARN` in the supervisor and
+  `Backend/infra/agent-role.sh`). `deploy.sh` builds the image from that checkout. Without Lane E, deployed agents get
+  no AWS credentials and cannot answer.
 - Your repo-root `.env` holds the government API keys you want live. Only `put_secrets.py` reads it, and only those keys.
 
 ### Deploy
+
+Run the steps in this order. The account-level pieces come first: the stack grants KMS only if the key already
+exists, and agents can't answer until `homefront-agent` exists. Every script is a dry run without `--apply`.
 
 1. Check which account your shell talks to.
 
@@ -100,72 +105,147 @@ check on the Agents tab's email setup. Both report an error in the console inste
 
    It prints the event account's 12-digit id. Anything else: stop and fix your credentials.
 
-2. Preview the whole deploy.
+#### Lane G: office roles and their policies
+
+2. Preview each staffer's office role.
 
    ```bash
-   deploy/aws/deploy.sh
+   bash Backend/infra/test-users.sh
    ```
 
-   Every step prints `DRY-RUN: …` lines and the last line says `dry run, nothing changed`. Nothing is created.
+   It prints the accounts and the `officeRole` each one gets, and changes nothing.
 
-3. Deploy.
+3. Write the roles.
 
    ```bash
-   deploy/aws/deploy.sh --apply
+   bash Backend/infra/test-users.sh --apply
    ```
 
-   This takes 15 to 25 minutes the first time, mostly CloudFront. It worked when it ends with `SMOKE OK` and
-   `Console: https://<id>.cloudfront.net/`. Copy that URL. If the output shows `WARNING: role homefront-agent is
-   missing`, do step 3a and 3b.
+   It creates only missing accounts and sets every staffer's `officeRole`. The role policies in step 5 refuse to
+   install while any staffer has no valid role.
 
-3a. Preview the agent role, trusting the gateway's task role. Replace `<account>` with the id from step 1.
+#### Lane H: agent-permission policies
+
+4. Preview the Cedar policies.
 
    ```bash
-   bash Backend/infra/agent-role.sh --trust-principal arn:aws:iam::<account>:role/homefront-gateway-task
+   bash Backend/infra/setup.sh --with-role-policies
    ```
 
-   It prints the role and its Bedrock-only policy as dry-run lines.
+   It prints `created:` for each missing policy (Lane G's office-role forbids, Lane H's starter and `role-*` policies)
+   and `exists:` for the rest.
 
-3b. Create it.
+5. Add them.
 
    ```bash
-   bash Backend/infra/agent-role.sh --apply --trust-principal arn:aws:iam::<account>:role/homefront-gateway-task
+   bash Backend/infra/setup.sh --apply --with-role-policies
    ```
 
-   It worked when a re-run of `deploy/aws/deploy.sh` prints `agent role homefront-agent exists`.
+   It checks every staffer's role, then creates only the missing policies. If your checkout's `setup.sh` also has
+   `--update-role-policies` (the Admin-Roles merge), run `bash Backend/infra/setup.sh --apply --update-role-policies`
+   next. Those policies deny any gateway older than this deploy, so a laptop gateway on old code stops working until
+   it is updated too.
 
-4. Preview a tester's account.
+6. Check the policies against the real store.
 
    ```bash
-   .venv/bin/python deploy/aws/add_tester.py judge1 judge1@example.com
+   bash Backend/policy/tests.sh --apply
    ```
 
-   It prints the user, group and office it would create, then `DRY RUN`.
+   Every case prints PASS. It only asks Verified Permissions for decisions and changes nothing.
 
-5. Create the account.
+#### Lane I: the connected-accounts key
+
+7. Preview the KMS key.
 
    ```bash
-   .venv/bin/python deploy/aws/add_tester.py judge1 judge1@example.com --apply
+   bash Backend/infra/connections.sh
    ```
 
-   It prints `created.` Cognito emails the temporary password to that address. Add `--admin` for someone who may
-   offboard staff. Repeat steps 4 and 5 for each tester.
+   It prints the commands that would create `alias/homefront-connections`, and calls nothing.
 
-6. Sign in as a tester in a private browser window at the console URL from step 3.
-
-   It worked when Cognito asks for a new password and the console's home page loads.
-
-7. Start a chat and send one message.
-
-   It worked when the agent answers. Its start shows in the log as `agent started sid=…`.
-
-8. Check the log for tokens.
+8. Create it.
 
    ```bash
-   aws logs filter-log-events --log-group-name /homefront/gateway --filter-pattern '"eyJ"' --query 'length(events)'
+   bash Backend/infra/connections.sh --apply
    ```
 
-   It prints `0`: no JSON Web Token appears in the logs.
+   It creates the key only if the alias is missing. Skip steps 7 and 8 to keep connected accounts off.
+
+#### Lane E: the agent role
+
+9. Preview the agent role.
+
+   ```bash
+   bash Backend/infra/agent-role.sh
+   ```
+
+   It prints the trust policy (only `homefront-gateway-task` may assume it) and the Bedrock-only permissions, and calls
+   nothing. To let your laptop gateway use the same role, add `--trust-principal arn:aws:iam::<account>:role/<your role>`
+   here and in step 10.
+
+10. Create it.
+
+    ```bash
+    bash Backend/infra/agent-role.sh --apply
+    ```
+
+    It ends with `Done. Set HOMEFRONT_AGENT_ROLE_ARN=…`. The stack already sets that variable, so there is nothing to
+    copy.
+
+#### Lane L: the app
+
+11. Preview the whole deploy.
+
+    ```bash
+    deploy/aws/deploy.sh
+    ```
+
+    Every step prints `DRY-RUN: …` lines, and the last line says `dry run, nothing changed`. Check that it prints
+    `connected-accounts key arn:…` and `agent role homefront-agent exists`.
+
+12. Deploy.
+
+    ```bash
+    deploy/aws/deploy.sh --apply
+    ```
+
+    This takes 15 to 25 minutes the first time, mostly CloudFront. It worked when it ends with `SMOKE OK` and
+    `Console: https://<id>.cloudfront.net/`. Copy that URL.
+
+13. Preview a tester's account.
+
+    ```bash
+    .venv/bin/python deploy/aws/add_tester.py judge1 judge1@example.com
+    ```
+
+    It prints the user, group and office it would create, then `DRY RUN`.
+
+14. Create the account.
+
+    ```bash
+    .venv/bin/python deploy/aws/add_tester.py judge1 judge1@example.com --apply
+    ```
+
+    It prints `created.` Cognito emails the temporary password to that address. Add `--admin` for someone who may
+    offboard staff, and `--office-role <role>` (docs/ROLES.md) for a role other than `caseworker`. Repeat steps 13 and
+    14 for each tester.
+
+15. Sign in as a tester in a private browser window at the console URL from step 12.
+
+    It worked when Cognito asks for a new password and the console's home page loads.
+
+16. Start a chat and send one message.
+
+    It worked when the agent answers. Its start shows in the log as `agent started sid=…`.
+
+17. Check the log for tokens.
+
+    ```bash
+    aws logs filter-log-events --log-group-name /homefront/gateway --filter-pattern '"eyJ"' --query 'length(events)'
+    ```
+
+    It prints `0`: no JSON Web Token appears in the logs.
 
 ### Day to day
 
