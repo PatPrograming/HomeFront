@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app  # also puts packages/*/src on sys.path
+from tests.helpers import ADMIN, ADMIN_USER
 
 from identity_gateway.store import (  # noqa: E402
     AgentRecord,
@@ -20,7 +21,9 @@ from identity_gateway.dynamo_repo import (  # noqa: E402
 
 from app.core.dynamodb import table  # noqa: E402
 
-client = TestClient(app)
+# Every call signs in as an admin with our Cognito login (tests/helpers.py).
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login", "old_tables")
 
 
 def _new_id() -> str:
@@ -52,7 +55,7 @@ def test_create_agent_stores_full_definition():
     assert created["model"] == "claude-sonnet-5-5"
     assert created["max_steps"] == 6
     assert created["tool_grants"] == ["datagov.search", "web.scrape"]
-    assert created["owner_id"] is None
+    assert created["owner_id"] == ADMIN_USER
 
     fetched = client.get(f"/api/v1/agents/{created['agent_id']}").json()
     assert fetched == created
@@ -142,16 +145,16 @@ def test_revoke_persists_and_blocks_next_call():
     agent = _create().json()
     aid = agent["agent_id"]
     token = client.post("/api/v1/auth/token", json={"agent_id": aid}).json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"X-Agent-Token": token}
 
-    me = client.get("/api/v1/auth/me", headers=headers).json()
-    assert me["instructions"] == agent["instructions"]
+    # /auth/me (agent token only) is not served: every route needs our staff login.
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 404
 
     client.post(f"/api/v1/agents/{aid}/grants/datagov.search/revoke")
     assert client.get(f"/api/v1/agents/{aid}").json()["tool_grants"] == ["web.scrape"]
 
     r = client.post(
-        "/api/v1/mcp/call", json={"tool": "datagov.search", "arguments": {}}, headers=headers
+        "/api/v1/agents/tool-call", json={"tool": "datagov.search", "arguments": {}}, headers=headers
     )
     assert r.status_code == 403
     assert r.json()["detail"]["error"] == "tool_not_granted"
@@ -264,7 +267,7 @@ def test_dynamo_list_paginates():
 
 def test_api_against_dynamo_store():
     """The full agent API, owner scoping included, on the DynamoDB repository."""
-    from identity_gateway import app as gateway
+    from identity_gateway import agents_api as gateway
 
     from tests.helpers import auth
 

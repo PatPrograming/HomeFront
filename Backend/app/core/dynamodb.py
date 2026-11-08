@@ -1,4 +1,8 @@
-"""DynamoDB access: table definitions and a shared boto3 resource.
+"""DynamoDB tables of the teammates' agent store (infra/README.md).
+
+The mandate flow keeps everything in the `mandate` table (packages/mandate-contracts
+`ddb`). These tables back the teammates' agent tabs (identity_gateway.agents_api),
+only when AGENT_STORE=dynamodb; the default keeps them in memory.
 
 TABLES is the single source of truth for key schemas. The CloudFormation
 template (infra/cloudformation/homefront.yaml) declares the same tables for
@@ -8,13 +12,13 @@ them in DynamoDB Local or a moto mock.
 Tables (names are <DYNAMODB_TABLE_PREFIX><name>):
 - profiles   pk id        one row per Cognito user (`sub`)
 - usernames  pk username  reservation row; makes profile usernames unique
-- agents     pk id        agent definitions (see identity_gateway.dynamo_repo)
+- agents     pk id        agent definitions (identity_gateway/dynamo_repo.py)
 - audit      pk agent_id  activity log, sk "<ts>#<id>", 90-day TTL on expires_at
-                          (see identity_gateway.audit)
+                          (identity_gateway/audit.py)
 - approvals  pk id        human approvals for high-risk tool calls
-                          (see identity_gateway.approvals)
+                          (identity_gateway/approvals.py)
 - reports    pk agent_id  reports saved with report.save, sk "<ts>#<id>"
-                          (see identity_gateway.reports)
+                          (identity_gateway/reports.py)
 """
 from __future__ import annotations
 

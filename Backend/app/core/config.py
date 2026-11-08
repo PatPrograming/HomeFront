@@ -21,38 +21,32 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Region for Cognito-independent AWS calls (DynamoDB, and Bedrock unless
-    # BEDROCK_REGION overrides). Falls back to AWS_REGION / AWS_DEFAULT_REGION.
+    allowed_origins: str = "http://localhost:3000"
+
+    # Amazon Cognito (printed by Backend/infra/cognito.sh). Empty ids mean every
+    # token is rejected: the backend fails closed until the pool is configured.
+    cognito_region: str = "us-east-1"
+    cognito_user_pool_id: str = ""
+    cognito_staff_client_id: str = ""
+    cognito_agent_client_id: str = ""
+    cognito_domain: str = ""
+
+    # Teammates' alternative stack only (infra/cloudformation/homefront.yaml,
+    # scripts/create_tables.py, app/core/dynamodb.py). The running app uses the
+    # `mandate` table, not these.
     aws_region: str = ""
-    allowed_origins: str = "http://localhost:3000,http://localhost:5173"
-
-    # --- User auth: Amazon Cognito ------------------------------------------
-    # From the CloudFormation stack outputs. Empty = user-auth routes return 503
-    # (the agent-IAM demo still works without them).
-    cognito_user_pool_id: str = ""  # e.g. us-east-1_AbC123xyz
-    cognito_app_client_id: str = ""
-
-    # When true, agent management routes (/agents*, /auth/token, /audit) need a
-    # signed-in Cognito user. Off by default for local demos.
-    agent_admin_requires_login: bool = False
-
-    # --- Data: Amazon DynamoDB ----------------------------------------------
-    # Table names are <prefix><name>: profiles, usernames, agents.
+    aws_profile: str = ""  # exported by apply_aws_env() for boto3 (SES), if set in .env
     dynamodb_table_prefix: str = "homefront-"
-    # Set to http://localhost:8000 for DynamoDB Local; empty = real AWS.
-    dynamodb_endpoint_url: str = ""
-    # Where agent definitions live. "memory" (default) is lost on restart;
-    # "dynamodb" uses the <prefix>agents table.
+    dynamodb_endpoint_url: str = ""  # http://localhost:8000 for DynamoDB Local
+
+    # Teammates' agent store (identity_gateway.agents_api). "memory" (default) is
+    # lost on restart; "dynamodb" uses the <prefix>agents/audit/approvals tables.
     agent_store: Literal["memory", "dynamodb"] = "memory"
 
-    # --- Agent runner: Claude on Amazon Bedrock ---------------------------
-    # Region enables the runner; empty = POST /agents/{id}/runs returns 503.
-    # Falls back to AWS_REGION when unset.
+    # Teammates' agent runner (Run a task): Claude on Amazon Bedrock. Region enables
+    # it (falls back to AWS_REGION); empty = POST /agents/{id}/runs returns 503.
     bedrock_region: str = ""
-    # Auth: a Bedrock API key, else the standard AWS credential chain (env
-    # keys, AWS_PROFILE, SSO, instance role) signed with SigV4.
     aws_bearer_token_bedrock: str = ""
-    aws_profile: str = ""
     bedrock_model_id: str = "anthropic.claude-opus-5-5"
     # Retried automatically if the primary model declines (refusal) a request.
     bedrock_fallback_model_id: str = "anthropic.claude-opus-4-8"
@@ -67,25 +61,10 @@ class Settings(BaseSettings):
     # When empty, live mode auto-enables if data_gov_api_key is set.
     homefront_live_datagov: str = ""
 
-    @field_validator("cognito_user_pool_id", "cognito_app_client_id", "dynamodb_endpoint_url")
+    @field_validator("dynamodb_endpoint_url")
     @classmethod
     def _strip(cls, v: str) -> str:
         return v.strip()
-
-    @property
-    def cognito_configured(self) -> bool:
-        return bool(self.cognito_user_pool_id and self.cognito_app_client_id)
-
-    @property
-    def cognito_region(self) -> str:
-        # Pool ids are "<region>_<id>".
-        return self.cognito_user_pool_id.split("_", 1)[0]
-
-    @property
-    def cognito_issuer(self) -> str:
-        return (
-            f"https://cognito-idp.{self.cognito_region}.amazonaws.com/{self.cognito_user_pool_id}"
-        )
 
     @property
     def resolved_aws_region(self) -> str:
@@ -98,12 +77,12 @@ class Settings(BaseSettings):
         )
 
     @property
-    def cors_origins(self) -> list[str]:
-        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
-
-    @property
     def resolved_bedrock_region(self) -> str:
         return self.bedrock_region.strip() or self.resolved_aws_region
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
 
     @property
     def live_datagov(self) -> bool:

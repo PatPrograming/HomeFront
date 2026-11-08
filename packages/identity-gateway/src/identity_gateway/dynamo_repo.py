@@ -129,9 +129,14 @@ class DynamoAgentRepository:
 
 
 def seed_demo_agent(repo: DynamoAgentRepository) -> bool:
-    """Create the shared demo agent if missing (was the migration's seed row)."""
-    try:
-        repo.insert(demo_agent())
-        return True
-    except DuplicateAgentError:
-        return False
+    """Create shared demo agents if missing (comms + research)."""
+    from .store import demo_research_agent
+
+    created = False
+    for factory in (demo_agent, demo_research_agent):
+        try:
+            repo.insert(factory())
+            created = True
+        except DuplicateAgentError:
+            pass
+    return created

@@ -2,21 +2,22 @@ import json
 import uuid
 from types import SimpleNamespace
 
-import httpx2
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app  # puts packages/*/src on sys.path
-from tests.helpers import auth
+from tests.helpers import ADMIN, auth
 
-from identity_gateway import app as gateway  # noqa: E402
+from identity_gateway import agents_api as gateway  # noqa: E402
 from identity_gateway.runner import (  # noqa: E402
     AgentRunner,
     RunnerConfig,
     bedrock_model_id,
 )
 
-client = TestClient(app)
+# Every call signs in as an admin with our Cognito login (tests/helpers.py).
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login")
 
 
 def _auth(sub: str) -> dict[str, str]:
@@ -138,6 +139,43 @@ def test_run_completes_with_gateway_tool_call(use_model):
     # Audited under the run.
     audit = client.get("/api/v1/audit").json()
     assert any(e.get("run_id") == run["run_id"] and e["decision"] == "allow" for e in audit)
+
+
+def test_research_run_filters_tools_by_topic(use_model):
+    fake = use_model(
+        response(tool_use("census_query", {
+            "year": "2023",
+            "dataset": "acs/acs1",
+            "get": "NAME,B01003_001E",
+            "for": "place:*",
+            "in": "state:06",
+        }), stop="tool_use"),
+        response(text("Population estimate ready.")),
+    )
+    agent = _agent(
+        kind="research",
+        name="Agency Research",
+        tool_grants=[
+            "web.scrape",
+            "datagov.search",
+            "census.query",
+            "nasa.search",
+            "nps.parks",
+        ],
+    )
+    run = _run(agent["agent_id"], task="What is the population of Santa Clara?")
+
+    assert run["status"] == "completed"
+    route = run["steps"][0]
+    assert route["type"] == "topic_route"
+    assert "demographics" in route["topics"]
+    assert route["tools"] == ["census.query", "datagov.search", "web.scrape"]
+
+    first = fake.calls[0]
+    names = sorted(t["name"] for t in first["tools"])
+    assert names == ["census_query", "datagov_search", "web_scrape"]
+    assert "Topic router matched" in first["system"]
+    assert "nasa" not in names and "nps" not in names
 
 
 def test_revoke_mid_run_blocks_next_call_and_model_is_told(use_model):
@@ -281,6 +319,10 @@ def test_inactive_agent_cannot_run(use_model):
 
 
 def test_bedrock_wire_format(monkeypatch):
+    # Wire-level tests need the anthropic SDK and httpx2 (requirements.txt); skipped
+    # in a venv without them rather than reaching the network.
+    pytest.importorskip("anthropic")
+    httpx2 = pytest.importorskip("httpx2")
     from anthropic import AnthropicBedrockMantle, BetaFallbackState, BetaRefusalFallbackMiddleware
 
     requests: list[httpx2.Request] = []
@@ -362,6 +404,10 @@ def test_bedrock_wire_format(monkeypatch):
 
 
 def test_bedrock_refusal_falls_back_and_pins():
+    # Wire-level tests need the anthropic SDK and httpx2 (requirements.txt); skipped
+    # in a venv without them rather than reaching the network.
+    pytest.importorskip("anthropic")
+    httpx2 = pytest.importorskip("httpx2")
     from anthropic import AnthropicBedrockMantle, BetaFallbackState, BetaRefusalFallbackMiddleware
 
     models: list[str] = []

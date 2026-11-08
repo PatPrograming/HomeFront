@@ -3,15 +3,18 @@ outbound tools (email, social) are denied, whatever the agent's type."""
 import uuid
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app  # puts packages/*/src on sys.path
+from tests.helpers import ADMIN
 
-from identity_gateway import app as gateway  # noqa: E402
+from identity_gateway import agents_api as gateway  # noqa: E402
 from identity_gateway.runner import AgentRunner  # noqa: E402
 from mcp_tools.registry import TOOL_REGISTRY  # noqa: E402
 
-client = TestClient(app)
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login", "old_tables")
 
 TO = "resident@example.gov"
 EMAIL = {"to": TO, "subject": "Update", "body": "Town hall Tuesday."}
@@ -34,17 +37,17 @@ def _agent(**overrides):
 
 def _session(agent_id):
     body = client.post("/api/v1/auth/token", json={"agent_id": agent_id}).json()
-    return {"Authorization": f"Bearer {body['access_token']}"}, body["session_id"]
+    return {"X-Agent-Token": body['access_token']}, body["session_id"]
 
 
 def _call(headers, tool, arguments):
-    return client.post("/api/v1/mcp/call", json={"tool": tool, "arguments": arguments}, headers=headers)
+    return client.post("/api/v1/agents/tool-call", json={"tool": tool, "arguments": arguments}, headers=headers)
 
 
 def test_outbound_flag_marks_email_and_social():
     outbound = {name for name, t in TOOL_REGISTRY.items() if t.outbound}
     assert outbound == {"email.send", "email.send_list", "social.post", "social.reply"}
-    assert client.get("/api/v1/tools").json()[0].get("outbound") is not None
+    assert client.get("/api/v1/agent-tools").json()[0].get("outbound") is not None
 
 
 def test_scrape_then_email_is_denied_as_tainted():

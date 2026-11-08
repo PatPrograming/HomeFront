@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Create HomeFront's AWS resources in us-east-1. Safe to run again: anything that
+# already exists is reused, nothing is deleted.
+#
+#   1. DynamoDB table `mandate` (pk/sk strings, on-demand)
+#   2. Verified Permissions policy store (validation off)
+#   3. The six Cedar policies from packages/mandate-contracts/policies/*.cedar
+#   4. Backend/infra/.env.aws (untracked): store id + map of AVP policy id -> readable name
+#
+# Usage: bash Backend/infra/setup.sh            # dry run: prints the AWS commands, calls nothing
+#        bash Backend/infra/setup.sh --apply    # really creates the resources (ask Huy first)
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+REGION="us-east-1"
+TABLE="${MANDATE_TABLE:-mandate}"
+STORE_DESCRIPTION="mandate"
+POLICY_DIR="$ROOT/packages/mandate-contracts/policies"
+ENV_FILE="$ROOT/Backend/infra/.env.aws"
+# Dry run unless --apply is passed, so a stray run can never create anything.
+DRY_RUN=1
+[[ "${1:-}" == "--apply" ]] && DRY_RUN=0
+
+# Run an AWS CLI command, or only print it in dry-run mode.
+run() {
+  if [[ $DRY_RUN == 1 ]]; then
+    echo "+ aws $* --region $REGION" >&2
+    return 0
+  fi
+  aws "$@" --region "$REGION"
+}
+
+# Read-only lookups print nothing in dry-run mode (and so look like "not found").
+# Any AWS error stops the script, so a failed lookup never leads to a duplicate.
+lookup() {
+  [[ $DRY_RUN == 1 ]] && return 0
+  aws "$@" --region "$REGION"
+}
+
+# The one lookup where "not found" is an error from AWS: describe-table.
+table_exists() {
+  [[ $DRY_RUN == 1 ]] && return 1
+  local err
+  if err="$(aws dynamodb describe-table --table-name "$TABLE" --region "$REGION" 2>&1 >/dev/null)"; then
+    return 0
+  fi
+  [[ "$err" == *ResourceNotFoundException* ]] && return 1
+  echo "$err" >&2
+  exit 1
+}
+
+echo "== 1. DynamoDB table $TABLE"
+if table_exists; then
+  echo "exists"
+else
+  run dynamodb create-table --table-name "$TABLE" \
+    --attribute-definitions AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
+    --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE \
+    --billing-mode PAY_PER_REQUEST >/dev/null
+  run dynamodb wait table-exists --table-name "$TABLE"
+  echo "created"
+fi
+
+echo "== 2. Verified Permissions policy store"
+STORE_ID="$(lookup verifiedpermissions list-policy-stores \
+  --query "policyStores[?description=='$STORE_DESCRIPTION'].policyStoreId | [0]" --output text)"
+if [[ -n "$STORE_ID" && "$STORE_ID" != "None" ]]; then
+  echo "exists: $STORE_ID"
+else
+  STORE_ID="$(run verifiedpermissions create-policy-store --validation-settings mode=OFF \
+    --description "$STORE_DESCRIPTION" --query policyStoreId --output text)"
+  [[ $DRY_RUN == 1 ]] && STORE_ID="<new-policy-store-id>"
+  echo "created: $STORE_ID"
+fi
+
+echo "== 3. Cedar policies"
+NAMES_JSON="{}"
+for file in "$POLICY_DIR"/*.cedar; do
+  name="$(basename "$file" .cedar)"
+  # AVP keeps a static policy's description; we store the readable name there.
+  policy_id="$(lookup verifiedpermissions list-policies --policy-store-id "$STORE_ID" \
+    --query "policies[?definition.static.description=='$name'].policyId | [0]" --output text)"
+  if [[ -n "$policy_id" && "$policy_id" != "None" ]]; then
+    echo "exists: $name ($policy_id)"
+  else
+    definition="$(python3 -c 'import json,sys; print(json.dumps({"static": {"description": sys.argv[1], "statement": open(sys.argv[2]).read()}}))' "$name" "$file")"
+    policy_id="$(run verifiedpermissions create-policy --policy-store-id "$STORE_ID" \
+      --definition "$definition" --query policyId --output text)"
+    [[ $DRY_RUN == 1 ]] && policy_id="<id-of-$name>"
+    echo "created: $name ($policy_id)"
+  fi
+  NAMES_JSON="$(python3 -c 'import json,sys; m=json.loads(sys.argv[1]); m[sys.argv[2]]=sys.argv[3]; print(json.dumps(m))' "$NAMES_JSON" "$policy_id" "$name")"
+done
+
+echo "== 4. $ENV_FILE"
+ENV_CONTENT="AWS_REGION=$REGION
+MANDATE_TABLE=$TABLE
+AVP_POLICY_STORE_ID=$STORE_ID
+AVP_POLICY_NAMES='$NAMES_JSON'"
+if [[ $DRY_RUN == 1 ]]; then
+  echo "would write:"
+  echo "$ENV_CONTENT"
+else
+  echo "$ENV_CONTENT" >"$ENV_FILE"
+  echo "written (untracked: .gitignore covers .env.*)"
+fi

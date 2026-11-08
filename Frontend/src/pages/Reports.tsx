@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import { ReportDocument, formatWhen } from "../components/ResearchOutput/ResearchOutput";
-import { api } from "../lib/api.js";
+import { agentsApi as api } from "../lib/agentsApi";
 import { describeError, type Agent, type Report } from "../lib/agents";
 import "./Reports.css";
 

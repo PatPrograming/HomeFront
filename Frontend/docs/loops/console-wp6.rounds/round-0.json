@@ -1,0 +1,130 @@
+{
+  "round": 0,
+  "at": "2026-11-08T00:12:59.767Z",
+  "root": "/Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8",
+  "passed": [
+    "C1",
+    "C8"
+  ],
+  "failed": [
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "C6",
+    "C7",
+    "C9"
+  ],
+  "fixed": [],
+  "regressed": [],
+  "results": [
+    {
+      "id": "C1",
+      "check": "Clean install and production build",
+      "command": "cd Frontend && npm ci --no-audit --no-fund && npm run build",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 3667,
+      "note": "",
+      "stdoutTail": "> guardrail-frontend@0.1.0 build\n> vite build\n\nvite v5.4.8 building for production...\ntransforming...\n✓ 104 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/index.html                             0.82 kB │ gzip:   0.45 kB\ndist/assets/logo-Dg8EW0du.png               7.47 kB\ndist/assets/KCObraLetraBold-j0dwxB6y.ttf   48.00 kB\ndist/assets/mountains-Do1FFF8W.png        941.89 kB\ndist/assets/index-BDg0oHvH.css              9.54 kB │ gzip:   2.68 kB\ndist/assets/index-DPya_3Q7.js             425.56 kB │ gzip: 123.18 kB\n✓ built in 1.03s",
+      "stderrTail": "npm warn EBADENGINE Unsupported engine {\nnpm warn EBADENGINE   package: '@supabase/realtime-js@2.119.0',\nnpm warn EBADENGINE   required: { node: '>=22.0.0' },\nnpm warn EBADENGINE   current: { node: 'v20.18.0', npm: '10.8.2' }\nnpm warn EBADENGINE }\nnpm warn EBADENGINE Unsupported engine {\nnpm warn EBADENGINE   package: '@supabase/storage-js@2.119.0',\nnpm warn EBADENGINE   required: { node: '>=22.0.0' },\nnpm warn EBADENGINE   current: { node: 'v20.18.0', npm: '10.8.2' }\nnpm warn EBADENGINE }\nnpm warn EBADENGINE Unsupported engine {\nnpm warn EBADENGINE   package: '@supabase/supabase-js@2.119.0',\nnpm warn EBADENGINE   required: { node: '>=22.0.0' },\nnpm warn EBADENGINE   current: { node: 'v20.18.0', npm: '10.8.2' }\nnpm warn EBADENGINE }"
+    },
+    {
+      "id": "C2",
+      "check": "No Supabase or AWS SDK in the frontend",
+      "command": "! grep -rniE '@supabase|aws-sdk|@aws-sdk' Frontend/src Frontend/package.json Frontend/vite.config.js",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 78,
+      "note": "",
+      "stdoutTail": "Frontend/src/lib/supabase.js:1:import { createClient } from \"@supabase/supabase-js\";\nFrontend/package.json:12:    \"@supabase/supabase-js\": \"^2.119.0\",",
+      "stderrTail": ""
+    },
+    {
+      "id": "C3",
+      "check": "PKCE helpers (verifier, S256 challenge, authorize URL, token exchange body)",
+      "command": "cd Frontend && npx vitest run src/lib/pkce.test.js",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 1159,
+      "note": "",
+      "stdoutTail": "RUN  v4.1.12 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend",
+      "stderrTail": "No test files found, exiting with code 1\n\nfilter: src/lib/pkce.test.js\ninclude: **/*.{test,spec}.?(c|m)[jt]s?(x)\nexclude:  **/node_modules/**, **/.git/**"
+    },
+    {
+      "id": "C4",
+      "check": "Role gate (admin-only routes, groups from access token)",
+      "command": "cd Frontend && npx vitest run src/lib/roles.test.js",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 890,
+      "note": "",
+      "stdoutTail": "RUN  v4.1.12 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend",
+      "stderrTail": "No test files found, exiting with code 1\n\nfilter: src/lib/roles.test.js\ninclude: **/*.{test,spec}.?(c|m)[jt]s?(x)\nexclude:  **/node_modules/**, **/.git/**"
+    },
+    {
+      "id": "C5",
+      "check": "Events cursor and merge logic (since=, newest first, no duplicates)",
+      "command": "cd Frontend && npx vitest run src/lib/events.test.js",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 890,
+      "note": "",
+      "stdoutTail": "RUN  v4.1.12 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend",
+      "stderrTail": "No test files found, exiting with code 1\n\nfilter: src/lib/events.test.js\ninclude: **/*.{test,spec}.?(c|m)[jt]s?(x)\nexclude:  **/node_modules/**, **/.git/**"
+    },
+    {
+      "id": "C6",
+      "check": "api.js sends the Bearer token and the lane B routes",
+      "command": "cd Frontend && npx vitest run src/lib/api.test.js",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 887,
+      "note": "",
+      "stdoutTail": "RUN  v4.1.12 /Users/tranquanghuy/Projects/aws-a10-hack-2026/HomeFront/.claude/worktrees/console-huy-4ee5f8/Frontend",
+      "stderrTail": "No test files found, exiting with code 1\n\nfilter: src/lib/api.test.js\ninclude: **/*.{test,spec}.?(c|m)[jt]s?(x)\nexclude:  **/node_modules/**, **/.git/**"
+    },
+    {
+      "id": "C7",
+      "check": "Mock mode refuses a production build",
+      "command": "cd Frontend && ! VITE_MOCK_API=1 npx vite build --outDir /tmp/mandate-mock-build-check",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 1554,
+      "note": "",
+      "stdoutTail": "vite v5.4.8 building for production...\ntransforming...\n✓ 104 modules transformed.\nrendering chunks...\ncomputing gzip size...\n../../../../../../../../../tmp/mandate-mock-build-check/index.html                             0.82 kB │ gzip:   0.45 kB\n../../../../../../../../../tmp/mandate-mock-build-check/assets/logo-Dg8EW0du.png               7.47 kB\n../../../../../../../../../tmp/mandate-mock-build-check/assets/KCObraLetraBold-j0dwxB6y.ttf   48.00 kB\n../../../../../../../../../tmp/mandate-mock-build-check/assets/mountains-Do1FFF8W.png        941.89 kB\n../../../../../../../../../tmp/mandate-mock-build-check/assets/index-BDg0oHvH.css              9.54 kB │ gzip:   2.68 kB\n../../../../../../../../../tmp/mandate-mock-build-check/assets/index-DPya_3Q7.js             425.56 kB │ gzip: 123.18 kB\n✓ built in 1.08s",
+      "stderrTail": "(!) outDir /tmp/mandate-mock-build-check is not inside project root and will not be emptied.\nUse --emptyOutDir to override."
+    },
+    {
+      "id": "C8",
+      "check": "Production bundle contains no mock code",
+      "command": "cd Frontend && npx vite build --outDir /tmp/mandate-prod-build-check >/dev/null && ! grep -rq MANDATE_MOCK_API_MODULE /tmp/mandate-prod-build-check",
+      "passWhen": "exit 0",
+      "pass": true,
+      "exit": 0,
+      "ms": 1495,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": "(!) outDir /tmp/mandate-prod-build-check is not inside project root and will not be emptied.\nUse --emptyOutDir to override."
+    },
+    {
+      "id": "C9",
+      "check": "README explains Cognito and mock mode",
+      "command": "grep -q VITE_COGNITO_DOMAIN Frontend/README.md && grep -q VITE_MOCK_API Frontend/README.md && grep -q cognito:groups Frontend/README.md",
+      "passWhen": "exit 0",
+      "pass": false,
+      "exit": 1,
+      "ms": 5,
+      "note": "",
+      "stdoutTail": "",
+      "stderrTail": ""
+    }
+  ]
+}

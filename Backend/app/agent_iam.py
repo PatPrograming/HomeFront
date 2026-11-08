@@ -1,19 +1,21 @@
-"""Mount MITRE ATLAS agent IAM routes onto the HomeFront API.
+"""Mount the HomeFront gateway onto the HomeFront API.
 
-User auth is Amazon Cognito (`app.core.auth`). Agent workload identity,
-MCP tool grants/revoke, and ATLAS enrichment live in `packages/identity-gateway`
-and are attached here so one FastAPI process serves both, all under `/api/v1`.
+The gateway lives in `packages/identity-gateway`. This module puts its packages
+on the import path and attaches it to the host app:
 
-Route groups
-- admin: /agents*, /auth/token, /audit  -- create agents, change grants, mint
-  agent tokens, read the audit log. Scoped to the caller:
-  - signed-in user: their own agents plus ownerless (shared demo) agents;
-    agents they create are owned by them.
-  - no login: only ownerless agents, and only while
-    `AGENT_ADMIN_REQUIRES_LOGIN=false` (standalone demo console).
-  - invalid/expired user token: always 401, never downgraded to anonymous.
-- open: /mcp/call and /auth/me (authenticated by the *agent* Bearer token, not
-  a user), plus the public catalogs /tools, /atlas/*, /demo/matrix.
+- `/api/v1/tools`, `/api/v1/atlas/*`, `/api/v1/demo/matrix`: public catalogs.
+- `/api/v1/mcp/call`: dashboard tool calls, authenticated by a mandate token.
+- `/mcp`: the real MCP endpoint for the agent, authenticated by a mandate token.
+
+There is no route that issues a mandate token on its own: mandate tokens come
+only from the broker (`routers/sessions.py`), which needs a staffer login and
+the agent's own client credentials.
+
+It also mounts the teammates' agent-management API (`identity_gateway.agents_api`:
+agents, grants, email setup, runs, approvals, activity log) behind our Cognito
+login, whatever `AGENT_ADMIN_REQUIRES_LOGIN` says: GET routes need
+`require_staff`, every other method (create, edit, grant, mint a workload token,
+SES admin, test email, approve, start a run) needs `require_admin`.
 """
 
 from __future__ import annotations
@@ -21,89 +23,67 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from fastapi.routing import APIRoute
-from fastapi.security import HTTPAuthorizationCredentials
 
-from app.core.auth import get_current_user
 from app.core.config import get_settings
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PACKAGE_SRC = [
+    _REPO_ROOT / "packages" / "mandate-contracts" / "src",
     _REPO_ROOT / "packages" / "atlas-enricher" / "src",
     _REPO_ROOT / "packages" / "mcp-tools" / "src",
     _REPO_ROOT / "packages" / "identity-gateway" / "src",
 ]
 
-# Gateway paths that manage agents rather than act as one.
-# /approvals is user-only on purpose: an agent's workload token can never
-# approve its own request.
-_ADMIN_PREFIXES = ("/agents", "/auth/token", "/audit", "/approvals", "/email")
-# Served by the host app's own router instead.
-_SKIP_PATHS = {"/health"}
 
-
-def _ensure_package_paths() -> None:
+def ensure_package_paths() -> None:
     for path in _PACKAGE_SRC:
         resolved = str(path)
         if path.is_dir() and resolved not in sys.path:
             sys.path.insert(0, resolved)
 
 
-def resolve_user_id(authorization: str | None) -> str | None:
-    """Cognito user id (`sub`) for an agent-management request, or None if anonymous.
-
-    Anonymous is allowed only when `AGENT_ADMIN_REQUIRES_LOGIN=false`. A token
-    that is present but invalid is always rejected.
-    """
-    if not authorization:
-        if get_settings().agent_admin_requires_login:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
-        return None
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token.strip():
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
-    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token.strip())
-    return get_current_user(creds).id
-
-
-def require_agent_admin(authorization: str | None = Header(default=None)) -> None:
-    """Router-level gate on every admin route, so a route that forgets to ask
-    for the actor is still authenticated."""
-    resolve_user_id(authorization)
-
-
-def _is_admin_path(path: str) -> bool:
-    return path.startswith(_ADMIN_PREFIXES)
-
-
 def include_agent_iam(host_app: FastAPI, prefix: str = "") -> None:
-    """Attach agent authZ + ATLAS routes (auth/token, mcp/call, atlas/*, ...) under `prefix`."""
-    _ensure_package_paths()
-    from atlas_enricher.router import build_router
-    from identity_gateway.app import app as agent_app
-    from identity_gateway.app import Actor, enricher, set_actor_resolver, store
+    """Attach the gateway routes under `prefix` and the MCP endpoint at `/mcp`."""
+    ensure_package_paths()
+    from identity_gateway.app import include_gateway
 
-    set_actor_resolver(lambda authorization: Actor(user_id=resolve_user_id(authorization)))
+    include_gateway(host_app, prefix=prefix)
+    include_agents_api(host_app, prefix=prefix)
+
+
+def actor_from_login(authorization: str | None):
+    """The teammates' API's caller, from our Cognito staff login (401/403 otherwise)."""
+    from app.core.cognito import STAFF_GROUPS, verify_staff_token
+    from identity_gateway.agents_api import Actor
+
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authentication failed")
+    identity = verify_staff_token(token.strip())
+    if not identity.groups & STAFF_GROUPS:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a staff member")
+    return Actor(user_id=identity.username)
+
+
+def include_agents_api(host_app: FastAPI, prefix: str = "") -> None:
+    """Mount the teammates' agent-management routes: reads for staff, writes for admins."""
+    from app.core.cognito import require_admin, require_staff
+    from identity_gateway import agents_api
+
+    agents_api.set_actor_resolver(actor_from_login)
     configure_bedrock_runner()
-
     if get_settings().agent_store == "dynamodb":
-        use_dynamodb_stores(store)
+        use_dynamodb_stores(agents_api.store)
 
-    # The gateway nests the ATLAS router, so it isn't in agent_app.routes; mount it directly.
-    host_app.include_router(build_router(enricher), prefix=prefix)
-
-    admin_router = APIRouter()
-    open_router = APIRouter()
-    for route in agent_app.routes:
-        if not isinstance(route, APIRoute) or route.path in _SKIP_PATHS:
+    reads, writes = APIRouter(), APIRouter()
+    for route in agents_api.router.routes:
+        if not isinstance(route, APIRoute):
             continue
-        (admin_router if _is_admin_path(route.path) else open_router).routes.append(route)
-
-    host_app.include_router(open_router, prefix=prefix)
-    host_app.include_router(
-        admin_router, prefix=prefix, dependencies=[Depends(require_agent_admin)]
-    )
+        (reads if route.methods <= {"GET", "HEAD"} else writes).routes.append(route)
+    host_app.include_router(reads, prefix=prefix, dependencies=[Depends(require_staff)])
+    host_app.include_router(writes, prefix=prefix, dependencies=[Depends(require_admin)])
 
 
 def _aws_reason(exc: Exception) -> str:
@@ -173,7 +153,7 @@ def use_dynamodb_stores(store) -> None:
 
 def configure_bedrock_runner() -> None:
     """Attach the Claude-on-Bedrock runner if a region is configured."""
-    from identity_gateway import app as gateway
+    from identity_gateway import agents_api as gateway
     from identity_gateway.runner import AgentRunner, RunnerConfig
 
     settings = get_settings()

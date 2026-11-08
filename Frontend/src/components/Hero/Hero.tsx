@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../lib/AuthProvider";
 import PlatformIcon from "../PlatformIcons/PlatformIcons";
@@ -9,7 +10,19 @@ interface HeroProps {
 }
 
 export default function Hero({ mission, buttons }: HeroProps) {
-  const { user } = useAuth();
+  const { session } = useAuth();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close the menu when clicking outside it.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
   const primaryLabel = buttons?.[0] || "Start a communication";
   const secondaryLabel = buttons?.[1] || "View agents";
   return (
@@ -25,13 +38,37 @@ export default function Hero({ mission, buttons }: HeroProps) {
             Federal departments are outdated and inefficient. HomeFront handles the outreach across the channels your agency already uses.
           </p>
           <div className="hero-buttons">
-            <Link className="btn btn-primary" to="/social-platform">
-              {primaryLabel}
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </Link>
-            {user ? (
+            <div className="reach" ref={menuRef}>
+              <button
+                type="button"
+                className="btn btn-primary reach-toggle"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                aria-controls="reach-menu"
+                onClick={() => setOpen((o) => !o)}
+                onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+              >
+                {primaryLabel}
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+              </button>
+              {open && (
+                <ul id="reach-menu" className="reach-menu" role="menu">
+                  <li role="none">
+                    <Link role="menuitem" to="/social-platform" onClick={() => setOpen(false)}>
+                      Social platform
+                    </Link>
+                  </li>
+                  <li role="none">
+                    <Link role="menuitem" to="/emails" onClick={() => setOpen(false)}>
+                      Email
+                    </Link>
+                  </li>
+                </ul>
+              )}
+            </div>
+            {session ? (
               <Link className="btn btn-outline" to="/agents">
                 {secondaryLabel}
               </Link>

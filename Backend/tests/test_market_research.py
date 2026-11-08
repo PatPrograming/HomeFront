@@ -8,9 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app  # puts packages/*/src on sys.path
-from tests.helpers import auth
+from tests.helpers import auth, ADMIN
 
-from identity_gateway import app as gateway  # noqa: E402
+from identity_gateway import agents_api as gateway  # noqa: E402
 from identity_gateway.agent_types import AGENT_TYPES, disallowed_tools  # noqa: E402
 from identity_gateway.reports import (  # noqa: E402
     DynamoReportRepository,
@@ -22,7 +22,8 @@ from mcp_tools.registry import TOOL_REGISTRY  # noqa: E402
 
 from app.core.dynamodb import table  # noqa: E402
 
-client = TestClient(app)
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login", "old_tables")
 
 ALICE = "00000000-0000-0000-0000-0000000a11ce"
 BOB = "00000000-0000-0000-0000-000000000b0b"
@@ -48,11 +49,11 @@ def _create(headers=None, **body):
 
 def _token(agent_id, headers=None):
     r = client.post("/api/v1/auth/token", json={"agent_id": agent_id}, headers=headers or {})
-    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+    return {"X-Agent-Token": r.json()['access_token']}
 
 
 def _call(token_headers, tool, arguments):
-    return client.post("/api/v1/mcp/call", json={"tool": tool, "arguments": arguments}, headers=token_headers)
+    return client.post("/api/v1/agents/tool-call", json={"tool": tool, "arguments": arguments}, headers=token_headers)
 
 
 # --- type -------------------------------------------------------------------
@@ -266,7 +267,7 @@ def test_report_save_and_list_owner_scoped():
     aid = agent["agent_id"]
     tok = _token(aid, headers=alice)
 
-    r = _call(tok, "report.save", {"title": "Market research: cameras", "body": "## Overview\nThree vendors."})
+    r = _call({**alice, **tok}, "report.save", {"title": "Market research: cameras", "body": "## Overview\nThree vendors."})
     assert r.status_code == 200, r.text
     result = r.json()["result"]
     assert result["status"] == "saved" and result["report_id"].startswith("rpt_")

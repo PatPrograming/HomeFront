@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Layout from "../components/Layout";
 import Stepper from "../components/Stepper/Stepper";
+import { buildEmailPayload, sendToAgent } from "../lib/agentPayload";
 import "./SocialPlatform.css";
 import "./Emails.css";
 
@@ -22,7 +23,7 @@ interface OptionGroupProps {
 }
 
 // Accessible checkbox / radio card group.
-function OptionGroup({ legend, hint, options, type, name, isOn, onChange }: OptionGroupProps) {
+export function OptionGroup({ legend, hint, options, type, name, isOn, onChange }: OptionGroupProps) {
   return (
     <fieldset className="field">
       <legend className="field-label">{legend}</legend>
@@ -66,10 +67,12 @@ export default function Emails() {
   const [mailType, setMailType] = useState(""); // Q3 (single)
   const [perDay, setPerDay] = useState(""); // Q4 (integer, kept as string for input)
   const [agentAction, setAgentAction] = useState(""); // Q5 (single)
+  const [emailTopic, setEmailTopic] = useState(""); // Q6 (required free text)
   // Q6: free-text restrictions for the built-in AI agent.
   // TODO: pass this to the backend as an agent restriction.
   const [restrictions, setRestrictions] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const goTo = (n: number) => {
     setStep(n);
@@ -79,7 +82,7 @@ export default function Emails() {
 
   const step1Valid = mailboxes.length > 0 && mailPlatforms.length > 0 && mailType !== "";
   const step2Valid = /^\d+$/.test(perDay);
-  const step3Valid = agentAction !== "";
+  const step3Valid = agentAction !== "" && emailTopic.trim() !== "";
 
   return (
     <Layout>
@@ -156,7 +159,11 @@ export default function Emails() {
                   className="input number-input"
                   placeholder="e.g. 250"
                   value={perDay}
-                  onChange={(e) => setPerDay(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Integers only: block exponent, sign and decimal characters.
+                    if (["e", "E", "+", "-", ".", ","].includes(e.key)) e.preventDefault();
+                  }}
+                  onChange={(e) => setPerDay(e.target.value.replace(/\D/g, ""))}
                 />
               </div>
             </div>
@@ -174,9 +181,18 @@ export default function Emails() {
           <form
             className="content-main"
             aria-labelledby="em-title-3"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              if (step3Valid) setSubmitted(true);
+              if (!step3Valid) return;
+              setSendError(null);
+              try {
+                await sendToAgent(
+                  buildEmailPayload({ mailboxes, mailPlatforms, mailType, perDay, role: agentAction, message: emailTopic, restrictions }),
+                );
+                setSubmitted(true);
+              } catch (err) {
+                setSendError(err instanceof Error ? err.message : "Could not send your settings.");
+              }
             }}
           >
             <h1 id="em-title-3" className="sp-title">Agent restrictions</h1>
@@ -192,6 +208,26 @@ export default function Emails() {
                 isOn={(o) => agentAction === o}
                 onChange={setAgentAction}
               />
+            </div>
+
+            <div className="card">
+              <div className="field">
+                <label className="field-label" htmlFor="email-topic">
+                  Main message
+                </label>
+                <p className="field-hint" id="email-topic-hint">The minimum information that must be communicated, such as current figures, affected areas, and required actions.</p>
+                <textarea
+                  id="email-topic"
+                  className="textarea"
+                  rows={4}
+                  required
+                  aria-describedby="email-topic-hint"
+                  placeholder="e.g. Notify residents of the new benefits enrollment deadline…"
+                  value={emailTopic}
+                  onChange={(e) => setEmailTopic(e.target.value)}
+                />
+                <span className="field-count">{emailTopic.length} characters</span>
+              </div>
             </div>
 
             <div className="card">
@@ -216,8 +252,9 @@ export default function Emails() {
             </div>
 
             {submitted && (
-              <p role="status" className="sp-count">Your email settings have been saved locally.</p>
+              <p role="status" className="sp-count">Your email settings have been sent to the agent.</p>
             )}
+            {sendError && <p className="alert alert-error" role="alert">{sendError}</p>}
 
             <div className="em-nav">
               <button type="button" className="btn btn-outline" onClick={() => goTo(2)}>Back</button>

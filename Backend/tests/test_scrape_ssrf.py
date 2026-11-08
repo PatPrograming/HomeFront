@@ -9,10 +9,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app  # puts packages/*/src on sys.path
+from tests.helpers import ADMIN
 
 from mcp_tools import handlers  # noqa: E402
 
-client = TestClient(app)
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login", "old_tables")
 
 PUBLIC_IP = "93.184.215.14"
 
@@ -175,11 +177,11 @@ def test_live_scrape_follows_redirect_to_public_host(live, monkeypatch):
 
 def test_ssrf_denial_through_gateway(monkeypatch):
     monkeypatch.delenv("HOMEFRONT_LIVE_SCRAPE", raising=False)
-    token = client.post("/api/v1/auth/token", json={"agent_id": "agent-comms-01"}).json()["access_token"]
+    token = client.post("/api/v1/auth/token", json={"agent_id": "agent-research-01"}).json()["access_token"]
     r = client.post(
-        "/api/v1/mcp/call",
+        "/api/v1/agents/tool-call",
         json={"tool": "web.scrape", "arguments": {"url": "http://169.254.169.254/"}},
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"X-Agent-Token": token},
     )
     assert r.status_code == 200
     assert r.json()["result"]["status"] == "denied"

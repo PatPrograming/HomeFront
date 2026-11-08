@@ -5,11 +5,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app  # puts packages/*/src on sys.path
-from tests.helpers import auth
+from tests.helpers import ADMIN, ADMIN_USER, auth
 from tests.test_runner import response, text, tool_use, use_model  # noqa: F401 (fixture)
 
 from app.core.dynamodb import table  # noqa: E402
-from identity_gateway import app as gateway  # noqa: E402
+from identity_gateway import agents_api as gateway  # noqa: E402
 from identity_gateway.audit import (  # noqa: E402
     DynamoAuditRepository,
     MemoryAuditRepository,
@@ -17,7 +17,9 @@ from identity_gateway.audit import (  # noqa: E402
 )
 from identity_gateway.store import GatewayStore  # noqa: E402
 
-client = TestClient(app)
+# Every call signs in as an admin with our Cognito login (tests/helpers.py).
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login", "old_tables")
 ALICE = "00000000-0000-0000-0000-0000000a11ce"
 
 
@@ -59,7 +61,9 @@ def test_agent_creation_is_logged_with_the_user():
     [event] = _events(alice, agent_id=agent["agent_id"], type="agent_created")
     assert event["actor"] == f"user:{ALICE}"
     assert event["kind"] == "research"
-    assert event["tool_grants"] == ["datagov.search", "web.scrape"]
+    from identity_gateway.agent_types import AGENT_TYPES
+
+    assert event["tool_grants"] == sorted(AGENT_TYPES["research"].default_tools)
 
 
 def test_agent_update_and_grant_changes_name_the_actor():
@@ -69,7 +73,7 @@ def test_agent_update_and_grant_changes_name_the_actor():
     client.post(f"/api/v1/agents/{aid}/grants/web.scrape/revoke")
     events = {e["type"]: e for e in _events(agent_id=aid)}
     assert events["agent_updated"]["fields"] == ["max_steps"]
-    assert events["grant_revoked"]["actor"] == "anonymous"
+    assert events["grant_revoked"]["actor"] == f"user:{ADMIN_USER}"
 
 
 def test_manual_token_session_is_one_trace():
@@ -77,9 +81,9 @@ def test_manual_token_session_is_one_trace():
     aid = agent["agent_id"]
     auth_res = client.post("/api/v1/auth/token", json={"agent_id": aid}).json()
     session = auth_res["session_id"]
-    headers = {"Authorization": f"Bearer {auth_res['access_token']}"}
-    client.post("/api/v1/mcp/call", json={"tool": "datagov.search", "arguments": {"q": "x"}}, headers=headers)
-    client.post("/api/v1/mcp/call", json={"tool": "email.send", "arguments": {}}, headers=headers)
+    headers = {"X-Agent-Token": auth_res['access_token']}
+    client.post("/api/v1/agents/tool-call", json={"tool": "datagov.search", "arguments": {"q": "x"}}, headers=headers)
+    client.post("/api/v1/agents/tool-call", json={"tool": "email.send", "arguments": {}}, headers=headers)
 
     trace = _events(trace_id=session)
     assert [e["type"] for e in reversed(trace)] == ["authenticate", "tool_call", "tool_call"]
@@ -106,9 +110,9 @@ def test_filters_by_decision():
     agent = _create()
     tok = client.post("/api/v1/auth/token", json={"agent_id": agent["agent_id"]}).json()["access_token"]
     client.post(
-        "/api/v1/mcp/call",
+        "/api/v1/agents/tool-call",
         json={"tool": "social.post", "arguments": {}},
-        headers={"Authorization": f"Bearer {tok}"},
+        headers={"X-Agent-Token": tok},
     )
     denies = _events(agent_id=agent["agent_id"], decision="deny")
     assert denies and all(e["decision"] == "deny" for e in denies)

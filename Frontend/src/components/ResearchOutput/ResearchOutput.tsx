@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Markdown, { extractLinks, outline } from "../Markdown/Markdown";
-import { api } from "../../lib/api.js";
+import { agentsApi as api } from "../../lib/agentsApi";
 import { TERMINAL_RUN_STATUSES, type Agent, type Report, type Run, type RunStep } from "../../lib/agents";
 import "./ResearchOutput.css";
 

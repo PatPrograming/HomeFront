@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app  # puts packages/*/src on sys.path
+from tests.helpers import ADMIN
 
 from identity_gateway.dynamo_repo import agent_from_item, agent_to_item  # noqa: E402
 from identity_gateway.runner import system_prompt  # noqa: E402
@@ -17,7 +18,8 @@ from identity_gateway.store import (  # noqa: E402
 )
 from mcp_tools import handlers  # noqa: E402
 
-client = TestClient(app)
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login", "old_tables")
 
 
 def _create(**body):
@@ -29,11 +31,11 @@ def _create(**body):
 
 
 def _token(agent_id):
-    return {"Authorization": f"Bearer {client.post('/api/v1/auth/token', json={'agent_id': agent_id}).json()['access_token']}"}
+    return {"X-Agent-Token": client.post('/api/v1/auth/token', json={'agent_id': agent_id}).json()['access_token']}
 
 
 def _scrape(headers, url):
-    return client.post("/api/v1/mcp/call", json={"tool": "web.scrape", "arguments": {"url": url}}, headers=headers)
+    return client.post("/api/v1/agents/tool-call", json={"tool": "web.scrape", "arguments": {"url": url}}, headers=headers)
 
 
 # --- matching -----------------------------------------------------------------
@@ -166,7 +168,7 @@ def test_narrowing_mid_session_applies_to_next_call():
 def test_agent_cannot_widen_policy_through_arguments():
     agent = _create(tool_grants=["web.scrape"], scrape_domains=["*.gov"]).json()
     r = client.post(
-        "/api/v1/mcp/call",
+        "/api/v1/agents/tool-call",
         json={"tool": "web.scrape", "arguments": {"url": "https://example.com/", "allowed_domains": ["*.com"]}},
         headers=_token(agent["agent_id"]),
     )
