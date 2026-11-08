@@ -1,6 +1,6 @@
 # Loop: agent-guardrails
 
-Status: BUILDING
+Status: DONE
 Profile: feature (new behaviour across many files; security-relevant, so trial depth full)
 Round: 2 / 4
 Base commit: 839c456
@@ -88,6 +88,13 @@ offline, with no AWS or Bedrock call.
   6. create.sh publishes even if the guardrail never became READY (reviewer Low 6).
   7. Safety: create.sh touches AWS without an explicit flag; checks and tests do not strip AWS credentials (incident, lead rule).
 - Decision: next round because the gaps are fixable code issues and round 1 fixed 8 checks.
+
+### Round 2 — 2026-11-07
+- Built: tasks 8–11, commits f95a067 (gap fixes), b1bf458 (kept guardrail, agent/.env), 537bcf9 (--sid beats MANDATE_TOKEN, HomeFront rename)
+- Outcome checks: 11/11 pass (C10, C11 added this round; all checks now strip AWS credentials); regressed [] (scoreboards: round-2.json, round-3.json)
+- Review: round-1 reviewer findings all fixed. Trial: falsifier FALSIFIED only "never claim it succeeded" read strictly, plus a --sid caveat (fixed in 537bcf9); judge ACCEPT at 537bcf9 under the lead's rulings (label + code-written "Not done" line + ledger). Nothing reached AWS in round 2.
+- Gap list for next round: none.
+- Decision: DONE because all checks pass, the trial accepts and the gap list is empty. The lead stopped new rounds for the integration merge.
 
 ## Decisions
 
