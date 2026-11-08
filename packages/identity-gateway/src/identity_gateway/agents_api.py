@@ -212,6 +212,20 @@ EMAIL_SEND = "email.send"
 EMAIL_SEND_LIST = "email.send_list"
 EMAIL_TOOLS = (EMAIL_SEND, EMAIL_SEND_LIST)
 SOCIAL_TOOLS = ("social.post", "social.reply")
+# Tools whose handler needs to know the calling agent (gateway-injected).
+CALLER_CONTEXT_TOOLS = frozenset({"report.save"})
+WEB_SCRAPE = "web.scrape"
+
+
+def _scrape_domain_problem(agent: AgentRecord, tool_name: str, arguments: dict[str, Any]) -> str | None:
+    """The host a web.scrape call is refused for ("" if the URL has none), or None if allowed."""
+    if tool_name != WEB_SCRAPE or not agent.scrape_domains:
+        return None
+    try:
+        host = (urllib.parse.urlsplit(str(arguments.get("url") or "")).hostname or "").rstrip(".").lower()
+    except ValueError:
+        host = ""
+    return None if host and host_matches_domains(host, agent.scrape_domains) else host
 
 
 def _sender_preview(agent: AgentRecord) -> dict[str, Any]:
