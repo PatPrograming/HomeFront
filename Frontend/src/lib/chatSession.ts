@@ -15,6 +15,15 @@ export interface ChatDeps {
   findContinuation?: (oldSid: string) => Promise<SessionCard | null>;
 }
 
+// The broker refused to continue because the old session was revoked (or its staffer offboarded). The console shows
+// the Revoked banner with "Start a new conversation" instead of an error, and sends nothing.
+export class SessionRevokedError extends Error {
+  constructor(readonly sid: string) {
+    super("This conversation's session was revoked.");
+    this.name = "SessionRevokedError";
+  }
+}
+
 export function needsNewSession(card: SessionCard | null, now: number): boolean {
   return card === null || expiryMs(card.expiresAt) <= now;
 }
@@ -30,6 +39,7 @@ async function continued(card: SessionCard, deps: ChatDeps): Promise<StartedCard
     return await deps.startSession(card.sid);
   } catch (e) {
     const { status, code } = refusal(e);
+    if (code === "revoked") throw new SessionRevokedError(card.sid);
     if (status === 409 && code === "still_active") return card; // our clock ran ahead of the server's
     if (status === 409 && code === "already_continued") {
       const newest = await deps.findContinuation?.(card.sid);

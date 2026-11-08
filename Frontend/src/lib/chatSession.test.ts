@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SessionCard } from "./api";
-import { sendInSession } from "./chatSession";
+import { SessionRevokedError, sendInSession } from "./chatSession";
 
 const NOW = Date.parse("2026-11-07T22:00:00Z");
 const card = (sid: string, expiresAt: string): SessionCard => ({
@@ -75,7 +75,15 @@ describe("an expired session is continued", () => {
     expect(out.card.sid).toBe("sid-other-tab");
   });
 
-  it.each([[403, "revoked"], [404, "not_found"]])("%i (%s): starts a fresh conversation instead", async (status, code) => {
+  it("403 revoked: throws SessionRevokedError and sends nothing (the console shows the Revoked banner)", async () => {
+    const d = deps();
+    d.startSession.mockRejectedValueOnce(refusal(403, "revoked"));
+    await expect(sendInSession(old, "hi", NOW, d)).rejects.toBeInstanceOf(SessionRevokedError);
+    expect(d.startSession).toHaveBeenCalledTimes(1);
+    expect(d.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([[404, "not_found"]])("%i (%s): starts a fresh conversation instead", async (status, code) => {
     const d = deps();
     d.startSession.mockRejectedValueOnce(refusal(status, code));
     const out = await sendInSession(old, "hi", NOW, d);

@@ -15,7 +15,7 @@ import { useOpenDraft } from "../lib/useOpenDraft";
 import { useSession } from "../lib/AuthProvider";
 import { sessionEvents } from "../lib/events";
 import { isAdmin } from "../lib/roles";
-import { needsNewSession, sendInSession, type StartedCard } from "../lib/chatSession";
+import { needsNewSession, SessionRevokedError, sendInSession, type StartedCard } from "../lib/chatSession";
 import { isStopPhrase } from "../lib/stopTask";
 import { useChat, type Chat } from "../lib/useChat";
 import { useEventFeed } from "../lib/useEventFeed";
@@ -97,7 +97,9 @@ export default function Console() {
   const [stoppedSid, setStoppedSid] = useState<string | null>(() => sessionStorage.getItem(STOPPED_KEY));
   const stopped = card !== null && stoppedSid === card.sid;
   const polledRevoked = useSessionRevoked(card?.sid ?? null);
-  const revoked = stopped || polledRevoked || sessionEvents(feed.events, card?.sid ?? null).some((e) => e.reason === REVOKED);
+  // The broker refused to continue this conversation because its session was revoked (code `revoked`).
+  const [refusedSid, setRefusedSid] = useState<string | null>(null);
+  const revoked = stopped || polledRevoked || (card !== null && refusedSid === card.sid) || sessionEvents(feed.events, card?.sid ?? null).some((e) => e.reason === REVOKED);
   const events = feed.events.filter((e) => chain.includes(e.sid)); // the admin Audit log shows every session
   const chat = useChat(card?.sid ?? null);
   const review = useReview();
@@ -116,14 +118,23 @@ export default function Console() {
     if (card && !needsNewSession(card, Date.now())) return chat.send(text);
     // The session's hour is up: keep what was said so far above the new session's messages.
     const kept: Earlier | null = card ? { sids: chain, messages: shownMessages } : null;
-    const next = await sendInSession(card, text, Date.now(), {
-      startSession: api.startSession,
-      sendMessage: api.sendMessage,
-      findContinuation: async (oldSid) => {
-        const newest = (await api.listSessions()).sessions.find((s) => s.earlier?.includes(oldSid));
-        return newest ? toCard(newest) : null;
-      },
-    });
+    let next: Awaited<ReturnType<typeof sendInSession>>;
+    try {
+      next = await sendInSession(card, text, Date.now(), {
+        startSession: api.startSession,
+        sendMessage: api.sendMessage,
+        findContinuation: async (oldSid) => {
+          const newest = (await api.listSessions()).sessions.find((s) => s.earlier?.includes(oldSid));
+          return newest ? toCard(newest) : null;
+        },
+      });
+    } catch (e) {
+      if (e instanceof SessionRevokedError) {
+        setRefusedSid(e.sid); // show the Revoked banner and "Start a new conversation", not a send error
+        return;
+      }
+      throw e;
+    }
     if (next.card.sid !== card?.sid) {
       if (kept?.messages.length) {
         const all = { ...history, [next.card.sid]: kept };
