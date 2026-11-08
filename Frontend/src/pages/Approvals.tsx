@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import Layout from "../components/Layout";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/AuthProvider";
-import { describeError, toolAction, type Approval } from "../lib/agents";
+import { describeError, isShareResult, isSocialTool, safeShareUrl, toolAction, type Approval } from "../lib/agents";
 import { emailSetupPath } from "./EmailSetup";
 import "./Agents.css";
 import "./Approvals.css";
@@ -21,7 +21,7 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  executed: "Sent",
+  executed: "Done",
   rejected: "Rejected",
   failed: "Failed",
   expired: "Expired",
@@ -30,6 +30,55 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const time = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleString() : "—");
+
+// An approved social draft: HomeFront publishes nothing. The person opens the platform's
+// compose screen, already filled in, from their own signed-in browser and presses Post.
+function SharePanel({ approval }: { approval: Approval }) {
+  const [copied, setCopied] = useState(false);
+  if (!isShareResult(approval.result)) return null;
+  const share = approval.result;
+  const url = safeShareUrl(share.share_url);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(share.copy_text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  const openLabel =
+    share.mode === "copy_and_open" ? `Open ${share.platform_name}` : `Open ${share.platform_name} to post`;
+
+  return (
+    <div className="share-panel">
+      <p className="share-note">{share.note}</p>
+      {share.warnings.map((w) => (
+        <p key={w} className="sandbox-warning" role="status">
+          {w}
+        </p>
+      ))}
+      <div className="form-actions">
+        {url ? (
+          <a className="btn btn-primary" href={url} target="_blank" rel="noopener noreferrer">
+            {openLabel}
+          </a>
+        ) : (
+          <span className="muted">This link isn't on a supported site, so it was not opened.</span>
+        )}
+        <button className="btn btn-outline" type="button" onClick={copy}>
+          {copied ? "Copied" : "Copy text"}
+        </button>
+      </div>
+      <p className="muted share-fine">
+        Images can't be attached through a link. Add any image yourself in {share.platform_name}. HomeFront can't tell
+        whether you posted.
+      </p>
+    </div>
+  );
+}
 
 function ApprovalCard({ approval, onDone }: { approval: Approval; onDone: () => void }) {
   const [args, setArgs] = useState<Record<string, string>>(approval.arguments);
@@ -167,6 +216,13 @@ function ApprovalCard({ approval, onDone }: { approval: Approval; onDone: () => 
         })}
       </div>
 
+      {isSocialTool(approval.tool) && (
+        <p className="muted approval-sub">
+          HomeFront doesn't post for you. After you approve, you get a link that opens the platform with this draft
+          filled in, and you press Post from your own account.
+        </p>
+      )}
+
       <label className="field">
         <span className="field-label">Note (optional)</span>
         <input
@@ -186,7 +242,15 @@ function ApprovalCard({ approval, onDone }: { approval: Approval; onDone: () => 
 
       <div className="form-actions">
         <button className="btn btn-primary" type="button" disabled={!!busy} onClick={() => decide("approve")}>
-          {busy === "approve" ? "Sending…" : edited ? "Approve with edits" : "Approve and send"}
+          {busy === "approve"
+            ? "Approving…"
+            : isSocialTool(approval.tool)
+              ? edited
+                ? "Approve with edits"
+                : "Approve and get link"
+              : edited
+                ? "Approve with edits"
+                : "Approve and send"}
         </button>
         <button className="btn btn-outline danger" type="button" disabled={!!busy} onClick={() => decide("reject")}>
           {busy === "reject" ? "Rejecting…" : "Reject"}
@@ -206,7 +270,9 @@ function HistoryRow({ approval, you }: { approval: Approval; you?: string }) {
     approval.decided_by && you && approval.decided_by === `user:${you}` ? "you" : approval.decided_by || "—";
   return (
     <li className={`history-row status-${approval.status}`}>
-      <span className={`status-badge status-${approval.status}`}>{STATUS_LABELS[approval.status] || approval.status}</span>
+      <span className={`status-badge status-${approval.status}`}>
+        {isShareResult(approval.result) ? "Ready to post" : STATUS_LABELS[approval.status] || approval.status}
+      </span>
       <span>
         <strong>{approval.agent?.name || approval.agent_id}</strong> · <code>{approval.tool}</code>
         {approval.edited && <span className="edited-tag">edited</span>}
@@ -216,6 +282,7 @@ function HistoryRow({ approval, you }: { approval: Approval; you?: string }) {
       </span>
       {approval.note && <span className="history-note">“{approval.note}”</span>}
       {approval.error && <span className="history-note error">{approval.error}</span>}
+      {approval.status === "executed" && isShareResult(approval.result) && <SharePanel approval={approval} />}
       {approval.trace_id && (
         <Link className="trace-link" to={`/activity?trace=${encodeURIComponent(approval.trace_id)}`}>
           Trace
@@ -259,7 +326,8 @@ export default function Approvals() {
           <h1>Approvals</h1>
           <p className="lede">
             Agents can't send email, post or reply on their own. Each of those actions waits here until someone
-            approves it. You can edit the draft first, and every decision is recorded in the activity log.
+            approves it. You can edit the draft first, and every decision is recorded in the activity log. Social
+            drafts come back as a link that opens the platform with the post filled in.
           </p>
 
           {error && <p className="alert alert-error">Couldn't load approvals: {error}</p>}

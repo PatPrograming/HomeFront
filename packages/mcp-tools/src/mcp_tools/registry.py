@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from .share_links import SUPPORTED as SHARE_PLATFORM_IDS
+
 
 @dataclass(frozen=True)
 class ToolDefinition:
@@ -60,27 +62,48 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
     ),
     "social.post": ToolDefinition(
         name="social.post",
-        description="Publish a social media post.",
+        description=(
+            "Draft a social media post. After a person approves it, they get a prefilled "
+            "compose link and press Post themselves; nothing is published automatically."
+        ),
         risk_level="high",
         atlas_techniques=["AML.T0086", "AML.T0048"],
         atlas_mitigations=["AML.M0028", "AML.M0029", "AML.M0024"],
         requires_hitl=True,
         input_schema=_schema(
-            platform={"type": "string", "description": "Platform, e.g. 'x' or 'facebook'."},
-            text={"type": "string", "description": "Post text."},
+            platform={
+                "type": "string",
+                "enum": list(SHARE_PLATFORM_IDS),
+                "description": "Platform to post on.",
+            },
+            text={
+                "type": "string",
+                "description": (
+                    "Post text. Put the official link in it. Facebook and LinkedIn share only "
+                    "the link, so include one for those. Keep within the platform's limit "
+                    "(X 280, Bluesky 300)."
+                ),
+            },
         ),
     ),
     "social.reply": ToolDefinition(
         name="social.reply",
-        description="Reply to a social media comment or mention.",
+        description=(
+            "Draft a reply to a social media comment or mention. After a person approves it, "
+            "they get a prefilled compose link and post it themselves."
+        ),
         risk_level="high",
         atlas_techniques=["AML.T0086", "AML.T0051.001"],
         atlas_mitigations=["AML.M0028", "AML.M0030", "AML.M0024"],
         requires_hitl=True,
         untrusted_input=True,
         input_schema=_schema(
-            platform={"type": "string", "description": "Platform, e.g. 'x' or 'facebook'."},
-            reply_to={"type": "string", "description": "Id of the post or comment to reply to."},
+            platform={
+                "type": "string",
+                "enum": list(SHARE_PLATFORM_IDS),
+                "description": "Platform the comment is on.",
+            },
+            reply_to={"type": "string", "description": "Id or URL of the post or comment to reply to."},
             text={"type": "string", "description": "Reply text."},
         ),
     ),

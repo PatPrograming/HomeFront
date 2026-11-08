@@ -28,6 +28,7 @@ from atlas_enricher.router import build_router  # noqa: E402
 from mcp_tools import handlers as email_handlers  # noqa: E402
 from mcp_tools.handlers import invoke_tool, resolve_sender, ses_identity_status  # noqa: E402
 from mcp_tools.registry import get_tool, list_tools, tool_public_view  # noqa: E402
+from mcp_tools.share_links import ShareLinkError, normalize_platform  # noqa: E402
 
 from . import email_admin  # noqa: E402
 
@@ -184,6 +185,24 @@ def _recipients_error(exc: InvalidRecipientsError) -> HTTPException:
 EMAIL_SEND = "email.send"
 EMAIL_SEND_LIST = "email.send_list"
 EMAIL_TOOLS = (EMAIL_SEND, EMAIL_SEND_LIST)
+<<<<<<< Updated upstream
+=======
+SOCIAL_TOOLS = ("social.post", "social.reply")
+# Tools whose handler needs to know the calling agent (gateway-injected).
+CALLER_CONTEXT_TOOLS = frozenset({"report.save"})
+WEB_SCRAPE = "web.scrape"
+
+
+def _scrape_domain_problem(agent: AgentRecord, tool_name: str, arguments: dict[str, Any]) -> str | None:
+    """The host a web.scrape call is refused for ("" if the URL has none), or None if allowed."""
+    if tool_name != WEB_SCRAPE or not agent.scrape_domains:
+        return None
+    try:
+        host = (urllib.parse.urlsplit(str(arguments.get("url") or "")).hostname or "").rstrip(".").lower()
+    except ValueError:
+        host = ""
+    return None if host and host_matches_domains(host, agent.scrape_domains) else host
+>>>>>>> Stashed changes
 
 
 def _sender_preview(agent: AgentRecord) -> dict[str, Any]:
@@ -199,13 +218,20 @@ def _sender_preview(agent: AgentRecord) -> dict[str, Any]:
 
 
 def _recipient_problem(agent: AgentRecord, tool_name: str, arguments: dict[str, Any]) -> str | None:
-    """Why this call would email someone outside the agent's list, or None if it's fine."""
+    """Why this call would email someone outside the agent's list (or name a platform
+    with no share link), or None if it's fine."""
     if tool_name == EMAIL_SEND:
         to = normalize_email(str(arguments.get("to") or ""))
         if to not in agent.recipients:
             return f"{to or 'the recipient'} isn't on this agent's mailing list"
     elif tool_name == EMAIL_SEND_LIST and not agent.recipients:
         return "this agent's mailing list is empty"
+    elif tool_name in SOCIAL_TOOLS:
+        # Social drafts become share links, which exist only for some platforms.
+        try:
+            normalize_platform(arguments.get("platform"))
+        except ShareLinkError as exc:
+            return str(exc)
     return None
 
 
@@ -941,12 +967,13 @@ def call_tool(
     # queuing so an injected recipient never even reaches a reviewer.
     problem = _recipient_problem(agent, tool_name, arguments)
     if problem:
+        social = tool_name in SOCIAL_TOOLS
         atlas = enricher.annotate(
             AnnotateRequest(
                 event=AnnotateEvent.deny,
                 tool=tool_name,
                 agent_id=agent.agent_id,
-                reason="recipient not on agent mailing list",
+                reason="unsupported social platform" if social else "recipient not on agent mailing list",
             )
         )
         event = store.append_audit(
@@ -966,7 +993,7 @@ def call_tool(
         raise HTTPException(
             status_code=403,
             detail={
-                "error": "recipient_not_allowed",
+                "error": "platform_not_supported" if social else "recipient_not_allowed",
                 "message": f"Blocked {tool_name}: {problem} (AML.M0028).",
                 "atlas": atlas.model_dump(),
                 "audit_id": event["id"],
@@ -1351,7 +1378,11 @@ def approve(
             "approved_by": actor.label,
             "args_hash": _hash_args(arguments),
             "atlas": atlas.model_dump(),
-            "detail": f"Executed after approval by {actor.label}",
+            "detail": (
+                f"Approved by {actor.label}; share link handed over, not published by HomeFront"
+                if result.get("status") == "handed_off"
+                else f"Executed after approval by {actor.label}"
+            ),
         }
     )
     return _approval_view(done, agent)

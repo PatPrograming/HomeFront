@@ -74,6 +74,45 @@ const TOOL_ACTIONS: Record<string, string> = {
 
 export const toolAction = (tool: string) => TOOL_ACTIONS[tool] || `use ${tool}`;
 
+export const SOCIAL_TOOLS = ["social.post", "social.reply"];
+export const isSocialTool = (tool: string) => SOCIAL_TOOLS.includes(tool);
+
+// What a handed-off social draft looks like after approval (mcp_tools/share_links.py).
+// HomeFront never publishes: the person opens share_url and presses Post themselves.
+export interface ShareResult {
+  status: "handed_off";
+  published: false;
+  platform: string;
+  platform_name: string;
+  // prefilled: text is in the link. link_only: only a URL is. copy_and_open: paste it yourself.
+  mode: "prefilled" | "link_only" | "copy_and_open";
+  share_url: string;
+  copy_text: string;
+  char_count: number;
+  char_limit: number | null;
+  over_limit: boolean;
+  warnings: string[];
+  note: string;
+}
+
+export const isShareResult = (result: unknown): result is ShareResult =>
+  !!result && typeof result === "object" && (result as { status?: unknown }).status === "handed_off";
+
+// Domains a share link may open, mirrored from the backend. The UI re-checks them so a
+// bad row can never turn the button into an open redirect.
+const SHARE_DOMAINS = ["x.com", "twitter.com", "bsky.app", "reddit.com", "facebook.com", "linkedin.com"];
+
+export function safeShareUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    const ok = SHARE_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
+    return u.protocol === "https:" && ok ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export const EMAIL_TOOLS = ["email.send", "email.send_list"];
 export const sendsEmail = (agent: Agent) => (agent.tool_grants ?? []).some((t) => EMAIL_TOOLS.includes(t));
 
