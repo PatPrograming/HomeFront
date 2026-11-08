@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from identity_gateway.connections import get_connections
 from identity_gateway.gateway import get_gateway
 
 from app.services.agent_supervisor import get_supervisor
@@ -25,7 +26,8 @@ def offboard(staffer_id: str, admin: StaffIdentity = Depends(require_admin)) -> 
     # revoking the sessions as well makes the audit trail say so explicitly.
     store.set_staffer_active(staffer_id, False)
     revoked = store.revoke_sessions_for(staffer_id)
+    revoked_connections = get_connections().revoke_all(staffer_id)  # Gmail/X grants end with the job
     supervisor = get_supervisor()
     if supervisor:  # the agent would stop at its next call anyway; this ends the process now
         supervisor.stop_staffer(staffer_id, "staffer offboarded")
-    return {"staffer": staffer_id, "active": False, "revokedSessions": revoked}
+    return {"staffer": staffer_id, "active": False, "revokedSessions": revoked, "revokedConnections": revoked_connections}

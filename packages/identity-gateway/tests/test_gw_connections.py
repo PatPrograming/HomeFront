@@ -581,8 +581,9 @@ def test_disconnect_revokes_at_provider_and_deletes_row(svc, cx, provider, table
     assert svc.disconnect("maya", "gmail") is True
     revokes = provider.to(GOOGLE_REVOKE)
     assert len(revokes) == 1
-    body = revokes[0].content.decode()
-    assert REFRESH_1 in body or ACCESS_1 in body
+    form = dict(urllib.parse.parse_qsl(revokes[0].content.decode()))
+    assert form["token"] == REFRESH_1  # the refresh token: revoking it ends the whole grant
+    assert form["token_type_hint"] == "refresh_token"
     assert connection_item(table) is None
     with pytest.raises(cx.NeedsConnection):
         svc.require("maya", "gmail")

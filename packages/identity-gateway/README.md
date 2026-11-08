@@ -102,3 +102,28 @@ PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:pa
 
 Tests use moto for DynamoDB and `StarterPolicyAuthorizer` for Cedar; they never call AWS. The
 real policies are checked against AWS by `Backend/policy/tests.sh`.
+
+## Connected accounts (Gmail and X), in plain words
+
+A staffer links their own Gmail or X account on the Account page. After that, the assistant can send
+an email or post as that person. If the account is not linked, the tool does nothing and tells the
+assistant to ask the person to connect it.
+
+The code is `src/identity_gateway/connections.py`. How it keeps tokens safe:
+
+- Tokens stay on the server. No API response and no log line ever contains one.
+- Each token set is encrypted with AWS KMS before it is saved in DynamoDB. The encryption context
+  names the staffer and the provider, so a copy of the ciphertext under another staffer or provider
+  cannot be decrypted.
+- Sign-in uses OAuth with PKCE. The one-time `state` is deleted the moment it is used (even if the
+  check then fails), expires after 10 minutes, and only works for the staffer who started it.
+- Access tokens are refreshed when under 60 seconds from expiry. If the refresh fails or the provider
+  answers 401, we delete the saved connection and the assistant is told to ask for a new sign-in.
+- Offboarding revokes every connection of that staffer, at the provider and in DynamoDB.
+- With no KMS key or no client id/secret, a provider shows as "not set up" and nothing can connect.
+
+Environment: `CONNECTIONS_KMS_KEY_ID`, `GOOGLE_OAUTH_CLIENT_ID`/`_SECRET`, `X_OAUTH_CLIENT_ID`/`_SECRET`,
+and optional `CONNECTIONS_REDIRECT_URI` (default `http://localhost:3000/account/connected`).
+
+Tests: `packages/identity-gateway/tests/test_gw_connections.py` (moto DynamoDB and KMS, provider calls
+faked with `httpx.MockTransport`) and `Backend/tests/test_connections.py` (the HTTP API).
