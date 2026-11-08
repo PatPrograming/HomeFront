@@ -141,6 +141,43 @@ def test_run_completes_with_gateway_tool_call(use_model):
     assert any(e.get("run_id") == run["run_id"] and e["decision"] == "allow" for e in audit)
 
 
+def test_research_run_filters_tools_by_topic(use_model):
+    fake = use_model(
+        response(tool_use("census_query", {
+            "year": "2023",
+            "dataset": "acs/acs1",
+            "get": "NAME,B01003_001E",
+            "for": "place:*",
+            "in": "state:06",
+        }), stop="tool_use"),
+        response(text("Population estimate ready.")),
+    )
+    agent = _agent(
+        kind="research",
+        name="Agency Research",
+        tool_grants=[
+            "web.scrape",
+            "datagov.search",
+            "census.query",
+            "nasa.search",
+            "nps.parks",
+        ],
+    )
+    run = _run(agent["agent_id"], task="What is the population of Santa Clara?")
+
+    assert run["status"] == "completed"
+    route = run["steps"][0]
+    assert route["type"] == "topic_route"
+    assert "demographics" in route["topics"]
+    assert route["tools"] == ["census.query", "datagov.search", "web.scrape"]
+
+    first = fake.calls[0]
+    names = sorted(t["name"] for t in first["tools"])
+    assert names == ["census_query", "datagov_search", "web_scrape"]
+    assert "Topic router matched" in first["system"]
+    assert "nasa" not in names and "nps" not in names
+
+
 def test_revoke_mid_run_blocks_next_call_and_model_is_told(use_model):
     holder = {}
 

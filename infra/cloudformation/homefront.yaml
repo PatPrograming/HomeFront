@@ -175,6 +175,28 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  # Reports agents save with report.save (e.g. market research), queried
+  # newest-first per agent.
+  ReportsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${Prefix}reports"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: agent_id
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: agent_id
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   # --- Access -----------------------------------------------------------
   # Attach to whatever runs the backend (an IAM user for local dev, or the
   # App Runner / ECS / Lambda role). Browsers never touch DynamoDB: this
@@ -202,6 +224,7 @@ Resources:
               - !GetAtt AgentsTable.Arn
               - !GetAtt AuditTable.Arn
               - !GetAtt ApprovalsTable.Arn
+              - !GetAtt ReportsTable.Arn
 
 Outputs:
   Region:

@@ -1,7 +1,7 @@
 // Shared shapes and helpers for agents, agent types and tools (see GET /agent-types).
 import { ApiError } from "./api";
 
-export type AgentKind = "email" | "social" | "research" | "custom";
+export type AgentKind = "email" | "social" | "research" | "market_research" | "custom";
 
 export interface Agent {
   agent_id: string;
@@ -17,6 +17,8 @@ export interface Agent {
   recipients: string[];
   // Missing on APIs older than email settings; read via emailSettingsOf().
   email_settings?: EmailSettings;
+  // web.scrape domain allowlist ("*.gov", "sam.gov"); empty = any public host.
+  scrape_domains?: string[];
   token_version: number;
   active: boolean;
 }
@@ -51,6 +53,7 @@ export interface AgentType {
   // null = no ceiling (any registered tool).
   allowed_tools: string[] | null;
   default_max_steps: number;
+  default_scrape_domains?: string[];
 }
 
 export interface Tool {
@@ -70,9 +73,61 @@ const TOOL_ACTIONS: Record<string, string> = {
   "social.reply": "reply to comments",
   "web.scrape": "read web pages",
   "datagov.search": "search data.gov",
+  "usaspending.search": "search past federal awards",
+  "sam.entity_lookup": "look up SAM.gov vendors",
+  "report.save": "save reports",
+  "census.query": "query Census data",
+  "openfda.search": "search openFDA",
+  "eia.query": "query EIA energy data",
+  "nasa.search": "search NASA imagery",
+  "noaa.climate": "query NOAA climate data",
+  "nps.parks": "search National Parks",
+  "bls.series": "fetch BLS series",
+  "fec.search": "search FEC candidates",
+  "epa.search": "search EPA facilities",
+  "fcc.search": "search FCC licenses",
 };
 
 export const toolAction = (tool: string) => TOOL_ACTIONS[tool] || `use ${tool}`;
+
+export const SOCIAL_TOOLS = ["social.post", "social.reply"];
+export const isSocialTool = (tool: string) => SOCIAL_TOOLS.includes(tool);
+
+// What a handed-off social draft looks like after approval (mcp_tools/share_links.py).
+// HomeFront never publishes: the person opens share_url and presses Post themselves.
+export interface ShareResult {
+  status: "handed_off";
+  published: false;
+  platform: string;
+  platform_name: string;
+  // prefilled: text is in the link. link_only: only a URL is. copy_and_open: paste it yourself.
+  mode: "prefilled" | "link_only" | "copy_and_open";
+  share_url: string;
+  copy_text: string;
+  char_count: number;
+  char_limit: number | null;
+  over_limit: boolean;
+  warnings: string[];
+  note: string;
+}
+
+export const isShareResult = (result: unknown): result is ShareResult =>
+  !!result && typeof result === "object" && (result as { status?: unknown }).status === "handed_off";
+
+// Domains a share link may open, mirrored from the backend. The UI re-checks them so a
+// bad row can never turn the button into an open redirect.
+const SHARE_DOMAINS = ["x.com", "twitter.com", "bsky.app", "reddit.com", "facebook.com", "linkedin.com"];
+
+export function safeShareUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    const ok = SHARE_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
+    return u.protocol === "https:" && ok ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 export const EMAIL_TOOLS = ["email.send", "email.send_list"];
 export const sendsEmail = (agent: Agent) => (agent.tool_grants ?? []).some((t) => EMAIL_TOOLS.includes(t));
@@ -252,7 +307,7 @@ export type RunStatus = "queued" | "running" | "completed" | "max_steps" | "revo
 export const TERMINAL_RUN_STATUSES: RunStatus[] = ["completed", "max_steps", "revoked", "refused", "failed"];
 
 export interface RunStep {
-  type: "tool_call" | "model_fallback" | string;
+  type: "tool_call" | "model_fallback" | "pipeline" | string;
   tool?: string;
   input?: Record<string, unknown>;
   decision?: "allow" | "deny" | "pending_approval" | string;
@@ -262,6 +317,24 @@ export interface RunStep {
   approval_id?: string;
   from?: string;
   to?: string;
+  stage?: string;
+  agent_id?: string;
+  pipeline_agent?: string;
+  pipeline_stage?: string;
+  research_run_id?: string;
+  research_status?: string;
+}
+
+// A report saved with report.save (GET /agents/{id}/reports). body is Markdown.
+export interface Report {
+  report_id: string;
+  agent_id: string;
+  title: string;
+  body: string;
+  // Run id for agent runs, or the workload-token session for manual calls.
+  trace_id: string | null;
+  run_id: string | null;
+  created_at: number;
 }
 
 export interface Run {
@@ -278,4 +351,8 @@ export interface Run {
   created_at: number;
   started_at: number | null;
   finished_at: number | null;
+  pipeline?: string | null;
+  research_run_id?: string | null;
+  research_agent_id?: string | null;
+  research_output?: string | null;
 }

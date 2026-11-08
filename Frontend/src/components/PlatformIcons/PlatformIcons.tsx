@@ -54,11 +54,11 @@ export default function PlatformIcon({ name, size = 28 }: { name: PlatformId; si
   );
 }
 
+// Platforms with a compose link (see mcp_tools/share_links.py). Instagram has none yet.
 export const PLATFORMS: { id: PlatformId; name: string; note: string; color: string }[] = [
   { id: "x", name: "X", note: "Posts and replies", color: "#000000" },
   { id: "bluesky", name: "Bluesky", note: "Posts and replies", color: "#1185fe" },
-  { id: "reddit", name: "Reddit", note: "Posts and comments", color: "#ff4500" },
-  { id: "facebook", name: "Facebook", note: "Page posts", color: "#1877f2" },
-  { id: "instagram", name: "Instagram", note: "Feed posts", color: "#d62976" },
-  { id: "linkedin", name: "LinkedIn", note: "Page updates", color: "#0a66c2" },
+  { id: "reddit", name: "Reddit", note: "Posts", color: "#ff4500" },
+  { id: "facebook", name: "Facebook", note: "Link shares", color: "#1877f2" },
+  { id: "linkedin", name: "LinkedIn", note: "Link shares", color: "#0a66c2" },
 ];

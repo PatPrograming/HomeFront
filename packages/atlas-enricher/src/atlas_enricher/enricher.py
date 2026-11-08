@@ -15,6 +15,7 @@ class AnnotateEvent(str, Enum):
     discover = "discover"
     secret_probe = "secret_probe"
     untrusted_input = "untrusted_input"
+    tainted_session = "tainted_session"
 
 
 # Static gateway-event → ATLAS ID map (config, not LLM).
@@ -49,6 +50,14 @@ EVENT_MAP: dict[AnnotateEvent, dict[str, Any]] = {
         "mitigation_ids": ["AML.M0030", "AML.M0033", "AML.M0024"],
         "narrative": "Untrusted scrape/social content gated before further tool chaining.",
     },
+    AnnotateEvent.tainted_session: {
+        "technique_ids": ["AML.T0051.001", "AML.T0086"],
+        "mitigation_ids": ["AML.M0030", "AML.M0024"],
+        "narrative": (
+            "Blocked an outbound tool after this run read untrusted content: indirect "
+            "prompt injection could steer it into exfiltration."
+        ),
+    },
 }
 
 # Tool-specific residual risk annotations on allow.
@@ -77,6 +86,21 @@ TOOL_RESIDUAL_RISK: dict[str, dict[str, Any]] = {
         "technique_ids": ["AML.T0098"],
         "mitigation_ids": ["AML.M0026"],
         "note": "api.data.gov key is held by the gateway, never returned to the agent.",
+    },
+    "usaspending.search": {
+        "technique_ids": ["AML.T0051.001"],
+        "mitigation_ids": ["AML.M0030", "AML.M0033"],
+        "note": "Award records are external data; treat descriptions as an injection surface.",
+    },
+    "sam.entity_lookup": {
+        "technique_ids": ["AML.T0098", "AML.T0051.001"],
+        "mitigation_ids": ["AML.M0026", "AML.M0030"],
+        "note": "SAM.gov key stays in the gateway; vendor-written registration text is untrusted.",
+    },
+    "report.save": {
+        "technique_ids": ["AML.T0067.000"],
+        "mitigation_ids": ["AML.M0033", "AML.M0024"],
+        "note": "Saved reports are agent output for human review; check cited sources.",
     },
 }
 

@@ -14,6 +14,7 @@ import NewAgent from "./pages/NewAgent";
 import Approvals from "./pages/Approvals";
 import Activity from "./pages/Activity";
 import Monitoring from "./pages/Monitoring";
+import Reports from "./pages/Reports";
 
 // Cognito sends the browser back to the site root with ?code=…&state=… (or ?error=…), because the
 // staff-web client's callback URL is the root. Finish the sign-in there; otherwise show the home page.
@@ -35,6 +36,7 @@ const TEAM_TABS = [
   { path: "/agents/new", element: <NewAgent /> },
   { path: "/agents/:agentId/email", element: <AgentEmailRedirect /> },
   { path: "/approvals", element: <Approvals /> },
+  { path: "/reports", element: <Reports /> },
   { path: "/activity", element: <Activity /> },
   { path: "/monitoring", element: <Monitoring /> },
 ];
