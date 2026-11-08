@@ -67,13 +67,16 @@ export default function SocialPlatform() {
   const imagesRef = useRef(images);
   imagesRef.current = images;
 
-  // Step 3: the social agents the person owns, and the run that drafts the posts.
+  // Step 4: the social agents the person owns, and the run that drafts the posts.
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [agentId, setAgentId] = useState("");
   const [agentsError, setAgentsError] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [starting, setStarting] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  // No social agent yet: create one right here so the person stays on this step.
+  const [newAgency, setNewAgency] = useState("");
+  const [creating, setCreating] = useState(false);
 
   // Release object URLs for any previews still around on unmount.
   useEffect(() => () => imagesRef.current.forEach((i) => URL.revokeObjectURL(i.url)), []);
@@ -113,7 +116,7 @@ export default function SocialPlatform() {
   const chosen = PLATFORMS.filter((p) => selected.includes(p.id));
 
   useEffect(() => {
-    if (step !== 3 || agents) return;
+    if (step !== 4 || agents) return;
     api
       .agents()
       .then((list: Agent[]) => {
@@ -135,6 +138,25 @@ export default function SocialPlatform() {
     }, POLL_MS);
     return () => window.clearInterval(id);
   }, [runId, agentId]);
+
+  // Always a Social media agent, with that template's instructions, tools and step limit.
+  async function createSocialAgent() {
+    setCreating(true);
+    setAgentsError(null);
+    try {
+      const agent: Agent = await api.createAgent({
+        kind: "social",
+        name: "Social media agent",
+        agency: newAgency.trim(),
+      });
+      setAgents((cur) => [...(cur ?? []), agent]);
+      setAgentId(agent.agent_id);
+    } catch (e) {
+      setAgentsError(describeError(e));
+    } finally {
+      setCreating(false);
+    }
+  }
 
   async function draftPosts() {
     setStarting(true);
@@ -465,12 +487,38 @@ export default function SocialPlatform() {
             {!agents && !agentsError && <p className="muted">Loading your agents…</p>}
 
             {agents && agents.length === 0 && (
-              <div className="empty">
-                <p>You don't have a social media agent yet.</p>
-                <Link to="/agents/new" className="btn btn-outline">
-                  Create one
-                </Link>
-              </div>
+              <form
+                className="card send-card"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (newAgency.trim()) createSocialAgent();
+                }}
+              >
+                <h2 className="send-h">Set up your social media agent</h2>
+                <p className="muted send-fine">
+                  You don't have one yet. We'll create a Social media agent for you from its template, so you can
+                  stay on this page.
+                </p>
+                <label className="field">
+                  <span className="field-label">Agency</span>
+                  <input
+                    className="input"
+                    required
+                    maxLength={120}
+                    value={newAgency}
+                    onChange={(e) => setNewAgency(e.target.value)}
+                    placeholder="e.g. Department of Housing"
+                  />
+                </label>
+                <div className="form-actions">
+                  <button type="submit" className="btn btn-primary" disabled={creating || !newAgency.trim()}>
+                    {creating ? "Creating…" : "Create social media agent"}
+                  </button>
+                  <button type="button" className="btn btn-outline" onClick={() => goTo(3)}>
+                    Back
+                  </button>
+                </div>
+              </form>
             )}
 
             {agents && agents.length > 0 && (
@@ -535,7 +583,7 @@ export default function SocialPlatform() {
                       {starting || isActive(run) ? "Drafting…" : run ? "Try again" : "Draft posts"}
                     </button>
                   )}
-                  <button type="button" className="btn btn-outline" disabled={isActive(run)} onClick={() => goTo(2)}>
+                  <button type="button" className="btn btn-outline" disabled={isActive(run)} onClick={() => goTo(3)}>
                     Back
                   </button>
                 </div>
