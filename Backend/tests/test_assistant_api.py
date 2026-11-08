@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import pytest
 from identity_gateway.tokens import mint_mandate_token
 from mandate_contracts import MandateClaims
-from mandate_contracts.ddb import EmailItem, SessionItem
+from mandate_contracts.ddb import EmailItem, SessionItem, StafferItem
 
 from app.main import app
 from app.routers import assistant
@@ -251,8 +251,10 @@ def test_a_grant_ends_when_the_session_does(client, session, gateway, store):
     assert _send(gateway).result["status"] == "held_for_review"
 
 
-def test_a_granted_category_still_cannot_post_on_the_campaign_account(client, session, gateway):
+def test_a_granted_category_still_cannot_post_on_the_campaign_account(client, session, gateway, store):
     """social_post is grantable, so this is the case where a grant could bypass Cedar if the order were wrong."""
+    # Posting is a Communications Director's job; as a Caseworker maya's role would block the official post too.
+    store.put_staffer("maya", StafferItem(active=True, office="rep-x", role="staffer", office_role="communications_director"))
     as_staff()
     assert client.post(f"/api/v1/sessions/{SID}/grants", json={"category": "social_post"}).status_code == 200
     token = agent_headers()["Authorization"].removeprefix("Bearer ")

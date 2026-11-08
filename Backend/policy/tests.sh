@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Ask the real Verified Permissions policy store six questions and check each answer.
+# Ask the real Verified Permissions policy store sixteen questions and check each answer.
 #
 #   own-office case -> ALLOW      other-office case -> DENY     delegator inactive -> DENY
 #   bulk export     -> DENY       email to unknown  -> DENY     campaign post      -> DENY
+#   plus one ALLOW and one DENY for each office role, and an unknown role -> DENY
+#   (the cases are in Backend/policy/request.py; the roles are in docs/ROLES.md)
 #
 # Usage: bash Backend/policy/tests.sh            # dry run: prints the AWS commands, calls nothing
 #        bash Backend/policy/tests.sh --apply    # really asks AVP (read-only calls)

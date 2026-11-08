@@ -94,7 +94,7 @@ def test_allowed_email_send_runs_the_mcp_tools_handler_and_is_simulated(
 
 
 @pytest.mark.parametrize("tool", ["datagov_search", "web_scrape", "social_post"])
-def test_other_allowed_tools_go_through_mcp_tools(trusted_replies, gateway, make_token, handler_spy, tool):
+def test_other_allowed_tools_go_through_mcp_tools(maya_posts, trusted_replies, gateway, make_token, handler_spy, tool):
     out = gateway.guarded(tool, KNOWN_ARGS[tool], make_token())
     assert out.allowed is True and out.result
     assert handler_spy.calls
@@ -208,7 +208,7 @@ def test_social_post_account_in_context_is_the_argument(gateway, authorizer, mak
 
 
 def test_campaign_post_is_denied_by_the_forbid_policy_and_not_published(
-    gateway, make_token, handler_spy
+    maya_posts, gateway, make_token, handler_spy
 ):
     out = gateway.guarded("social_post", {"account": "campaign", "text": "vote"}, make_token())
     assert out.allowed is False and out.result is None

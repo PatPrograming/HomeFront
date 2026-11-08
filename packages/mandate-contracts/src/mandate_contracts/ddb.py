@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from .roles import Role
 from .wire import WireModel
 
 TABLE_NAME = "mandate"
@@ -66,7 +67,9 @@ class StafferItem(WireModel):
 
     active: bool
     office: str
-    role: Literal["staffer", "admin"]
+    role: Literal["staffer", "admin"]  # the Cognito group: who may use the admin pages
+    # The job in the office (roles.py): which tools the assistant may use. None fails closed in Cedar.
+    office_role: Role | None = None
 
 
 class CaseItem(WireModel):

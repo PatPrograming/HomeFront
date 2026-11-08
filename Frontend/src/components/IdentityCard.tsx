@@ -48,6 +48,7 @@ export default function IdentityCard({ card, revoked }: { card: SessionCard; rev
       <div className="panel-head">
         <h2 id="identity-title">
           <code>{card.agent}</code> is acting for <strong>{card.actingFor}</strong>
+          {card.roleLabel && <> ({card.roleLabel})</>}
         </h2>
         <p className={`expiry ${left <= 0 || revoked ? "deny-text" : ""}`} aria-live={revoked ? "polite" : "off"}>
           {revoked ? (

@@ -21,6 +21,16 @@ describe("agentActivity: plain words for staff", () => {
     expect(line).toEqual({ text: "Blocked: export all constituent records (never allowed)", blocked: true });
   });
 
+  it("names the staffer's office role in plain words when a role policy blocks a call", () => {
+    const denied = ev({ tool: "social_post", resource: null, decision: "DENY", reason: "denied by policy", policyIds: ["role-social-post"] });
+    expect(describeEvent(denied, "Caseworker")).toEqual({
+      text: "Blocked: post on the official account (waits for your review) (not part of the Caseworker role)",
+      blocked: true,
+    });
+    expect(describeEvent(denied, "No role").text).toContain("your office role (none is on file)");
+    expect(describeEvent(denied, "Caseworker").text).not.toContain("role-social-post"); // no policy ids for staff
+  });
+
   it("says a held send is waiting for review, and a revoked call was blocked", () => {
     expect(describeEvent(ev({ tool: "email_send", resource: "lee@example.com", reason: "held for staff review" })).text).toBe(
       "Drafted a reply to lee@example.com, waiting for your review",

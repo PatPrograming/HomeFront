@@ -38,14 +38,15 @@ export default function AgentActivity({
       </summary>
       <div className="activity-body">
         <p className="activity-who">
-          <strong>{card.agent}</strong> · Acting for you ({card.actingFor}) · Office {card.office}
+          <strong>{card.agent}</strong> · Acting for you ({card.actingFor}
+          {card.roleLabel ? `, ${card.roleLabel}` : ""}) · Office {card.office}
         </p>
 
         <p className="activity-label">What it did</p>
         {events.length ? (
           <ul className="activity-list">
             {events.map((e) => {
-              const line = describeEvent(e);
+              const line = describeEvent(e, card.roleLabel);
               return (
                 <li key={e.id} className={line.blocked ? "is-blocked" : undefined}>
                   {line.text}

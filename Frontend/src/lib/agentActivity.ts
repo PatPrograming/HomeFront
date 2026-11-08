@@ -45,10 +45,14 @@ export function permissionLines(
 
 const lower = (s: string) => s[0].toLowerCase() + s.slice(1);
 
-// One action, as a staffer would say it.
-export function describeEvent(e: DecisionEvent): { text: string; blocked: boolean } {
+// One action, as a staffer would say it. `roleLabel` names the staffer's office role when a role policy said no.
+export function describeEvent(e: DecisionEvent, roleLabel?: string): { text: string; blocked: boolean } {
   const what = e.resource ?? "";
   if (e.reason === "session revoked / delegator inactive") return { text: "Blocked: your access was removed", blocked: true };
+  if (e.decision === "DENY" && e.policyIds.some((p) => p.startsWith("role-"))) {
+    const role = roleLabel && roleLabel !== "No role" ? `the ${roleLabel} role` : "your office role (none is on file)";
+    return { text: `Blocked: ${lower(toolLabel(e.tool))} (not part of ${role})`, blocked: true };
+  }
   if (e.decision === "DENY") {
     const never = e.policyIds.some((p) => p.startsWith("forbid-")) ? " (never allowed)" : what ? ` (${what} is outside what it may do)` : "";
     return { text: `Blocked: ${lower(toolLabel(e.tool))}${never}`, blocked: true };

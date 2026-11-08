@@ -48,3 +48,6 @@ Thumbs.db
 .idea/
 *.swp
 
+
+# Test account passwords written by Backend/infra/test-users.sh
+Backend/infra/test-users.local.txt

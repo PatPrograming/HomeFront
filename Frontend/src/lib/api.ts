@@ -26,6 +26,9 @@ export interface SessionCard {
   office: string;
   mode: string;
   allowedTools: ToolName[];
+  /** The staffer's office role from DynamoDB (docs/ROLES.md); Cedar enforces it, this is for display. */
+  role?: string | null;
+  roleLabel?: string;
   /** ISO string, or epoch seconds / milliseconds. */
   expiresAt: string | number;
 }
