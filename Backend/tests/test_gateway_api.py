@@ -313,7 +313,7 @@ def test_admin_offboards_a_staffer_and_revokes_all_their_sessions(client, store)
     as_admin()
     r = client.post("/api/v1/staff/maya/offboard", json={})
     assert r.status_code == 200
-    assert r.json() == {"staffer": "maya", "active": False, "revokedSessions": 2}
+    assert r.json() == {"staffer": "maya", "active": False, "revokedSessions": 2, "revokedConnections": 0, "connectionCleanupFailed": False}
     assert store.get_staffer("maya").active is False
     assert store.get_session(s1["sid"]).status == "revoked"
     assert store.get_session(s2["sid"]).status == "revoked"

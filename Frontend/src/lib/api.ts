@@ -56,6 +56,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   detail?: string; // admins only: what went wrong technically, when the assistant had to stop
+  /** Set by the gateway when a send needed an account the staffer has not connected. */
+  connect?: "gmail" | "x" | null;
 }
 
 /** GET /sessions/{sid}/messages?after=<cursor> */

@@ -5,6 +5,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
 import Account from "./pages/Account";
+import ConnectCallback from "./pages/ConnectCallback";
 import Console from "./pages/Console";
 import Admin from "./pages/Admin";
 import Emails from "./pages/Emails";
@@ -79,6 +80,14 @@ export default function App() {
             element={
               <RequireAuth role="any">
                 <Account />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/account/connected"
+            element={
+              <RequireAuth role="any">
+                <ConnectCallback />
               </RequireAuth>
             }
           />

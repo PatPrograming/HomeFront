@@ -157,3 +157,22 @@ set -a; source Backend/infra/.env.aws; set +a
 .venv/bin/python Backend/infra/seed.py                  # dry run
 .venv/bin/python Backend/infra/seed.py --apply
 ```
+
+## Connected accounts (KMS)
+
+`connections.sh` makes the encryption key for the Gmail and X tokens that staff connect on the Account page. The backend stores only encrypted tokens, never the plain ones. The script works in `us-east-1`, is safe to run twice, and never deletes anything.
+
+It does three things:
+
+1. Finds the key with alias `alias/homefront-connections`, or creates it (with an alias) if missing.
+2. Turns on automatic yearly key rotation.
+3. Prints the line for the backend env file, `CONNECTIONS_KMS_KEY_ID=alias/homefront-connections`, plus an example IAM policy.
+
+The example policy lets the backend's identity call `kms:Encrypt` and `kms:Decrypt` on this one key, and only when the call carries a `staffer` and a `provider` encryption context. The script prints it but does not apply it, and it never creates IAM keys.
+
+By default the script only prints the `aws` commands. It touches nothing and needs no AWS credentials. Only `--apply` changes AWS.
+
+```bash
+bash Backend/infra/connections.sh            # dry run
+bash Backend/infra/connections.sh --apply    # needs the aws CLI with credentials
+```
