@@ -7,7 +7,8 @@ export const NAV_LINKS: NavLink[] = [
   { label: "Home", href: "/" },
   { label: "Emails", href: "/emails" },
   { label: "Social Platform", href: "/social-platform" },
-  { label: "Console", href: "/console" },
+  // HomeFront's chat console: the staffer's own assistant (mandate token, Cedar, review queue).
+  { label: "Your assistant", href: "/console" },
   // The teammates' agent tabs (old-gateway agent store, behind our Cognito login).
   { label: "Agents", href: "/agents" },
   { label: "Monitoring", href: "/monitoring" },

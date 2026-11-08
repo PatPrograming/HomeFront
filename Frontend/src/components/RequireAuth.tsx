@@ -23,7 +23,7 @@ export default function RequireAuth({ role, children }: { role?: Role; children:
               : "Your account is not in the staffer or admin group."}
           </p>
           <Link to={role === "admin" ? "/console" : "/account"}>
-            {role === "admin" ? "Back to the console" : "Your account and sign out"}
+            {role === "admin" ? "Back to Your assistant" : "Your account and sign out"}
           </Link>
         </section>
       </Layout>
