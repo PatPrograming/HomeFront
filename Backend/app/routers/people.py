@@ -47,9 +47,14 @@ except ModuleNotFoundError as exc:  # STUB until lane A (WP1) merges Backend/app
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+def _is_working_admin(store: MandateStore, username: str) -> bool:
+    """An active STAFFER item with role "admin": what the admin routes require on top of the Cognito group."""
+    item = store.get_staffer(username)
+    return item is not None and item.active and item.role == "admin"
+
+
 def require_people_admin(admin: StaffIdentity = Depends(require_admin)) -> StaffIdentity:
-    me = get_gateway().store.get_staffer(admin.username)
-    if me is None or not me.active or me.role != "admin":
+    if not _is_working_admin(get_gateway().store, admin.username):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin only")
     return admin
 
@@ -197,7 +202,12 @@ def assign(username: str, body: AssignIn, admin: StaffIdentity = Depends(require
         if username not in users:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "This person has no login, so they have no group")
         if current_group == "admin":
-            others = [u for u in users.values() if u.group == "admin" and u.enabled and u.username != username]
+            # Count only admins who could still use these routes: a Cognito admin with no active admin STAFFER
+            # item (offboarded, or promoted before they have one) would leave nobody able to manage roles.
+            others = [
+                u for u in users.values()
+                if u.group == "admin" and u.enabled and u.username != username and _is_working_admin(store, u.username)
+            ]
             if not others:
                 raise HTTPException(
                     status.HTTP_409_CONFLICT, "This is the last admin. Make someone else an admin first."

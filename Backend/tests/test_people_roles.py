@@ -204,6 +204,20 @@ def test_a_disabled_admin_does_not_count_as_another_admin(client, directory):
     assert r.status_code == 409
 
 
+def test_an_admin_who_cannot_use_the_admin_routes_does_not_count_as_another_admin(client, store, directory):
+    """Guard: the last-admin check counts only working admins (Cognito admin AND an active admin STAFFER item).
+    Promoting someone with no STAFFER item, or keeping an offboarded admin in Cognito, must not let the only working
+    admin demote themselves."""
+    assert client.put("/api/v1/admin/people/newbie", headers=CHIEF, json={"group": "admin"}).status_code == 200
+    directory.users["olda"] = DirectoryUser("olda", None, True, "admin")
+    store.put_staffer("olda", StafferItem(active=False, office="rep-x", role="admin"))
+    before = _snapshot(store, directory)
+    r = client.put("/api/v1/admin/people/chiefofstaff", headers=CHIEF, json={"group": "staffer"})
+    assert r.status_code == 409 and "last admin" in r.json()["detail"]
+    assert _snapshot(store, directory) == before
+    assert client.get("/api/v1/admin/people", headers=CHIEF).status_code == 200
+
+
 def test_with_another_admin_a_demotion_works_and_cuts_the_old_token_off_at_once(client, store, directory):
     assert client.put("/api/v1/admin/people/maya", headers=CHIEF, json={"group": "admin"}).status_code == 200
     assert store.get_staffer("maya").role == "admin" and directory.users["maya"].group == "admin"
