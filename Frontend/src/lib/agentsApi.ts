@@ -5,6 +5,7 @@
 import { request } from "./api";
 import type {
   Agent,
+  AgentKind,
   AgentType,
   Approval,
   AuditEvent,
@@ -16,6 +17,7 @@ import type {
   Run,
   StorageStatus,
   TestEmailResult,
+  TokenUsage,
   Tool,
 } from "./agents";
 
@@ -58,7 +60,7 @@ export interface GrantChange {
 }
 
 export interface CreateAgentBody {
-  kind: string;
+  kind: AgentKind;
   name: string;
   agency: string;
   instructions?: string;
@@ -78,6 +80,63 @@ export interface VerificationRequest {
 }
 
 export type AuditFilters = Partial<Record<"agent_id" | "trace_id" | "decision" | "type", string>>;
+
+/** One audit event as GET /agents/{id}/monitoring summarises it (the ATLAS fields are flattened). */
+export interface MonitoringEvent {
+  id: string;
+  ts: number;
+  type: string;
+  decision: string;
+  actor: string | null;
+  agent_id: string | null;
+  tool: string | null;
+  run_id: string | null;
+  trace_id: string | null;
+  detail: string | null;
+  usage: TokenUsage | null;
+  technique_ids: string[];
+  mitigation_ids: string[];
+  narrative: string | null;
+}
+
+/** The newest tool outcome for an agent: from its runs and from manual calls (kept in server memory). */
+export interface LastToolResult {
+  ts: number;
+  tool: string;
+  decision: string;
+  run_id: string | null;
+  result: unknown;
+  truncated: boolean;
+}
+
+/** Everything the Monitoring page shows for one agent. Never contains token values. */
+export interface MonitoringData {
+  identity: {
+    agent_id: string;
+    name: string;
+    agency: string;
+    kind: AgentKind;
+    active: boolean;
+    token_version: number;
+    tool_grants: string[];
+    live_sessions: { session_id: string; issued_at: number; expires_at: number }[];
+    pending_approvals: number;
+  };
+  tool_calls: MonitoringEvent[];
+  last_tool_result: LastToolResult | null;
+  recent_runs: {
+    run_id: string;
+    task: string;
+    status: string;
+    model: string;
+    usage: TokenUsage;
+    created_at: number;
+    finished_at: number | null;
+  }[];
+  atlas: AtlasMatrix;
+  audit: MonitoringEvent[];
+  server_time: number;
+}
 
 const agentPath = (agentId: string) => `/agents/${encodeURIComponent(agentId)}`;
 
@@ -127,6 +186,9 @@ export const agentsApi = {
     request<GrantChange>(`${agentPath(agentId)}/grants/${encodeURIComponent(tool)}/revoke`, { method: "POST", body: {} }),
   grantTool: (agentId: string, tool: string) =>
     request<GrantChange>(`${agentPath(agentId)}/grants/${encodeURIComponent(tool)}`, { method: "POST", body: {} }),
+
+  // One request for the Monitoring page: identity, recent calls, last tool result, ATLAS strip, runs, audit.
+  monitoring: (agentId: string, limit = 30) => request<MonitoringData>(`${agentPath(agentId)}/monitoring?limit=${limit}`),
 
   audit: (limit = 80, filters: AuditFilters = {}) => {
     const params = new URLSearchParams({ limit: String(limit) });

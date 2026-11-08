@@ -39,6 +39,16 @@ function startError(e: unknown): string {
   return describeError(e);
 }
 
+function StepTime({ ts }: { ts?: number }) {
+  if (ts === undefined) return null;
+  const when = new Date(ts * 1000);
+  return (
+    <time className="muted" dateTime={when.toISOString()}>
+      {when.toLocaleString()}
+    </time>
+  );
+}
+
 function Step({ step, index }: { step: RunStep; index: number }) {
   if (step.type === "model_fallback") {
     return (
@@ -47,7 +57,8 @@ function Step({ step, index }: { step: RunStep; index: number }) {
         <span className="muted">
           Switched model{step.from ? ` from ${step.from}` : ""}
           {step.to ? ` to ${step.to}` : ""}
-        </span>
+        </span>{" "}
+        <StepTime ts={step.ts} />
       </li>
     );
   }
@@ -55,7 +66,7 @@ function Step({ step, index }: { step: RunStep; index: number }) {
     return (
       <li className="run-step">
         <span className="step-num">{index + 1}</span>
-        <span className="muted">{step.type}</span>
+        <span className="muted">{step.type}</span> <StepTime ts={step.ts} />
       </li>
     );
   }
@@ -69,6 +80,7 @@ function Step({ step, index }: { step: RunStep; index: number }) {
           <span className={`decision-chip decision-${decision}`}>
             {decision === "pending_approval" ? "waiting for approval" : decision}
           </span>
+          <StepTime ts={step.ts} />
         </div>
         {step.input && Object.keys(step.input).length > 0 && (
           <p className="step-detail">
