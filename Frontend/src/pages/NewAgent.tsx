@@ -5,8 +5,10 @@ import { api } from "../lib/api.js";
 import { describeError, type Agent, type AgentKind, type AgentType, type Tool } from "../lib/agents";
 import "./Agents.css";
 
-// The three agent types users pick from. `custom` stays API-only.
-const KINDS: AgentKind[] = ["email", "social", "research", "market_research"];
+// The agent types users pick from. `custom` and the generic `research` type
+// (no report.save, so its runs have no report to show) stay API-only; existing
+// agents of those types keep working.
+const KINDS: AgentKind[] = ["email", "social", "market_research"];
 
 const KIND_ICON: Record<string, string> = { email: "✉", social: "◎", research: "⌕", market_research: "▤" };
 
