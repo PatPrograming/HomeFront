@@ -10,8 +10,9 @@ import cedarpy
 import pytest
 
 from identity_gateway.authz import AuthzDecision, AuthzRequest, StarterPolicyAuthorizer
+from identity_gateway.autonomy import CATEGORIES
 from mandate_contracts import TOOLS, cedar
-from mandate_contracts.ddb import StafferItem
+from mandate_contracts.ddb import AutonomyItem, StafferItem
 from mandate_contracts.roles import ROLE_TOOLS
 
 POLICY_DIR = Path(__file__).resolve().parents[2] / "mandate-contracts" / "policies"
@@ -248,9 +249,6 @@ def test_policy_script_has_an_allow_and_a_deny_for_every_role():
 # ---- least privilege: the agent never gets more than its staffer's role ----------
 # Table-driven from ROLE_TOOLS, TOOLS and the autonomy categories, so a new role, tool or
 # category is covered without editing this test.
-
-from identity_gateway.autonomy import CATEGORIES  # noqa: E402
-from mandate_contracts.ddb import AutonomyItem  # noqa: E402
 
 CALLS = [  # (tool, args) for every tool, with the inputs that pass the starter conditions
     ("inbox_read", {"email_id": "email-1"}),

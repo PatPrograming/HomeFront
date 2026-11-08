@@ -7,7 +7,6 @@ import pytest
 from mandate_contracts.ddb import StafferItem
 
 from app.main import app
-from app.routers import assistant
 
 from .test_assistant_api import SID, agent_headers, as_staff, session  # noqa: F401 (fixtures)
 from .test_gateway_api import CHIEF, MAYA, _env, client, gateway, store, table  # noqa: F401 (fixtures)
@@ -106,4 +105,3 @@ def test_grants_are_per_session_and_die_with_offboarding(client, session, gatewa
     store.set_staffer_active("maya", False)
     store.revoke_sessions_for("maya")
     assert store.grants_for(SID) == []
-    assert assistant  # route module under test
