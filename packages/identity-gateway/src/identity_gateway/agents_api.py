@@ -1376,6 +1376,10 @@ def reject(
 
 class CreateRunRequest(BaseModel):
     task: str = Field(min_length=1, max_length=8000)
+    # When true on an email (or email-capable) agent: research agent runs first,
+    # then this agent drafts/sends from those findings only.
+    research_first: bool = False
+    research_agent_id: str | None = None
 
 
 def configure_runner(new_runner: AgentRunner | None) -> None:
@@ -1400,6 +1404,28 @@ def _issue_run_token(agent_id: str, run_id: str | None = None) -> str:
     return tok.token
 
 
+def _resolve_research_agent(actor: Actor, research_agent_id: str | None) -> AgentRecord:
+    if research_agent_id:
+        agent = _accessible_agent(research_agent_id, actor)
+        if agent.kind != "research":
+            raise HTTPException(
+                status_code=400,
+                detail="research_agent_id must refer to a research-kind agent",
+            )
+        if not agent.active:
+            raise HTTPException(status_code=403, detail="Research agent is inactive")
+        return agent
+    for agent in store.list_agents():
+        if agent.kind == "research" and agent.active and actor.can_access(agent):
+            return agent
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "No research agent available. Create a research-kind agent or pass research_agent_id."
+        ),
+    )
+
+
 @router.post("/agents/{agent_id}/runs", status_code=202)
 def start_run(
     agent_id: str,
@@ -1416,7 +1442,16 @@ def start_run(
         )
     if not agent.active:
         raise HTTPException(status_code=403, detail="Agent is inactive")
+
+    research_agent: AgentRecord | None = None
+    if body.research_first:
+        research_agent = _resolve_research_agent(actor, body.research_agent_id)
+
     run = runs.add(new_run(agent, body.task, runner.model_for(agent), actor.user_id))
+    if research_agent is not None:
+        run.pipeline = "research_then_email"
+        run.research_agent_id = research_agent.agent_id
+
     store.append_audit(
         {
             "type": "run_started",
@@ -1426,14 +1461,37 @@ def start_run(
             "trace_id": run.run_id,
             "actor": actor.label,
             "detail": body.task[:200],
+            "pipeline": run.pipeline,
+            "research_agent_id": run.research_agent_id,
         }
     )
-    background.add_task(_execute_and_audit, runner, run, agent)
+    if research_agent is not None:
+        background.add_task(_execute_pipeline_and_audit, runner, run, agent, research_agent)
+    else:
+        background.add_task(_execute_and_audit, runner, run, agent)
     return run.view()
 
 
 def _execute_and_audit(active_runner: AgentRunner, run: Any, agent: AgentRecord) -> None:
     active_runner.execute(run, agent)
+    _audit_run_finished(run, agent)
+
+
+def _execute_pipeline_and_audit(
+    active_runner: AgentRunner,
+    run: Any,
+    email_agent: AgentRecord,
+    research_agent: AgentRecord,
+) -> None:
+    from .pipeline import execute_research_then_email
+
+    execute_research_then_email(
+        active_runner, run, email_agent, research_agent, add_run=runs.add
+    )
+    _audit_run_finished(run, email_agent)
+
+
+def _audit_run_finished(run: Any, agent: AgentRecord) -> None:
     store.append_audit(
         {
             "type": "run_finished",
@@ -1444,6 +1502,8 @@ def _execute_and_audit(active_runner: AgentRunner, run: Any, agent: AgentRecord)
             "actor": f"agent:{agent.agent_id}",
             "status": run.status,
             "model_turns": run.model_turns,
+            "pipeline": getattr(run, "pipeline", None),
+            "research_run_id": getattr(run, "research_run_id", None),
             "detail": run.error or f"Finished in {run.model_turns} model turn(s)",
         }
     )

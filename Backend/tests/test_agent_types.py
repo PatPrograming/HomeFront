@@ -58,7 +58,7 @@ def test_agent_types_catalog_is_public():
     by_kind = {t["kind"]: t for t in r.json()}
     assert set(by_kind) == {"email", "social", "research", "custom"}
     assert by_kind["custom"]["allowed_tools"] is None
-    assert by_kind["research"]["allowed_tools"] == ["datagov.search", "web.scrape"]
+    assert by_kind["research"]["allowed_tools"] == sorted(AGENT_TYPES["research"].allowed_tools)
 
 
 # --- creation -------------------------------------------------------------------

@@ -177,8 +177,8 @@ class MemoryAgentRepository:
     def __init__(self, seed: bool = True) -> None:
         self._agents: dict[str, AgentRecord] = {}
         if seed:
-            demo = demo_agent()
-            self._agents[demo.agent_id] = demo
+            for demo in (demo_agent(), demo_research_agent()):
+                self._agents[demo.agent_id] = demo
 
     def list(self) -> list[AgentRecord]:
         return [_copy(a) for a in self._agents.values()]
@@ -204,16 +204,39 @@ class MemoryAgentRepository:
 
 
 def demo_agent() -> AgentRecord:
-    # Seeded into DynamoDB at startup by identity_gateway.dynamo_repo.seed_demo_agent.
+    # Seeded into DynamoDB at startup by identity_gateway.dynamo_repo.seed_demo_agents.
+    # Email-only: pair with demo_research_agent via research_first runs.
     return AgentRecord(
         agent_id="agent-comms-01",
         name="Agency Comms Agent",
         agency="Example Civic Agency",
-        tool_grants={"email.send", "web.scrape", "datagov.search"},
+        kind="email",
+        tool_grants={"email.send", "email.send_list"},
+        recipients=["constituent@example.gov"],
+        max_steps=8,
         instructions=(
-            "You handle public communications for the agency. Research with data.gov and "
-            "public web pages, then draft and send clear, accurate emails to residents."
+            "You draft and send official agency emails. When a task includes research "
+            "findings from another agent, use ONLY those findings for facts and figures — "
+            "never invent numbers. Cite the source year when you quote a statistic. Send "
+            "only to the mailing list (or a listed address). If findings are insufficient, "
+            "say so and do not send."
         ),
+    )
+
+
+def demo_research_agent() -> AgentRecord:
+    """Shared research agent used by research→email pipelines."""
+    from .agent_types import get_agent_type
+
+    research = get_agent_type("research")
+    return AgentRecord(
+        agent_id="agent-research-01",
+        name="Agency Research Agent",
+        agency="Example Civic Agency",
+        kind="research",
+        tool_grants=set(research.default_tools),
+        max_steps=research.default_max_steps,
+        instructions=research.default_instructions,
     )
 
 

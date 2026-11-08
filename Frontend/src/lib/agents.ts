@@ -70,6 +70,16 @@ const TOOL_ACTIONS: Record<string, string> = {
   "social.reply": "reply to comments",
   "web.scrape": "read web pages",
   "datagov.search": "search data.gov",
+  "census.query": "query Census data",
+  "openfda.search": "search openFDA",
+  "eia.query": "query EIA energy data",
+  "nasa.search": "search NASA imagery",
+  "noaa.climate": "query NOAA climate data",
+  "nps.parks": "search National Parks",
+  "bls.series": "fetch BLS series",
+  "fec.search": "search FEC candidates",
+  "epa.search": "search EPA facilities",
+  "fcc.search": "search FCC licenses",
 };
 
 export const toolAction = (tool: string) => TOOL_ACTIONS[tool] || `use ${tool}`;
@@ -252,7 +262,7 @@ export type RunStatus = "queued" | "running" | "completed" | "max_steps" | "revo
 export const TERMINAL_RUN_STATUSES: RunStatus[] = ["completed", "max_steps", "revoked", "refused", "failed"];
 
 export interface RunStep {
-  type: "tool_call" | "model_fallback" | string;
+  type: "tool_call" | "model_fallback" | "pipeline" | string;
   tool?: string;
   input?: Record<string, unknown>;
   decision?: "allow" | "deny" | "pending_approval" | string;
@@ -262,6 +272,12 @@ export interface RunStep {
   approval_id?: string;
   from?: string;
   to?: string;
+  stage?: string;
+  agent_id?: string;
+  pipeline_agent?: string;
+  pipeline_stage?: string;
+  research_run_id?: string;
+  research_status?: string;
 }
 
 export interface Run {
@@ -278,4 +294,8 @@ export interface Run {
   created_at: number;
   started_at: number | null;
   finished_at: number | null;
+  pipeline?: string | null;
+  research_run_id?: string | null;
+  research_agent_id?: string | null;
+  research_output?: string | null;
 }

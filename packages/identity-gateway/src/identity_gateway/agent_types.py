@@ -69,16 +69,63 @@ AGENT_TYPES: dict[str, AgentType] = {
     "research": AgentType(
         kind="research",
         label="Research",
-        description="Researches public web pages and api.data.gov datasets. Can't send or post.",
-        default_instructions=(
-            "You research topics for the agency using public web pages and api.data.gov "
-            "datasets. Prefer official .gov sources, cross-check important facts, and note "
-            "where each fact came from. Finish with a structured summary: key findings, "
-            "sources (URLs or dataset names) and open questions. You can't send emails or "
-            "post; a staff member or another agent acts on your findings."
+        description=(
+            "Researches via agency APIs (Census, FDA, EIA, NASA, NOAA, NPS, BLS, FEC, EPA, "
+            "FCC), data.gov catalog, and web scrape. Can't send or post."
         ),
-        default_tools=frozenset({"web.scrape", "datagov.search"}),
-        allowed_tools=frozenset({"web.scrape", "datagov.search"}),
+        default_instructions=(
+            "You research topics for the agency. Your job is to produce verified findings "
+            "another agent (usually email) will use — you never send or post yourself.\n\n"
+            "How to research:\n"
+            "1. Prefer the agency API tool that matches the question (census.query for "
+            "population/ACS, openfda.search for drugs, eia.query for energy, noaa.climate "
+            "for weather, bls.series for CPI/jobs, nps.parks for parks, nasa.search for "
+            "space imagery, fec.search for campaign finance, epa.search for facilities, "
+            "fcc.search for licenses). The gateway may already narrow tools by topic.\n"
+            "2. Use datagov.search for catalog leads (titles/URLs), not as the final number.\n"
+            "3. For Census place estimates, census.query is best; otherwise scrape "
+            "www2.census.gov .../sub-estYYYY_N.csv with q='Santa Clara city'. Avoid "
+            "QuickFacts HTML (often HTTP 403).\n"
+            "4. Extract the specific figure or facts the task needs. Prefer the most recent "
+            "official estimate and name the vintage/year.\n"
+            "5. Cross-check when sources conflict; never invent numbers.\n\n"
+            "Finish with a structured handoff summary:\n"
+            "- Key findings (figures with units and year)\n"
+            "- Sources (dataset names and/or URLs)\n"
+            "- Open questions / gaps if anything is missing"
+        ),
+        default_tools=frozenset(
+            {
+                "web.scrape",
+                "datagov.search",
+                "census.query",
+                "openfda.search",
+                "eia.query",
+                "nasa.search",
+                "noaa.climate",
+                "nps.parks",
+                "bls.series",
+                "fec.search",
+                "epa.search",
+                "fcc.search",
+            }
+        ),
+        allowed_tools=frozenset(
+            {
+                "web.scrape",
+                "datagov.search",
+                "census.query",
+                "openfda.search",
+                "eia.query",
+                "nasa.search",
+                "noaa.climate",
+                "nps.parks",
+                "bls.series",
+                "fec.search",
+                "epa.search",
+                "fcc.search",
+            }
+        ),
         default_max_steps=25,
     ),
     "custom": AgentType(

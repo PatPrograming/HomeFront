@@ -225,25 +225,144 @@ def handle_social_reply(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Browser-like headers: many .gov sites (Census QuickFacts, city CMS) reject
+# bare library user-agents with HTTP 403.
+_SCRAPE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/csv,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+_CSV_READ_BYTES = 2_000_000
+_HTML_READ_BYTES = 120_000
+_PREVIEW_CHARS = 6000
+
+
+def _census_api_key() -> str:
+    return (os.environ.get("CENSUS_API_KEY") or os.environ.get("DATA_GOV_API_KEY") or "").strip()
+
+
+def _with_census_api_key(url: str) -> str:
+    """api.census.gov requires ?key=; reuse DATA_GOV_API_KEY when CENSUS_API_KEY is unset."""
+    parsed = urllib.parse.urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host not in {"api.census.gov", "www.api.census.gov"}:
+        return url
+    key = _census_api_key()
+    if not key:
+        return url
+    qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+    if qs.get("key"):
+        return url
+    qs["key"] = [key]
+    return urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(qs, doseq=True)))
+
+
+def _looks_like_csv(url: str, content_type: str, text: str) -> bool:
+    path = urllib.parse.urlparse(url).path.lower()
+    if path.endswith(".csv") or "text/csv" in (content_type or "").lower():
+        return True
+    sample = text.lstrip()[:200]
+    return sample.count(",") >= 3 and "\n" in text[:2000]
+
+
+def _focus_text(text: str, q: str, *, csv: bool) -> tuple[str, dict[str, Any]]:
+    """Keep header + matching rows for CSVs, or keyword windows for HTML."""
+    focus = (q or "").strip()
+    meta: dict[str, Any] = {"focused": False, "match_count": 0}
+    if not focus:
+        return text[:_PREVIEW_CHARS], meta
+
+    tokens = [t.lower() for t in focus.replace(",", " ").split() if len(t) > 1]
+    if not tokens:
+        return text[:_PREVIEW_CHARS], meta
+
+    if csv:
+        lines = text.splitlines()
+        if not lines:
+            return text[:_PREVIEW_CHARS], meta
+        header, body = lines[0], lines[1:]
+        matched = [ln for ln in body if all(tok in ln.lower() for tok in tokens)]
+        # Fallback: any-token match if all-tokens is too strict (e.g. "Santa Clara city").
+        if not matched:
+            matched = [ln for ln in body if any(tok in ln.lower() for tok in tokens)]
+        meta.update(focused=True, match_count=len(matched), total_rows=len(body))
+        kept = [header, *matched[:40]]
+        return "\n".join(kept)[:_PREVIEW_CHARS], meta
+
+    # HTML / plain: return windows around the first hits.
+    lower = text.lower()
+    hits = []
+    for tok in tokens:
+        start = 0
+        while len(hits) < 8:
+            idx = lower.find(tok, start)
+            if idx < 0:
+                break
+            hits.append(text[max(0, idx - 200) : idx + 400])
+            start = idx + len(tok)
+    if not hits:
+        return text[:_PREVIEW_CHARS], meta
+    meta.update(focused=True, match_count=len(hits))
+    return ("\n---\n".join(hits))[:_PREVIEW_CHARS], meta
+
+
 def handle_web_scrape(args: dict[str, Any]) -> dict[str, Any]:
     url = args.get("url") or "https://example.gov"
+    q = args.get("q") if isinstance(args.get("q"), str) else ""
     # Demo-safe: do not perform unrestricted live scraping by default.
-    # Return a stub that still models the untrusted-input risk surface.
     live = os.environ.get("HOMEFRONT_LIVE_SCRAPE") == "1"
     if live:
+        fetch_url = _with_census_api_key(url)
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "HomeFront/0.1"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                text = resp.read(8000).decode("utf-8", errors="replace")
-            return {
+            req = urllib.request.Request(fetch_url, headers=dict(_SCRAPE_HEADERS))
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                content_type = resp.headers.get("Content-Type", "")
+                raw = resp.read(_CSV_READ_BYTES)
+                final_url = resp.geturl()
+            text = raw.decode("utf-8", errors="replace")
+            csv = _looks_like_csv(final_url or url, content_type, text)
+            if not csv:
+                text = text[:_HTML_READ_BYTES]
+            preview, focus_meta = _focus_text(text, q, csv=csv)
+            out: dict[str, Any] = {
                 "status": "ok",
                 "url": url,
-                "content_preview": text[:1500],
+                "final_url": final_url,
+                "content_type": content_type,
+                "bytes_read": len(raw),
+                "content_preview": preview,
                 "untrusted": True,
                 "atlas_note": "Treat scraped content as AML.T0051.001 risk surface.",
             }
-        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-            return {"status": "error", "url": url, "error": str(exc), "untrusted": True}
+            if focus_meta.get("focused"):
+                out["focus"] = focus_meta
+            if "api.census.gov" in url and "Missing Key" in preview and not _census_api_key():
+                out["hint"] = (
+                    "Census Data API needs a key. Set CENSUS_API_KEY (or DATA_GOV_API_KEY) "
+                    "in the repo-root .env, or scrape a www2.census.gov CSV instead."
+                )
+            return out
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError) as exc:
+            detail = str(exc)
+            if isinstance(exc, urllib.error.HTTPError):
+                detail = f"HTTP Error {exc.code}: {exc.reason}"
+            hint = None
+            if "403" in detail:
+                hint = (
+                    "Site blocked the scraper. Prefer www2.census.gov CSV downloads or "
+                    "api.census.gov with CENSUS_API_KEY / DATA_GOV_API_KEY."
+                )
+            return {
+                "status": "error",
+                "url": url,
+                "error": detail,
+                "untrusted": True,
+                **({"hint": hint} if hint else {}),
+            }
 
     return {
         "status": "ok",
@@ -400,6 +519,19 @@ def handle_datagov_search(args: dict[str, Any]) -> dict[str, Any]:
         }
 
 
+from .agency_apis import (
+    handle_bls_series,
+    handle_census_query,
+    handle_eia_query,
+    handle_epa_search,
+    handle_fcc_search,
+    handle_fec_search,
+    handle_nasa_search,
+    handle_noaa_climate,
+    handle_nps_parks,
+    handle_openfda_search,
+)
+
 HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "email.send": handle_email_send,
     "email.send_list": handle_email_send_list,
@@ -407,6 +539,16 @@ HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "social.reply": handle_social_reply,
     "web.scrape": handle_web_scrape,
     "datagov.search": handle_datagov_search,
+    "census.query": handle_census_query,
+    "openfda.search": handle_openfda_search,
+    "eia.query": handle_eia_query,
+    "nasa.search": handle_nasa_search,
+    "noaa.climate": handle_noaa_climate,
+    "nps.parks": handle_nps_parks,
+    "bls.series": handle_bls_series,
+    "fec.search": handle_fec_search,
+    "epa.search": handle_epa_search,
+    "fcc.search": handle_fcc_search,
 }
 
 

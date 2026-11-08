@@ -117,7 +117,20 @@ export const agentsApi = {
   emailPermissions: () => request<EmailPermissions>("/email/permissions"),
 
   // Agent runs (Claude on Bedrock). Poll run() until a terminal status.
-  startRun: (agentId: string, task: string) => request<Run>(`${agentPath(agentId)}/runs`, { method: "POST", body: { task } }),
+  // opts.research_first: research agent runs first, then this agent uses the findings.
+  startRun: (
+    agentId: string,
+    task: string,
+    opts: { research_first?: boolean; research_agent_id?: string } = {},
+  ) =>
+    request<Run>(`${agentPath(agentId)}/runs`, {
+      method: "POST",
+      body: {
+        task,
+        ...(opts.research_first ? { research_first: true } : {}),
+        ...(opts.research_agent_id ? { research_agent_id: opts.research_agent_id } : {}),
+      },
+    }),
   runs: (agentId: string) => request<Run[]>(`${agentPath(agentId)}/runs`),
   run: (agentId: string, runId: string) => request<Run>(`${agentPath(agentId)}/runs/${encodeURIComponent(runId)}`),
 
