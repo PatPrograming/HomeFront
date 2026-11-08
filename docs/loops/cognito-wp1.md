@@ -34,6 +34,7 @@ first, and the README explains the design in plain words.
 | C7 | Dry run never touches AWS (no aws CLI on PATH) and exits 0 | `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run` | exit 0 |
 | C8 | Dry run prints the env names the app needs | `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run 2>&1` | stdout matches /COGNITO_USER_POOL_ID[\s\S]*COGNITO_STAFF_CLIENT_ID[\s\S]*COGNITO_AGENT_CLIENT_ID[\s\S]*COGNITO_DOMAIN/ |
 | C9 | README explains revocation | `grep -iE "revoc\|revok" Backend/infra/README.md \| grep -i dynamo` | exit 0 |
+| C10 | Agent client allows only client_credentials (no user sign-in flows) | `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null PATH=/usr/bin:/bin bash Backend/infra/cognito.sh --dry-run 2>&1 \| grep 'client-name mandate-agent'` | stdout matches /--explicit-auth-flows ALLOW_REFRESH_TOKEN_AUTH --allowed-o-auth-flows client_credentials/ |
 
 ## Not Checkable By Command
 
@@ -285,15 +286,15 @@ the two `test_routes.py` admin-login tests are known red. C3 is green only after
 
 | # | Task | Role | Files it may touch | Done when | Depends on | Status |
 |---|------|------|--------------------|-----------|------------|--------|
-| T1 | Write every test in Plan › Tests (red first) | test-author | `Backend/tests/test_cognito.py` | file has all named tests; C1 fails only with `ModuleNotFoundError`/`AttributeError` for `app.core.cognito` (red for the right reason) | — | todo |
-| T2 | Add the 5 Cognito settings | implementer | `Backend/app/core/config.py` | `PYTHONPATH=Backend .venv/bin/python -c "from app.core.config import Settings as S; s=S(_env_file=None); assert s.cognito_region=='us-east-1' and s.cognito_user_pool_id=='' and s.cognito_domain==''"` exits 0, and C2 still green | — | todo |
-| T3 | `cognito.py`: `bearer`, dataclasses, `_issuer`/`_jwks_client`/`_signing_key`/`_decode_access_token`, `verify_staff_token`, `verify_agent_client_token` | implementer | `Backend/app/core/cognito.py` | C1 with `-k verify` passes (all `test_verify_*`) | T1, T2 | todo |
-| T4 | `cognito.py`: `require_staff`, `require_admin`, `require_agent_client` | implementer | `Backend/app/core/cognito.py` | C1 with `-k require` passes (all `test_require_*`) | T3 | todo |
-| T5 | Switch `auth.py` to thin wrappers over cognito.py; delete the Supabase decode path | implementer | `Backend/app/core/auth.py` | C1 with `-k current_user` passes, and `pytest -q Backend/tests/test_auth.py` passes | T4 | todo |
-| T6 | Replace the HS256 user token in the two admin-login tests (OQ1) | test-author | `Backend/tests/test_routes.py` | C2 green (together with T5) | T5 | todo (approved 2026-11-07) |
-| T7 | `GET /me` returns `Me` from `require_staff`; drop `PATCH /me`; replace schema; delete `services/profiles.py` | implementer | `Backend/app/routers/profiles.py`, `Backend/app/schemas/profile.py`, `Backend/app/services/profiles.py` (delete) | C3 passes; `pytest -q Backend/tests/test_auth.py` still passes | T4 | todo (approved 2026-11-07) |
-| T8 | `cognito.sh` per Plan › Design | implementer | `Backend/infra/cognito.sh` | C4, C5, C6, C7, C8 pass | — | todo |
-| T9 | README `## Cognito`: what the script makes, dry run first and ask Huy before a real run, env vars, the two clients, password policy, why access tokens can't be revoked (signature checked locally until `exp`, so revocation is lane B's DynamoDB session/staffer check) | implementer | `Backend/infra/README.md` | C9 passes | T8 | todo |
+| T1 | Write every test in Plan › Tests (red first) | test-author | `Backend/tests/test_cognito.py` | file has all named tests; C1 fails only with `ModuleNotFoundError`/`AttributeError` for `app.core.cognito` (red for the right reason) | — | done |
+| T2 | Add the 5 Cognito settings | implementer | `Backend/app/core/config.py` | `PYTHONPATH=Backend .venv/bin/python -c "from app.core.config import Settings as S; s=S(_env_file=None); assert s.cognito_region=='us-east-1' and s.cognito_user_pool_id=='' and s.cognito_domain==''"` exits 0, and C2 still green | — | done |
+| T3 | `cognito.py`: `bearer`, dataclasses, `_issuer`/`_jwks_client`/`_signing_key`/`_decode_access_token`, `verify_staff_token`, `verify_agent_client_token` | implementer | `Backend/app/core/cognito.py` | C1 with `-k verify` passes (all `test_verify_*`) | T1, T2 | done |
+| T4 | `cognito.py`: `require_staff`, `require_admin`, `require_agent_client` | implementer | `Backend/app/core/cognito.py` | C1 with `-k require` passes (all `test_require_*`) | T3 | done |
+| T5 | Switch `auth.py` to thin wrappers over cognito.py; delete the Supabase decode path | implementer | `Backend/app/core/auth.py` | C1 with `-k current_user` passes, and `pytest -q Backend/tests/test_auth.py` passes | T4 | done |
+| T6 | Replace the HS256 user token in the two admin-login tests (OQ1) | test-author | `Backend/tests/test_routes.py` | C2 green (together with T5) | T5 | done |
+| T7 | `GET /me` returns `Me` from `require_staff`; drop `PATCH /me`; replace schema; delete `services/profiles.py` | implementer | `Backend/app/routers/profiles.py`, `Backend/app/schemas/profile.py`, `Backend/app/services/profiles.py` (delete) | C3 passes; `pytest -q Backend/tests/test_auth.py` still passes | T4 | done |
+| T8 | `cognito.sh` per Plan › Design | implementer | `Backend/infra/cognito.sh` | C4, C5, C6, C7, C8 pass | — | done |
+| T9 | README `## Cognito`: what the script makes, dry run first and ask Huy before a real run, env vars, the two clients, password policy, why access tokens can't be revoked (signature checked locally until `exp`, so revocation is lane B's DynamoDB session/staffer check) | implementer | `Backend/infra/README.md` | C9 passes | T8 | done |
 
 Parallel: T1, T2 and T8 can start together. T9 can run alongside T3–T7. T5 and T7 can run in parallel once
 T4 is done. T6 runs after T5, because it patches `app.core.auth.verify_staff_token`, which T5 creates.
@@ -336,3 +337,4 @@ T3 and T4 share a file, so they run in sequence.
 - 2026-11-07: Huy approved the plan and checks: "Approve, build it." Domain prefix: default
   `mandate-a10-hack-2026` (overridable via `COGNITO_DOMAIN_PREFIX`); Huy did not ask for another name.
 - 2026-11-07 (lead instruction after the incident): C5–C8 now also strip AWS credentials (`env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null`) on top of `--dry-run` and the stripped PATH, so a broken fake can never reach AWS. Stricter, not looser; all four still pass.
+- 2026-11-07 (round 3): added C10 (stricter, from the round-2 falsifier): the `mandate-agent` create command must set `--explicit-auth-flows ALLOW_REFRESH_TOKEN_AUTH`, because Cognito's default otherwise enables user sign-in flows on the agent client. Product renamed to HomeFront in prose (lead instruction); technical names (`mandate/tools`, pool `mandate`, `mandate-agent`, domain) unchanged.
