@@ -1,6 +1,6 @@
 # Loop: cognito-wp1
 
-Status: BUILDING                   <!-- PLANNING | AWAITING_APPROVAL | BUILDING | REVIEWING | DONE | STUCK | CAPPED -->
+Status: REVIEWING                  <!-- PLANNING | AWAITING_APPROVAL | BUILDING | REVIEWING | DONE | STUCK | CAPPED -->
 Profile: feature (trial depth: full, because this is auth)
 Round: 1 / 4
 Base commit: 839c456
