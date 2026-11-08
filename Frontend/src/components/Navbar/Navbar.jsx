@@ -1,32 +1,47 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import Logo from "../Logo/Logo.jsx";
-import { LOGO_SRC, NAV_LINKS } from "../../config.js";
+import { ADMIN_LINK, LOGO_SRC, NAV_LINKS } from "../../config.js";
 import { useAuth } from "../../lib/AuthProvider.jsx";
+import { isAdmin } from "../../lib/roles.js";
 import "./Navbar.css";
 
 export default function Navbar() {
-  const { user } = useAuth();
+  const { session } = useAuth();
+  const [open, setOpen] = useState(false);
+  const links = isAdmin(session) ? [...NAV_LINKS, ADMIN_LINK] : NAV_LINKS;
 
   return (
     <>
       <header className="navbar">
         <Logo src={LOGO_SRC} />
-        <nav className="nav-links" aria-label="Main">
-          {NAV_LINKS.map((l) => (
-            <Link key={l.href} to={l.href}>
+        <button
+          type="button"
+          className="hamburger"
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+          aria-controls="main-nav"
+          onClick={() => setOpen(!open)}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+        <nav id="main-nav" className={`nav-links ${open ? "open" : ""}`} aria-label="Main">
+          {links.map((l) => (
+            <Link key={l.href} to={l.href} onClick={() => setOpen(false)}>
               {l.label}
             </Link>
           ))}
-          {user ? (
-            <Link to="/account">Account</Link>
+          {session ? (
+            <Link to="/account" onClick={() => setOpen(false)}>
+              {session.username}
+            </Link>
           ) : (
-            <Link to="/login">Sign in</Link>
+            <Link to="/login" onClick={() => setOpen(false)}>
+              Sign in
+            </Link>
           )}
-          <button className="hamburger" aria-label="Menu">
-            <span />
-            <span />
-            <span />
-          </button>
         </nav>
       </header>
       <div className="accent-bar" />
