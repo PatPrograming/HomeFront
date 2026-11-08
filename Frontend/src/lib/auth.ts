@@ -34,8 +34,9 @@ interface Pending {
 export const cognito = {
   domain: (import.meta.env.VITE_COGNITO_DOMAIN || "").replace(/^https?:\/\//, "").replace(/\/$/, ""),
   clientId: import.meta.env.VITE_COGNITO_CLIENT_ID || "",
-  // Must be one of the staff-web client's callback URLs (lane A set the site root: http://localhost:3000/).
-  redirectUri: import.meta.env.VITE_COGNITO_REDIRECT_URI || `${window.location.origin}/`,
+  // Always the address this page is served from, so a stale setting can't send the staffer to a dead port.
+  // Cognito still accepts only the staff-web client's callback URLs (Backend/infra/cognito.sh).
+  redirectUri: `${window.location.origin}/`,
 };
 
 export const cognitoConfigured = Boolean(cognito.domain && cognito.clientId);
@@ -118,7 +119,7 @@ export async function completeLogin(search: string): Promise<string | null> {
 export function signOut(): void {
   save(null);
   if (!MOCK && cognitoConfigured) {
-    window.location.assign(logoutUrl({ ...cognito, logoutUri: `${window.location.origin}/` }));
+    window.location.assign(logoutUrl({ ...cognito, logoutUri: cognito.redirectUri }));
   }
 }
 

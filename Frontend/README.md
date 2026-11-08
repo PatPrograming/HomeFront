@@ -37,11 +37,12 @@ Copy the lines from `Frontend/.env.example` into the repo-root `.env`; they hold
 |---|---|
 | `VITE_COGNITO_DOMAIN` | The user pool's managed-login domain, e.g. `mandate-xyz.auth.us-east-1.amazoncognito.com` |
 | `VITE_COGNITO_CLIENT_ID` | The `staff-web` app client id (public client, no secret) |
-| `VITE_COGNITO_REDIRECT_URI` | Where Cognito sends you back: `http://localhost:3000/` (the `staff-web` client allows `http://localhost:3000/` and `http://localhost:5173/`). Defaults to `<this origin>/`. Sign-out returns to `<this origin>/`, which must be in the client's sign-out URLs. |
 | `VITE_API_BASE` | Optional. API origin + `/api/v1` when not using the dev proxy |
 | `VITE_MOCK_API` | `1` turns on mock mode, dev server only |
 
 None of these are secrets: everything prefixed `VITE_` ends up in the browser.
+
+Sign-in and sign-out always return to the address the console is served from (`<this origin>/`). That address must be in the `staff-web` client's callback and sign-out URLs (`Backend/infra/cognito.sh` registers only `http://localhost:3000/`, the dev server port).
 
 ## How sign-in works (Cognito, authorization code + PKCE)
 

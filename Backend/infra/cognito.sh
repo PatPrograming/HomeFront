@@ -161,8 +161,8 @@ if [ -z "$STAFF_CLIENT_ID" ]; then
     --allowed-o-auth-flows code --allowed-o-auth-flows-user-pool-client \
     --allowed-o-auth-scopes openid email profile \
     --supported-identity-providers COGNITO \
-    --callback-urls http://localhost:3000/ http://localhost:5173/ \
-    --logout-urls http://localhost:3000/ http://localhost:5173/ \
+    --callback-urls http://localhost:3000/ \
+    --logout-urls http://localhost:3000/ \
     --prevent-user-existence-errors ENABLED \
     --explicit-auth-flows ALLOW_USER_SRP_AUTH ALLOW_REFRESH_TOKEN_AUTH ALLOW_ADMIN_USER_PASSWORD_AUTH \
     --query UserPoolClient.ClientId --output text)
@@ -217,4 +217,3 @@ public_env
 step "Frontend env for the Vite app (public values)"
 echo "VITE_COGNITO_DOMAIN=$COGNITO_DOMAIN"
 echo "VITE_COGNITO_CLIENT_ID=$STAFF_CLIENT_ID"
-echo "VITE_COGNITO_REDIRECT_URI=http://localhost:3000/"
