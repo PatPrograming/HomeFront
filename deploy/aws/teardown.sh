@@ -47,7 +47,8 @@ run aws cloudformation wait stack-delete-complete --stack-name "$FOUNDATION_STAC
 # CloudFormation schedules the secret for deletion after a recovery window; free the name now
 # so a later deploy.sh can recreate homefront/runtime.
 if [[ -n "$SECRET_ARN" ]]; then
-  run aws secretsmanager delete-secret --secret-id "$SECRET_ARN" --force-delete-without-recovery || true
+  run aws secretsmanager delete-secret --secret-id "$SECRET_ARN" --force-delete-without-recovery \
+    || echo "note: could not force-delete $SECRET_ARN (already gone?). If deploy.sh later says the name is taken, run: aws secretsmanager delete-secret --secret-id homefront/runtime --force-delete-without-recovery"
 fi
 
 echo "Done ($( (( APPLY )) && echo removed || echo dry run, nothing changed ))."

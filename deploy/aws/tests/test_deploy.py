@@ -137,12 +137,12 @@ def test_connections_key_is_opt_in_and_needs_the_encryption_context():
     assert stmt["Condition"]["ForAllValues:StringEquals"] == {"kms:EncryptionContextKeys": ["staffer", "provider"]}
 
 
-def test_ses_is_granted_only_when_a_sender_is_configured_and_only_from_it():
+def test_ses_is_granted_only_when_a_sender_is_configured_and_only_to_verified_identities():
     policy = next(p for p in RES["TaskRole"]["Properties"]["Policies"] if "Fn::If" in p)
     condition, _, otherwise = policy["Fn::If"]
     assert condition == "HasSes" and otherwise == {"Ref": "AWS::NoValue"}
     send = next(s for s in statements("homefront-ses") if s["Action"] == "ses:SendEmail")
-    assert send["Condition"]["StringEquals"]["ses:FromAddress"] == {"Ref": "SesFromAddress"}
+    assert ":identity/*" in text(send["Resource"]) and "Condition" not in send
 
 
 def test_cognito_admin_calls_are_opt_in_and_pinned_to_the_pool():
@@ -240,6 +240,14 @@ def test_console_bucket_is_private_and_read_only_by_this_distribution():
     stmt = RES["ConsoleBucketPolicy"]["Properties"]["PolicyDocument"]["Statement"][0]
     assert stmt["Action"] == "s3:GetObject"
     assert "distribution/${Distribution}" in text(stmt["Condition"])
+
+
+def test_external_mcp_passes_the_dns_rebinding_check():
+    config = RES["Distribution"]["Properties"]["DistributionConfig"]
+    mcp = next(b for b in config["CacheBehaviors"] if b["PathPattern"] == "/mcp*")
+    assert mcp["OriginRequestPolicyId"] == "216adef6-5c7f-47e4-b989-5492eafa07d3"  # AllViewer: Host = CloudFront name
+    env = {v["Name"]: v["Value"] for v in CONTAINER["Environment"]}
+    assert env["MANDATE_MCP_ALLOWED_HOSTS"] == {"Fn::Sub": "127.0.0.1:*,localhost:*,${Distribution.DomainName}"}
 
 
 def test_allowed_origins_add_https_and_keep_localhost():

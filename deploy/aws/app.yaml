@@ -186,13 +186,12 @@ Resources:
             PolicyDocument:
               Version: "2012-10-17"
               Statement:
-                - Sid: SendFromTheConfiguredSenderOnly
+                # Any SES-verified identity in this account: each agent may have its own sender
+                # (Agents tab), and SES itself refuses unverified senders.
+                - Sid: SendFromVerifiedIdentities
                   Effect: Allow
                   Action: ses:SendEmail
                   Resource: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*
-                  Condition:
-                    StringEquals:
-                      ses:FromAddress: !Ref SesFromAddress
                 - Sid: ReadSenderStatus
                   Effect: Allow
                   Action:
@@ -377,9 +376,10 @@ Resources:
             # The console is same-origin through CloudFront; localhost stays for local development.
             - Name: ALLOWED_ORIGINS
               Value: !Sub https://${Distribution.DomainName},http://localhost:3000
-            # MCP DNS-rebinding protection: CloudFront forwards the ALB name as Host.
+            # MCP DNS-rebinding protection: in-container agents use 127.0.0.1; external MCP clients
+            # come through CloudFront, which forwards its own (lowercase) domain as Host on /mcp*.
             - Name: MANDATE_MCP_ALLOWED_HOSTS
-              Value: !Sub 127.0.0.1:*,localhost:*,${Alb.DNSName},${Distribution.DomainName}
+              Value: !Sub 127.0.0.1:*,localhost:*,${Distribution.DomainName}
           # Injected at start from Secrets Manager; never in the image, the template or the logs.
           Secrets:
             - { Name: MANDATE_SIGNING_SECRET, ValueFrom: !Sub "${SecretArn}:MANDATE_SIGNING_SECRET::" }
@@ -543,7 +543,9 @@ Resources:
             ViewerProtocolPolicy: https-only
             AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
             CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
-            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # Managed-AllViewerExceptHostHeader
+            # Forward the viewer's Host (the lowercase *.cloudfront.net name): MCP's DNS-rebinding
+            # check matches Host exactly, and the ALB's own DNS name is mixed-case.
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3 # Managed-AllViewer
 
 Outputs:
   ConsoleUrl:

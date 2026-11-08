@@ -48,7 +48,7 @@ on `l74ju5pcrcdg`. Nothing else.
 | Bedrock | `InvokeModel` (conversation auto-titles) | the Haiku 5.5 inference profile and its models only; no Sonnet |
 | Bedrock | `ApplyGuardrail` (the gateway's own scan of untrusted tool output) | guardrail `l74ju5pcrcdg` |
 | KMS | `Encrypt`, `Decrypt`, only with the `staffer` + `provider` encryption context | `alias/homefront-connections`'s key, when it exists |
-| SES | `SendEmail` from the one configured sender, `GetEmailIdentity`, `ListEmailIdentities` | only when `SES_FROM` is set at deploy |
+| SES | `SendEmail` from SES-verified identities in this account (each agent may have its own sender), `GetEmailIdentity`, `ListEmailIdentities` | only when `SES_FROM` (the fallback sender) is set at deploy |
 | Cognito | nothing today | `main`'s routes call no Cognito admin API: tokens are checked against the pool's public keys, and offboarding writes DynamoDB. |
 | Secrets Manager | nothing | ECS's execution role reads `homefront/runtime` and injects it before the app starts. |
 | Cognito, after the Admin-Roles merge | `ListUsers`, `ListUsersInGroup`, `AdminAddUserToGroup`, `AdminRemoveUserFromGroup` | the mandate pool only; turn on with `GRANT_COGNITO_ADMIN=true deploy/aws/deploy.sh --apply` |
