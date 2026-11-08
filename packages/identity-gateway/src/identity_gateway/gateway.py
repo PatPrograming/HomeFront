@@ -4,9 +4,8 @@
     2. session active AND staffer active?  -> no: DENY  (this is how Offboard is instant)
     3. build the facts from the token and DynamoDB (never from tool input)
     4. ask Verified Permissions (Cedar)    -> DENY: stop
-       an outbound call whose Gmail or X account is not connected -> DENY "needs connection"
        an outbound call the staffer has not let the agent make alone -> held as a draft, not run
-    5. run the tool
+    5. run the tool; a send with no Gmail (or office SES sender) or X account -> DENY "needs connection"
     6. scan untrusted output (flag only, the original text is passed on)
     7. write a decision event
 
@@ -182,10 +181,6 @@ class Gateway:
             # 4b. Earned autonomy. Cedar says the agent *may* send this; the staffer decides whether it
             #     may send it without review. Until then the gateway keeps a draft and sends nothing.
             if tool in OUTBOUND_TOOLS:
-                try:  # before the hold: no draft for a call that cannot be sent
-                    self._require_connection(claims.act, tool, params)
-                except ConnectionMissing as missing:
-                    return self._deny_needs_connection(claims, tool, resource, missing)
                 category = self._outbound_category(tool, params)
                 # A locked category is held even if its stored level says "auto" or a grant exists.
                 # Otherwise it runs if the staffer set it to "auto", or granted it for this session.
@@ -202,7 +197,7 @@ class Gateway:
             # 5. Run the tool.
             try:
                 result = self._run(tool, params, case, claims)
-            except ConnectionMissing as missing:  # the account was disconnected between the check and the send
+            except ConnectionMissing as missing:  # nothing to send through; no draft is kept
                 return self._deny_needs_connection(claims, tool, resource, missing)
 
             # 6. Untrusted output (public inbox, web pages): flag it, never change it.
@@ -256,14 +251,13 @@ class Gateway:
             update={
                 "status": "sent",
                 "decided_at": datetime.now(timezone.utc).isoformat(),
-                "edited": any(draft.args.get(k) != v for k, v in text.items()),
+                "edited": draft.edited or any(draft.args.get(k) != v for k, v in text.items()),
             }
         )
         # Marked sent before it runs, so a double click can never send it twice.
         if not self.store.decide_draft(draft_id, sent):
             raise DraftAlreadyDecided(draft_id)
         try:
-            self._require_connection(draft.acting_for, tool, params)  # may have been disconnected since the hold
             result = self._run(tool, params, None, claims)
         except ConnectionMissing as missing:
             self.store.put_draft(draft_id, draft)
@@ -353,18 +347,6 @@ class Gateway:
             return False
         return match.group(1).lower().endswith(".gov") or to.strip().lower() in self.store.constituent_emails(office)
 
-    def _require_connection(self, staffer_id: str, tool: str, params: Any) -> None:
-        """Raises ConnectionMissing when this call sends through an account the staffer has not connected."""
-        if connections is None:
-            return
-        provider = connections.provider_for_tool(tool, params.model_dump())
-        if provider is None:  # e.g. Bluesky: a share link, nothing to connect
-            return
-        try:
-            connections.require_connection(staffer_id, provider)
-        except connections.NeedsConnection as exc:
-            raise ConnectionMissing(connections.needs_connection_result(exc)) from exc
-
     def _send_connected(self, tool: str, params: Any, claims: MandateClaims) -> dict[str, Any]:
         """Send through the staffer's own Gmail or X account (the caller already found it connected)."""
         try:
@@ -372,8 +354,16 @@ class Gateway:
                 return connections.send_gmail(claims.act, params.to, params.subject, params.body, in_reply_to=params.in_reply_to)
             if tool == "email_send_list":
                 recipients = sorted(self.store.constituent_emails(claims.office))
-                for to in recipients:
-                    connections.send_gmail(claims.act, to, params.subject, params.body)
+                for sent, to in enumerate(recipients):
+                    try:
+                        connections.send_gmail(claims.act, to, params.subject, params.body)
+                    except connections.ProviderError:
+                        if sent == 0:
+                            raise
+                        # Some people already got it, so the draft must not go back to pending: a retry would
+                        # email them twice. Report who is left instead.
+                        failed = recipients[sent:]
+                        return {"status": "partial_failure", "provider": "gmail", "sent": sent, "failed": failed}
                 return {"status": "sent", "provider": "gmail", "sent": len(recipients)}
             reply_to = params.reply_to if tool == "social_reply" else None
             return connections.post_x(claims.act, params.text, reply_to=reply_to)
@@ -388,8 +378,16 @@ class Gateway:
             if email is None:
                 return {"id": params.email_id, "status": "not_found"}
             return {"id": params.email_id, **email.model_dump(mode="json")}
-        if connections is not None and connections.provider_for_tool(tool, params.model_dump()):
-            return self._send_connected(tool, params, claims)
+        provider = connections.provider_for_tool(tool, params.model_dump()) if connections is not None else None
+        if provider:
+            try:
+                connections.require_connection(claims.act, provider)
+            except connections.NeedsConnection as exc:
+                # Email without Gmail falls through to the existing SES handler when the office has a sender.
+                if not (provider == "gmail" and report_handlers.resolve_sender(None)["from_email"]):
+                    raise ConnectionMissing(connections.needs_connection_result(exc)) from exc
+            else:
+                return self._send_connected(tool, params, claims)
         # records_bulk_export has no handler on purpose: even a wrong ALLOW cannot run it.
         handler_args = params.model_dump(by_alias=True)  # the agency APIs read `for`, `in` and `parkCode`
         if tool == "email_send_list":  # the list is read here, at send time, never from input
