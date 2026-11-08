@@ -1,5 +1,7 @@
 # HANDOFF: stop-task (Lane J)
 
+**Resolved 2026-11-08 after the usage reset: verdict ACCEPT (lite), loop DONE. See Round 2 in `docs/loops/stop-task.md`.**
+
 Written 2026-11-08 at the lead's usage-limit ruling (5-hour limit treated as 85%).
 
 ## State

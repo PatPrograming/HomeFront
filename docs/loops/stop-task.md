@@ -1,6 +1,6 @@
 # Loop: stop-task
 
-Status: REVIEWING
+Status: DONE
 Profile: feature (auth-relevant: owner-only revoke route)
 Round: 2 / 4
 Base commit: 0457fb7
@@ -66,7 +66,9 @@ Guard mutations run by hand in round 1, each restored afterwards: dropping the o
 - Built: e3987f5 (test hardening for the agent-message guard; whitespace fix in `Console.tsx`).
 - Outcome checks: 5/5 pass. C1 10 passed; C2 832 passed, 3 skipped; C3 29 passed; C4 tsc clean; C5 118 passed. Fixed [], regressed []. Scoreboard `docs/loops/stop-task.rounds/round-2.json`.
 - Review: lite /trial on 69733ff..e3987f5, integrity scan 0 flags. Falsifier stopped at its turn limit before reporting; no verdict yet. No judge launched (lead ruling: usage limit, no new agents).
-- Verdict: PENDING (trial falsifier report outstanding). See `docs/loops/stop-task-HANDOFF.md`.
+- Trial re-run after the usage reset (falsifier, 4-mutation budget): every runnable requirement CONFIRMED, all 4 mutations killed. (a) owner check removed: the other-staffer and admin tests fail. (b) staff-login dependency replaced: the agent-token test fails (200 instead of 401). (c) revoked write skipped: 3 tests fail (status, next mint 403, audited once). (d) a useEffect that stops on an incoming agent "stop": the agent-message guard test fails, so this round's change makes that guard real. Falsifier overall INCONCLUSIVE only because the browser view and real Cognito/DynamoDB/agent were not exercised; both are already under Not Checkable By Command (mock-mode browser check done in round 1; live check is Huy's).
+- The falsifier's guard hook blocked `env -u` and a /tmp copy, so it unset the AWS variables with `unset` and ran each mutation in memory (exec'd route source; a Vite transform plugin), counting mutant executions to prove each took effect.
+- Verdict: ACCEPT (lite). No judge: nothing FALSIFIED, and the only UNVERIFIED items are the Not Checkable ones (lead ruling: a judge only if the falsifier finds something). Gap list empty.
 
 ## Decisions
 
@@ -75,4 +77,5 @@ Guard mutations run by hand in round 1, each restored afterwards: dropping the o
 - Audit event reuses the existing `DecisionEvent` shape (decision DENY, reason "session revoked / delegator inactive", tool `session_revoke`) instead of adding a new reason, because Lane E is editing `mandate_contracts/events.py` now.
 - Admins get 404 on this route too: it is the staffer's own stop; admins already have Offboard.
 - Stop phrases match only a whole message ("stop", "cancel", "revoke this task", "stop this task", "cancel this task", case and trailing ./! ignored), so "stop emailing Jane" is still a task for the agent.
+- Round 2 accepted without a judge although the falsifier's overall line was INCONCLUSIVE: its open items are exactly the Not Checkable By Command items, and the lead ruled a judge runs only on a finding.
 - The revoked header names who stopped it ("you stopped this task") instead of always blaming the Chief of Staff; the stopped sid is kept in sessionStorage so this survives a reload.
