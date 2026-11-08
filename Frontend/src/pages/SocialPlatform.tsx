@@ -2,7 +2,12 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Layout from "../components/Layout";
 import Stepper from "../components/Stepper/Stepper";
 import PlatformIcon, { PLATFORMS, type PlatformId } from "../components/PlatformIcons/PlatformIcons";
+import { OptionGroup } from "./Emails";
+import { buildSocialPayload, normalizeLink, sendToAgent } from "../lib/agentPayload";
 import "./SocialPlatform.css";
+import "./Emails.css";
+
+const SOCIAL_ACTIONS = ["Draft", "Post/comment", "Only summarize"];
 
 interface ImageItem {
   id: string;
@@ -13,16 +18,21 @@ interface ImageItem {
 const brandVars = (color: string) =>
   ({ "--brand": color, "--glyph-cut": color }) as CSSProperties;
 
-const STEPS = ["Select platforms", "Add content"];
+const STEPS = ["Select platforms", "Add content", "Agent restrictions"];
 
-// Two-stage flow: (1) pick the platforms the agency is active on, (2) provide the message,
-// links and images. Everything is local UI state for now.
+// Three-stage flow: (1) pick the platforms the agency is active on, (2) provide the message,
+// links and images, (3) set agent restrictions. Everything is local UI state for now.
 export default function SocialPlatform() {
   const [step, setStep] = useState(1);
   const [selected, setSelected] = useState<PlatformId[]>([]);
   const [message, setMessage] = useState("");
   const [links, setLinks] = useState([""]);
   const [images, setImages] = useState<ImageItem[]>([]);
+  const [agentAction, setAgentAction] = useState("");
+  // TODO: pass restrictions to the backend as an agent restriction.
+  const [restrictions, setRestrictions] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -35,6 +45,7 @@ export default function SocialPlatform() {
 
   const goTo = (n: number) => {
     setStep(n);
+    setSubmitted(false);
     window.scrollTo({ top: 0 });
   };
 
@@ -58,6 +69,9 @@ export default function SocialPlatform() {
       if (gone) URL.revokeObjectURL(gone.url);
       return cur.filter((i) => i.id !== id);
     });
+
+  // Non-empty links that can't be turned into a valid URL block the step.
+  const badLinks = links.some((l) => l.trim() !== "" && normalizeLink(l) === null);
 
   const chosen = PLATFORMS.filter((p) => selected.includes(p.id));
 
@@ -125,11 +139,84 @@ export default function SocialPlatform() {
               </button>
             </div>
           </section>
+        ) : step === 3 ? (
+          <form
+            className="content-main"
+            aria-labelledby="sp-title-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (agentAction === "") return;
+              setSendError(null);
+              try {
+                const payload = await buildSocialPayload({
+                  platforms: selected,
+                  message,
+                  links,
+                  images: images.map((i) => i.file),
+                  role: agentAction,
+                  restrictions,
+                });
+                await sendToAgent(payload);
+                setSubmitted(true);
+              } catch (err) {
+                setSendError(err instanceof Error ? err.message : "Could not send your settings.");
+              }
+            }}
+          >
+            <h1 id="sp-title-3" className="sp-title">Agent restrictions</h1>
+            <p className="sp-sub">Define what the agent may do on social platforms.</p>
+
+            <div className="card">
+              <OptionGroup
+                legend="Should the agent draft, post/comment, or only summarize new updates?"
+                hint="Select one."
+                options={SOCIAL_ACTIONS}
+                type="radio"
+                name="social-agent-action"
+                isOn={(o) => agentAction === o}
+                onChange={setAgentAction}
+              />
+            </div>
+
+            <div className="card">
+              <div className="field">
+                <label className="field-label" htmlFor="restrictions">
+                  Are there topics the agent must never answer or other restrictions?
+                </label>
+                <p className="field-hint" id="restrictions-hint">
+                  These will be applied as restrictions to the AI agent. Optional.
+                </p>
+                <textarea
+                  id="restrictions"
+                  className="textarea"
+                  rows={6}
+                  aria-describedby="restrictions-hint"
+                  placeholder="e.g. Never comment on pending litigation or give legal advice…"
+                  value={restrictions}
+                  onChange={(e) => setRestrictions(e.target.value)}
+                />
+                <span className="field-count">{restrictions.length} characters</span>
+              </div>
+            </div>
+
+            {submitted && (
+              <p role="status" className="sp-count">Your social platform settings have been sent to the agent.</p>
+            )}
+            {sendError && <p className="alert alert-error" role="alert">{sendError}</p>}
+
+            <div className="em-nav">
+              <button type="button" className="btn btn-outline" onClick={() => goTo(2)}>Back</button>
+              <button type="submit" className="btn btn-primary" disabled={agentAction === ""}>Submit</button>
+            </div>
+          </form>
         ) : (
           <form
             className="content"
             aria-labelledby="sp-title-2"
-            onSubmit={(e) => e.preventDefault()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (message.trim() && !badLinks) goTo(3);
+            }}
           >
             <div className="content-main">
               <h1 id="sp-title-2" className="sp-title">What does the public need to know?</h1>
@@ -165,10 +252,12 @@ export default function SocialPlatform() {
                     {links.map((link, i) => (
                       <div className="link-row" key={i}>
                         <input
-                          type="url"
+                          type="text"
+                          inputMode="url"
                           className="input"
                           aria-label={`Link ${i + 1}`}
-                          placeholder="https://www.agency.gov/update"
+                          aria-invalid={link.trim() !== "" && normalizeLink(link) === null}
+                          placeholder="agency.gov/update"
                           value={link}
                           onChange={(e) => setLink(i, e.target.value)}
                         />
@@ -186,6 +275,9 @@ export default function SocialPlatform() {
                       </div>
                     ))}
                   </div>
+                  {badLinks && (
+                    <p className="field-hint" role="alert">Enter a valid link, e.g. agency.gov/update.</p>
+                  )}
                   <button
                     type="button"
                     className="btn btn-ghost add-link"
@@ -263,7 +355,7 @@ export default function SocialPlatform() {
                 Change platforms
               </button>
               <div className="summary-actions">
-                <button type="submit" className="btn btn-primary" disabled={!message.trim()}>
+                <button type="submit" className="btn btn-primary" disabled={!message.trim() || badLinks}>
                   Continue
                 </button>
                 <button type="button" className="btn btn-outline" onClick={() => goTo(1)}>
