@@ -68,6 +68,8 @@ export interface CreateAgentBody {
   tool_grants?: string[];
   agent_id?: string;
   recipients?: string[];
+  // Social media agents only: x, bluesky, reddit, facebook, linkedin.
+  platforms?: string[];
 }
 
 export interface VerificationRequest {
@@ -90,6 +92,9 @@ export const agentsApi = {
   status: () => request<StorageStatus>("/status"),
 
   agents: () => request<Agent[]>("/agents"),
+  // Your own agents only; shared demo agents can't be deleted. Pending approvals are rejected.
+  deleteAgent: (agentId: string) =>
+    request<{ deleted: string; rejected_approvals: number }>(agentPath(agentId), { method: "DELETE" }),
   agent: (agentId: string) => request<Agent>(agentPath(agentId)),
   // Fields left out (instructions, tool_grants, max_steps) take the kind's template defaults.
   createAgent: (body: CreateAgentBody) => request<Agent>("/agents", { method: "POST", body }),

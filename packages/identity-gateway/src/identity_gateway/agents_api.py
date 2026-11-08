@@ -139,6 +139,8 @@ class CreateAgentRequest(BaseModel):
     # web.scrape domain allowlist, e.g. ["*.gov", "example.org"]. Left out =
     # the type's default; [] = any public host.
     scrape_domains: list[str] | None = Field(default=None, max_length=MAX_SCRAPE_DOMAINS * 2)
+    # Social platforms the agent is for (x, bluesky, reddit, facebook, linkedin). Shown on its card.
+    platforms: list[str] = Field(default_factory=list, max_length=10)
 
 
 class EmailSettingsUpdate(BaseModel):
@@ -188,6 +190,7 @@ def _agent_view(agent: AgentRecord) -> dict[str, Any]:
         "recipients": list(agent.recipients),
         "email_settings": agent.email_settings.view(),
         "scrape_domains": list(agent.scrape_domains),
+        "platforms": list(agent.platforms),
         "token_version": agent.token_version,
         "active": agent.active,
     }
@@ -412,6 +415,16 @@ def create_agent(
         else list(agent_type.default_scrape_domains)
     )
 
+    try:
+        platforms = list(dict.fromkeys(normalize_platform(p) for p in body.platforms))
+    except ShareLinkError as exc:
+        raise HTTPException(status_code=422, detail={"error": "invalid_platforms", "message": str(exc)})
+    if platforms and body.kind != "social":
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_platforms", "message": "Only social media agents have platforms."},
+        )
+
     unknown = [t for t in tool_grants if get_tool(t) is None]
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown tools: {unknown}")
@@ -432,6 +445,7 @@ def create_agent(
             kind=body.kind,
             recipients=body.recipients,
             scrape_domains=scrape_domains,
+            platforms=platforms,
         )
     except InvalidRecipientsError as exc:
         raise _recipients_error(exc)
@@ -491,6 +505,52 @@ def update_agent(
             }
         )
     return _agent_view(agent)
+
+
+@router.delete("/agents/{agent_id}")
+def delete_agent(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    """Delete one of your own agents. Shared demo agents (no owner) can't be deleted.
+
+    Requests waiting for approval are rejected, and the agent's tokens stop
+    working immediately. The activity log keeps its history.
+    """
+    agent = _accessible_agent(agent_id, actor)
+    if agent.owner_id is None or agent.owner_id != actor.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "cannot_delete_shared_agent", "message": "Shared demo agents can't be deleted."},
+        )
+    rejected = 0
+    for rec in store.approvals.list():
+        if rec.agent_id == agent_id and rec.status == "pending":
+            try:
+                store.approvals.transition(
+                    rec.approval_id,
+                    "pending",
+                    status="rejected",
+                    decided_by=actor.label,
+                    decided_at=time.time(),
+                    note="Agent deleted",
+                )
+                rejected += 1
+            except ApprovalConflict:
+                pass  # decided in the meantime
+    try:
+        store.delete_agent(agent_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    store.append_audit(
+        {
+            "type": "agent_deleted",
+            "decision": "info",
+            "agent_id": agent_id,
+            "actor": actor.label,
+            "kind": agent.kind,
+            "detail": f"Deleted {agent.kind} agent \"{agent.name}\""
+            + (f"; rejected {rejected} pending approval{'s' if rejected != 1 else ''}" if rejected else ""),
+        }
+    )
+    return {"deleted": agent_id, "rejected_approvals": rejected}
 
 
 @router.put("/agents/{agent_id}/recipients")

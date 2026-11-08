@@ -125,6 +125,7 @@ export default function NewAgent() {
         instructions: standing ? `${instructions.trim()}\n\n${standing}` : instructions,
         tool_grants: grants,
         max_steps: maxSteps,
+        ...(type.kind === "social" ? { platforms: platformIds } : {}),
       });
     } catch (err) {
       setError(describeError(err, types));

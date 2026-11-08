@@ -284,3 +284,59 @@ def test_api_against_dynamo_store():
         assert client.get(f"/api/v1/agents/{aid}", headers=alice).json()["tool_grants"] == []
     finally:
         gateway.store.use_agent_repository(saved)
+
+
+# --- deleting agents -------------------------------------------------------------------
+
+
+def _mine(sub, **body):
+    from tests.helpers import auth as _auth
+
+    r = client.post(
+        "/api/v1/agents",
+        json={"agent_id": f"agent-del-{uuid.uuid4().hex[:8]}", "name": "Del", "agency": "City", "kind": "social", **body},
+        headers=_auth(sub),
+    )
+    assert r.status_code == 201, r.text
+    return r.json()["agent_id"], _auth(sub)
+
+
+def test_owner_deletes_agent_and_it_is_gone():
+    aid, headers = _mine("00000000-0000-0000-0000-00000000de11")
+    r = client.delete(f"/api/v1/agents/{aid}", headers=headers)
+    assert r.status_code == 200 and r.json()["deleted"] == aid
+    assert client.get(f"/api/v1/agents/{aid}", headers=headers).status_code == 404
+    assert aid not in [a["agent_id"] for a in client.get("/api/v1/agents", headers=headers).json()]
+    assert client.delete(f"/api/v1/agents/{aid}", headers=headers).status_code == 404
+
+
+def test_other_users_cannot_delete_it():
+    from tests.helpers import auth as _auth
+
+    aid, headers = _mine("00000000-0000-0000-0000-00000000de12")
+    assert client.delete(f"/api/v1/agents/{aid}", headers=_auth("00000000-0000-0000-0000-00000000de13")).status_code == 404
+    assert client.get(f"/api/v1/agents/{aid}", headers=headers).status_code == 200
+
+
+def test_shared_demo_agents_cannot_be_deleted():
+    r = client.delete("/api/v1/agents/agent-comms-01")
+    assert r.status_code == 403
+    assert r.json()["detail"]["error"] == "cannot_delete_shared_agent"
+    assert client.get("/api/v1/agents/agent-comms-01").status_code == 200
+
+
+def test_deleting_rejects_pending_approvals_and_kills_tokens():
+    sub = "00000000-0000-0000-0000-00000000de14"
+    aid, headers = _mine(sub)
+    token = client.post("/api/v1/auth/token", json={"agent_id": aid}, headers=headers).json()["access_token"]
+    agent_headers = {**headers, "X-Agent-Token": token}
+    queued = client.post(
+        "/api/v1/agents/tool-call", json={"tool": "social.post", "arguments": {"platform": "x", "text": "hi"}}, headers=agent_headers
+    ).json()
+    assert queued.get("decision") == "pending_approval", queued
+
+    r = client.delete(f"/api/v1/agents/{aid}", headers=headers)
+    assert r.json()["rejected_approvals"] == 1
+    assert client.post(
+        "/api/v1/agents/tool-call", json={"tool": "social.post", "arguments": {"platform": "x", "text": "hi"}}, headers=agent_headers
+    ).status_code in (401, 403, 404)

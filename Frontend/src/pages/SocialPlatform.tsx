@@ -148,6 +148,7 @@ export default function SocialPlatform() {
         kind: "social",
         name: "Social media agent",
         agency: newAgency.trim(),
+        platforms: chosen.map((p) => p.id),
       });
       setAgents((cur) => [...(cur ?? []), agent]);
       setAgentId(agent.agent_id);

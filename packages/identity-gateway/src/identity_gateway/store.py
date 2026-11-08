@@ -159,6 +159,8 @@ class AgentRecord:
     email_settings: EmailSettings = field(default_factory=EmailSettings)
     # web.scrape domain allowlist (normalized patterns). Empty = any public host.
     scrape_domains: list[str] = field(default_factory=list)
+    # Social platforms this agent is for (share_links ids, e.g. ["x", "bluesky"]). Shown on its card.
+    platforms: list[str] = field(default_factory=list)
     token_version: int = 1
     active: bool = True
     created_at: float = field(default_factory=time.time)
@@ -193,6 +195,10 @@ class AgentRepository(Protocol):
 
     def save(self, agent: AgentRecord) -> AgentRecord: ...
 
+    def delete(self, agent_id: str) -> None:
+        """Raises KeyError if there is no such agent."""
+        ...
+
     def count(self) -> int: ...
 
 
@@ -203,6 +209,7 @@ def _copy(agent: AgentRecord) -> AgentRecord:
         recipients=list(agent.recipients),
         email_settings=replace(agent.email_settings),
         scrape_domains=list(agent.scrape_domains),
+        platforms=list(agent.platforms),
     )
 
 
@@ -235,6 +242,10 @@ class MemoryAgentRepository:
             raise KeyError(agent.agent_id)
         self._agents[agent.agent_id] = _copy(agent)
         return _copy(agent)
+
+    def delete(self, agent_id: str) -> None:
+        if self._agents.pop(agent_id, None) is None:
+            raise KeyError(agent_id)
 
     def count(self) -> int:
         return len(self._agents)
@@ -358,6 +369,7 @@ class GatewayStore:
         kind: str = "custom",
         recipients: Iterable[str] = (),
         scrape_domains: Iterable[str] = (),
+        platforms: Iterable[str] = (),
     ) -> AgentRecord:
         rec = AgentRecord(
             agent_id=agent_id or f"agent-{uuid.uuid4().hex[:8]}",
@@ -371,6 +383,7 @@ class GatewayStore:
             kind=kind,
             recipients=normalize_recipients(recipients),
             scrape_domains=normalize_scrape_domains(scrape_domains),
+            platforms=list(dict.fromkeys(platforms)),
         )
         with self._lock:
             return self._agents.insert(rec)
@@ -433,6 +446,12 @@ class GatewayStore:
             agent.tool_grants.discard(tool)
 
         return self._mutate(agent_id, apply)
+
+    def delete_agent(self, agent_id: str) -> None:
+        """Remove the agent. Its workload tokens stop resolving at once (the agent is
+        looked up on every call). Audit rows stay, keyed by agent id."""
+        with self._lock:
+            self._agents.delete(agent_id)
 
     def revoke_all(self, agent_id: str) -> AgentRecord:
         def apply(agent: AgentRecord) -> None:

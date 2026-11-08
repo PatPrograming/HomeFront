@@ -92,7 +92,7 @@ export interface HomeContent {
   buttons: string[];
 }
 
-type Method = "GET" | "POST" | "PUT" | "PATCH";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 interface RequestOptions {
   auth?: boolean;
