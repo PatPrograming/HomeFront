@@ -172,7 +172,7 @@ def test_context_always_carries_all_three_keys(gateway, authorizer, make_token, 
     [
         ("jane.doe@example.com", True),  # constituent on file, stored mixed-case
         ("JANE.DOE@EXAMPLE.COM", True),  # lookup is case-insensitive
-        ("bob@other.org", True),  # a constituent on a rep-y case is still on file
+        ("bob@other.org", False),  # a constituent of a rep-y case is not on file for rep-x
         ("staff@house.gov", True),
         ("x@evil.gov.example.com", False),  # .gov appears but is not the domain suffix
         ("a@b.gov, c@evil.com", False),  # two addresses: not a single .gov address

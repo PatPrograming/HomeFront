@@ -31,13 +31,26 @@ run() {
 }
 
 # Read-only lookups print nothing in dry-run mode (and so look like "not found").
+# Any AWS error stops the script, so a failed lookup never leads to a duplicate.
 lookup() {
   [[ $DRY_RUN == 1 ]] && return 0
-  aws "$@" --region "$REGION" 2>/dev/null || true
+  aws "$@" --region "$REGION"
+}
+
+# The one lookup where "not found" is an error from AWS: describe-table.
+table_exists() {
+  [[ $DRY_RUN == 1 ]] && return 1
+  local err
+  if err="$(aws dynamodb describe-table --table-name "$TABLE" --region "$REGION" 2>&1 >/dev/null)"; then
+    return 0
+  fi
+  [[ "$err" == *ResourceNotFoundException* ]] && return 1
+  echo "$err" >&2
+  exit 1
 }
 
 echo "== 1. DynamoDB table $TABLE"
-if [[ -n "$(lookup dynamodb describe-table --table-name "$TABLE" --query Table.TableName --output text)" ]]; then
+if table_exists; then
   echo "exists"
 else
   run dynamodb create-table --table-name "$TABLE" \

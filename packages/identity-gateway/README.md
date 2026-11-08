@@ -23,7 +23,12 @@ agent ──MCP over HTTP, Authorization: Bearer <mandate token>──► /mcp
 ```
 
 Any error in steps 2 to 7 (DynamoDB down, AVP down, a bug, a tool crash) is a DENY. If the
-decision event cannot be written, an ALLOW is withheld too: no audit record, no action.
+decision event cannot be written, the tool's result is withheld and the caller gets a DENY. The
+tool has already run by then; `email_send` and `social_post` are simulated today, but a real
+sender would need a "pending" event written before it acts.
+
+A session lasts one hour; within it the agent can get fresh 15-minute mandate tokens. Offboarding
+ends both at once.
 
 ## Why each step is there
 
@@ -43,8 +48,8 @@ Built in step 3 with `mandate_contracts.cedar`:
 - Principal `Mandate::Agent` with `office` and `mode` from the SESSION item.
 - Resource `Mandate::Case` with `office` from the CASE item (for `case_read`), else `Mandate::Tool`.
 - Context, always all three keys (a missing key would make Cedar skip a `forbid`, which fails open):
-  `delegatorActive`, `recipientKnown` (the address is a constituent email on file, or one
-  `*.gov` address), `account` (for `social_post`).
+  `delegatorActive`, `recipientKnown` (the address belongs to a constituent of one of this
+  office's cases, or is one `*.gov` address), `account` (for `social_post`).
 
 ## Files
 

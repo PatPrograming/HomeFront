@@ -6,7 +6,9 @@ from identity_gateway.gateway import get_gateway
 
 try:
     from app.core.cognito import StaffIdentity, require_admin
-except ImportError:  # STUB until lane A (WP1) merges Backend/app/core/cognito.py
+except ModuleNotFoundError as exc:  # STUB until lane A (WP1) merges Backend/app/core/cognito.py
+    if exc.name != "app.core.cognito":
+        raise
     from identity_gateway.auth_stub import StaffIdentity, require_admin
 
 router = APIRouter(tags=["admin"])

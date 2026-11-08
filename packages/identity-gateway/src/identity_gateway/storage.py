@@ -132,9 +132,10 @@ class MandateStore:
     def put_email(self, email_id: str, item: EmailItem) -> None:
         self._put(email_key(email_id), item)
 
-    def constituent_emails(self) -> set[str]:
-        """Addresses on file (from CASE items). Decides Cedar's `recipientKnown`."""
-        return {item["constituentEmail"].strip().lower() for item in self._scan("CASE#") if item.get("constituentEmail")}
+    def constituent_emails(self, office: str) -> set[str]:
+        """Addresses on file for this office's cases. Decides Cedar's `recipientKnown`."""
+        cases = self._scan("CASE#", Attr("office").eq(office))
+        return {item["constituentEmail"].strip().lower() for item in cases if item.get("constituentEmail")}
 
     # --- decision events ---------------------------------------------------
 

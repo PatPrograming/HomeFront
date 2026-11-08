@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -63,7 +64,7 @@ def _load(name: str, fixture: list[dict]) -> list[dict]:
 def _dev_session() -> SessionItem:
     claims = dev_claims()
     return SessionItem(status="active", agent=claims.sub, acting_for=claims.act, office=claims.office,
-                       mode=claims.mode, created_at="dev")
+                       mode=claims.mode, created_at=datetime.now(timezone.utc).isoformat())
 
 
 def main(dry_run: bool, dev_session: bool) -> None:

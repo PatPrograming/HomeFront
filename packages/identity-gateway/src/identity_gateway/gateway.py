@@ -83,7 +83,8 @@ class Gateway:
         try:
             claims = verify_mandate_token(token, self.secret)
         except InvalidToken:
-            self._record(None, tool, None, "DENY", "invalid token")
+            # Unauthenticated callers choose `tool`; only log names we know.
+            self._record(None, tool if tool in TOOLS else "unknown", None, "DENY", "invalid token")
             raise
 
         resource: str | None = None
@@ -118,7 +119,7 @@ class Gateway:
                 resource=cedar.case_entity(params.case_id, case.office) if case else cedar.tool_entity(tool),
                 context=cedar.build_context(  # always every key; a missing key would skip a forbid
                     delegatorActive=delegator_active,
-                    recipientKnown=tool == "email_send" and self._recipient_known(params.to),
+                    recipientKnown=tool == "email_send" and self._recipient_known(params.to, session.office),
                     account=params.account if tool == "social_post" else "",
                 ),
             )
@@ -142,11 +143,12 @@ class Gateway:
 
     # --- helpers ----------------------------------------------------------
 
-    def _recipient_known(self, to: str) -> bool:
+    def _recipient_known(self, to: str, office: str) -> bool:
+        """One address that is a .gov address or a constituent of this office's cases."""
         match = SINGLE_ADDRESS.match(to.strip())
         if not match:
             return False
-        return match.group(1).lower().endswith(".gov") or to.strip().lower() in self.store.constituent_emails()
+        return match.group(1).lower().endswith(".gov") or to.strip().lower() in self.store.constituent_emails(office)
 
     def _run(self, tool: str, params: Any, case: Any) -> dict[str, Any]:
         if tool == "case_read":

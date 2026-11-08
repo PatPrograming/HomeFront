@@ -367,3 +367,83 @@ def test_token_minted_by_the_broker_is_rejected_under_a_different_secret(client)
     token = get_mandate(client, new_session(client)["sid"])
     with pytest.raises(InvalidToken):
         verify_mandate_token(token, "some-other-secret-some-other-secret-1")
+
+
+# ---- round 2: session lifetime, future cursor, auth fallback ---------------
+
+
+def _iso_ago(seconds: int) -> str:
+    from datetime import datetime, timedelta, timezone
+
+    return (datetime.now(timezone.utc) - timedelta(seconds=seconds)).isoformat()
+
+
+def _set_created_at(table, sid, value):
+    table.update_item(
+        Key={"pk": f"SESSION#{sid}", "sk": "META"},
+        UpdateExpression="SET createdAt = :c",
+        ExpressionAttributeValues={":c": value},
+    )
+
+
+def test_session_ttl_constant_is_one_hour():
+    assert sessions.SESSION_TTL_SECONDS == 3600
+
+
+def test_session_expires_at_is_created_at_plus_one_hour(client, store):
+    from datetime import datetime
+
+    sess = new_session(client)
+    created = datetime.fromisoformat(store.get_session(sess["sid"]).created_at.replace("Z", "+00:00"))
+    expires = datetime.fromisoformat(sess["expiresAt"].replace("Z", "+00:00"))
+    assert (expires - created).total_seconds() == 3600
+
+
+def test_mandate_token_still_lasts_15_minutes(client):
+    sess = new_session(client)
+    claims = verify_mandate_token(get_mandate(client, sess["sid"]), SECRET)
+    assert claims.exp - claims.iat == 900
+
+
+def test_no_mandate_for_a_session_older_than_one_hour(client, table):
+    sess = new_session(client)
+    _set_created_at(table, sess["sid"], _iso_ago(3601))
+    as_agent()
+    assert client.post(f"/api/v1/sessions/{sess['sid']}/mandate", json={}).status_code == 403
+
+
+def test_mandate_still_issued_for_a_session_younger_than_one_hour(client, table):
+    sess = new_session(client)
+    _set_created_at(table, sess["sid"], _iso_ago(3000))
+    as_agent()
+    assert client.post(f"/api/v1/sessions/{sess['sid']}/mandate", json={}).status_code == 200
+
+
+def test_no_mandate_when_session_created_at_is_not_an_iso_timestamp(client, table):
+    sess = new_session(client)
+    _set_created_at(table, sess["sid"], "yesterday-ish")
+    as_agent()
+    assert client.post(f"/api/v1/sessions/{sess['sid']}/mandate", json={}).status_code == 403
+
+
+def test_events_since_in_the_future_is_400(client):
+    as_staff()
+    r = client.get("/api/v1/events", params={"since": "2099-01-01T00:00:00.000Z#abc"})
+    assert r.status_code == 400
+
+
+def test_events_since_malformed_is_400(client):
+    as_staff()
+    assert client.get("/api/v1/events", params={"since": "not-a-cursor"}).status_code == 400
+
+
+def test_routers_use_the_auth_stub_when_app_core_cognito_is_absent():
+    import importlib.util
+
+    import identity_gateway.auth_stub as stub
+
+    if importlib.util.find_spec("app.core.cognito") is not None:
+        pytest.skip("app.core.cognito exists in this branch")
+    assert sessions.require_staff is stub.require_staff
+    assert sessions.require_agent_client is stub.require_agent_client
+    assert events.require_staff is stub.require_staff

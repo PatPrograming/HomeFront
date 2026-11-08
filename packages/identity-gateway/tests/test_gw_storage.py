@@ -133,9 +133,10 @@ def test_email_round_trips_including_the_from_field(store, world):
 
 
 def test_constituent_emails_are_lower_cased_and_only_come_from_cases(store, world):
-    assert store.constituent_emails() == {"jane.doe@example.com", "bob@other.org"}
+    assert store.constituent_emails("rep-x") == {"jane.doe@example.com"}
+    assert store.constituent_emails("rep-y") == {"bob@other.org"}
     # the email item's sender and staffers must not leak into the known-recipient set
-    assert "citizen@example.com" not in store.constituent_emails()
+    assert "citizen@example.com" not in store.constituent_emails("rep-x")
 
 
 # ---- events ---------------------------------------------------------------
@@ -246,7 +247,7 @@ class SpyTable:
         lambda s: s.get_staffer("maya"),
         lambda s: s.get_case("case-1"),
         lambda s: s.get_email("email-1"),
-        lambda s: s.constituent_emails(),
+        lambda s: s.constituent_emails("rep-x"),
         lambda s: s.events_since(None),
         lambda s: s.revoke_sessions_for("maya"),
     ],

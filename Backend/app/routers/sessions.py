@@ -19,17 +19,28 @@ from mandate_contracts.ddb import SessionItem
 
 try:
     from app.core.cognito import AgentClientIdentity, StaffIdentity, require_agent_client, require_staff
-except ImportError:  # STUB until lane A (WP1) merges Backend/app/core/cognito.py
+except ModuleNotFoundError as exc:  # STUB until lane A (WP1) merges Backend/app/core/cognito.py
+    if exc.name != "app.core.cognito":
+        raise
     from identity_gateway.auth_stub import AgentClientIdentity, StaffIdentity, require_agent_client, require_staff
 
 router = APIRouter(tags=["broker"])
 
 AGENT_ID = os.environ.get("MANDATE_AGENT_ID", "agent-1")
+SESSION_TTL_SECONDS = 60 * 60  # a session can mint 15-minute mandate tokens for one hour
 ALLOWED_TOOLS = [name for name, spec in TOOLS.items() if not spec.always_denied]
 
 
 def _iso(epoch: int) -> str:
     return datetime.fromtimestamp(epoch, timezone.utc).isoformat()
+
+
+def _created_epoch(created_at: str) -> float:
+    """Session start as epoch seconds; an unreadable timestamp counts as long expired."""
+    try:
+        return datetime.fromisoformat(created_at).timestamp()
+    except ValueError:
+        return 0.0
 
 
 @router.post("/sessions")
@@ -56,7 +67,7 @@ def create_session(staff: StaffIdentity = Depends(require_staff)) -> dict:
         "office": session.office,
         "mode": session.mode,
         "allowedTools": ALLOWED_TOOLS,
-        "expiresAt": _iso(now + TTL_SECONDS),
+        "expiresAt": _iso(now + SESSION_TTL_SECONDS),
     }
 
 
@@ -70,6 +81,8 @@ def issue_mandate(sid: str, agent: AgentClientIdentity = Depends(require_agent_c
     if session.status != "active" or staffer is None or not staffer.active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Session revoked or staffer inactive")
     now = int(time.time())
+    if now > _created_epoch(session.created_at) + SESSION_TTL_SECONDS:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Session expired; start a new one")
     claims = MandateClaims(
         sub=session.agent,
         act=session.acting_for,
