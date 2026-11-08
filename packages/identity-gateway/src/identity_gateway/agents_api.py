@@ -13,7 +13,9 @@ resolver below is set there too; until it is, every call is refused (401).
 from __future__ import annotations
 
 import hashlib
+import logging
 import sys
+import threading
 import time
 import urllib.parse
 from pathlib import Path
@@ -1868,6 +1870,59 @@ def configure_runner(new_runner: AgentRunner | None) -> None:
     runner = new_runner
 
 
+# Set by the host app on AWS Lambda: hands a queued run (by id) to its own invocation, since
+# Lambda freezes a process once it has answered. None = run after the response (BackgroundTasks).
+run_dispatcher: Callable[[str], None] | None = None
+RUN_AUTOSAVE_SECONDS = 2.0
+_log = logging.getLogger(__name__)
+
+
+def configure_run_dispatcher(dispatcher: Callable[[str], None] | None) -> None:
+    global run_dispatcher
+    run_dispatcher = dispatcher
+
+
+def execute_queued_run(run_id: str) -> None:
+    """Execute a run that `start_run` queued (the dispatcher's worker side).
+
+    Runs only a run still `queued`, so a retried delivery never executes it twice. Progress is
+    saved every few seconds, so GET .../runs/{run_id} from any process shows the steps so far.
+    """
+    run = runs.get(run_id)
+    if run is None or run.status != "queued":
+        _log.info("run %s not queued (%s); skipping", run_id, run.status if run else "missing")
+        return
+    agent = store.get_agent(run.agent_id)
+    research_agent = store.get_agent(run.research_agent_id) if run.research_agent_id else None
+    if runner is None or agent is None or (run.pipeline and research_agent is None):
+        run.status = "failed"
+        run.error = "Agent runner is not configured" if runner is None else "Agent no longer exists"
+        run.finished_at = time.time()
+        runs.save(run)
+        return
+
+    stop = threading.Event()
+
+    def autosave() -> None:
+        while not stop.wait(RUN_AUTOSAVE_SECONDS):
+            try:
+                runs.save(run)
+            except Exception:  # the run mutates while we copy it; the next save catches up
+                _log.debug("run %s autosave skipped", run_id, exc_info=True)
+
+    saver = threading.Thread(target=autosave, name=f"run-autosave-{run_id}", daemon=True)
+    saver.start()
+    try:
+        if research_agent is not None:
+            _execute_pipeline_and_audit(runner, run, agent, research_agent)
+        else:
+            _execute_and_audit(runner, run, agent)
+    finally:
+        stop.set()
+        saver.join()
+        runs.save(run)
+
+
 def _issue_run_token(agent_id: str, run_id: str | None = None) -> str:
     agent = store.get_agent(agent_id)
     tok = store.issue_token(
@@ -1954,7 +2009,10 @@ def start_run(
             "research_agent_id": run.research_agent_id,
         }
     )
-    if research_agent is not None:
+    if run_dispatcher is not None:
+        runs.save(run)  # pipeline fields were set after add
+        run_dispatcher(run.run_id)
+    elif research_agent is not None:
         background.add_task(_execute_pipeline_and_audit, runner, run, agent, research_agent)
     else:
         background.add_task(_execute_and_audit, runner, run, agent)

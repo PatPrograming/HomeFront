@@ -1,7 +1,10 @@
 import contextlib
+import os
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app.agent_iam import ensure_package_paths, include_agent_iam
 from app.core.config import apply_aws_env, apply_datagov_env, get_settings
@@ -66,7 +69,31 @@ def create_app() -> FastAPI:
     # Gateway: tool catalog, ATLAS, dashboard tool calls under /api/v1; MCP at /mcp (WP3)
     include_agent_iam(app, prefix=API_PREFIX)
 
+    # Deployed (deploy/apprunner): the same server also serves the built console, so the
+    # browser, /api/v1 and /mcp share one origin. Unset in local dev (Vite serves :3000).
+    frontend_dist = os.environ.get("FRONTEND_DIST", "").strip()
+    if frontend_dist:
+        mount_frontend(app, Path(frontend_dist))
+
     return app
+
+
+def mount_frontend(app: FastAPI, dist: Path) -> None:
+    """Serve the Vite build: real files as-is, every other GET path gets index.html (client routing)."""
+    dist = dist.resolve()
+    index = dist / "index.html"
+    if not index.is_file():
+        raise RuntimeError(f"FRONTEND_DIST={dist} has no index.html (run `npm run build` in Frontend/)")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def frontend(path: str) -> FileResponse:
+        # Registered last, so real routes win; unknown API paths still 404 instead of returning HTML.
+        if path == "mcp" or path.startswith(("api/", "mcp/")):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not Found")
+        candidate = (dist / path).resolve()
+        if path and candidate.is_file() and candidate.is_relative_to(dist):
+            return FileResponse(candidate)
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 
 app = create_app()

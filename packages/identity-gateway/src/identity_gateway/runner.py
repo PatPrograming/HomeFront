@@ -213,6 +213,9 @@ class RunStore:
         with self._lock:
             return self._runs.get(run_id)
 
+    def save(self, run: RunRecord) -> None:
+        """Persist progress. In memory the record is the stored object, so nothing to do."""
+
     def for_agent(self, agent_id: str) -> list[RunRecord]:
         with self._lock:
             runs = [r for r in self._runs.values() if r.agent_id == agent_id]

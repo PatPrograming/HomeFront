@@ -7,11 +7,14 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field, replace
 from threading import Lock
-from typing import Any, Callable, Iterable, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Protocol
 
 from .approvals import ApprovalRepository, MemoryApprovalRepository
 from .audit import AuditRepository, MemoryAuditRepository, compact_atlas
 from .reports import MemoryReportRepository, ReportRepository
+
+if TYPE_CHECKING:
+    from .runtime_repo import TaintRepository, TokenRepository
 
 log = logging.getLogger(__name__)
 
@@ -316,9 +319,12 @@ class GatewayStore:
         self.last_audit_error: str | None = None
         # Set by the host app when a configured store couldn't be used.
         self.storage_warnings: list[str] = []
-        self.tokens: dict[str, TokenRecord] = {}
-        # trace id (run id or token session) -> first untrusted read in it.
-        self._tainted: dict[str, dict[str, Any]] = {}
+        from .runtime_repo import MemoryTaintRepository, MemoryTokenRepository
+
+        # Workload tokens (get/put by token) and taint marks (trace id -> first
+        # untrusted read). Memory by default; DynamoDB when the host runs on Lambda.
+        self.tokens: TokenRepository = MemoryTokenRepository()
+        self._tainted: TaintRepository = MemoryTaintRepository()
 
     def use_agent_repository(self, repo: AgentRepository) -> None:
         with self._lock:
@@ -335,6 +341,14 @@ class GatewayStore:
     def use_report_repository(self, repo: ReportRepository) -> None:
         with self._lock:
             self.reports = repo
+
+    def use_token_repository(self, repo: "TokenRepository") -> None:
+        with self._lock:
+            self.tokens = repo
+
+    def use_taint_repository(self, repo: "TaintRepository") -> None:
+        with self._lock:
+            self._tainted = repo
 
     @property
     def report_backend(self) -> str:
@@ -512,13 +526,11 @@ class GatewayStore:
             office=office or agent.agency or "homefront",
             ttl_seconds=ttl_seconds,
         )
-        with self._lock:
-            self.tokens[rec.token] = rec
+        self.tokens.put(rec)
         return rec
 
     def resolve_token(self, token: str) -> tuple[AgentRecord, TokenRecord] | None:
-        with self._lock:
-            tok = self.tokens.get(token)
+        tok = self.tokens.get(token)
         if not tok or tok.expires_at < time.time():
             return None
         # Read the agent fresh on every call so a revoke (from any process,
@@ -534,27 +546,19 @@ class GatewayStore:
     # --- taint tracking ---------------------------------------------------
     # Once a run or token session has executed an untrusted_input tool, the
     # model's context may hold injected instructions, so outbound tools are
-    # refused for the rest of that trace. In memory, like the tokens it keys on.
-
-    MAX_TAINTED = 10_000
+    # refused for the rest of that trace. Stored like the tokens it keys on
+    # (memory locally, DynamoDB on Lambda: see runtime_repo).
 
     def mark_tainted(self, trace_id: str | None, tool: str) -> None:
         if not trace_id:
             return
-        with self._lock:
-            if trace_id in self._tainted:
-                return
-            self._tainted[trace_id] = {"tool": tool, "ts": time.time()}
-            while len(self._tainted) > self.MAX_TAINTED:
-                self._tainted.pop(next(iter(self._tainted)))
+        self._tainted.mark(trace_id, tool)
 
     def taint_of(self, trace_id: str | None) -> dict[str, Any] | None:
         """What first tainted this trace ({"tool", "ts"}), or None if it's clean."""
         if not trace_id:
             return None
-        with self._lock:
-            taint = self._tainted.get(trace_id)
-            return dict(taint) if taint else None
+        return self._tainted.get(trace_id)
 
     # --- audit ------------------------------------------------------------
 

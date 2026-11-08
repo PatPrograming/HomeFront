@@ -21,6 +21,7 @@ token, revoke, SES admin, test email, approve, start a run) needs `require_admin
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -94,6 +95,9 @@ def include_agents_api(host_app: FastAPI, prefix: str = "") -> None:
     configure_bedrock_runner()
     if get_settings().agent_store == "dynamodb":
         use_dynamodb_stores(agents_api.store)
+    runtime_table = os.environ.get("HOMEFRONT_RUNTIME_TABLE", "").strip()
+    if runtime_table:
+        use_runtime_table(agents_api, runtime_table)
 
     staff, writes = APIRouter(), APIRouter()
     for route in agents_api.router.routes:
@@ -170,6 +174,23 @@ def use_dynamodb_stores(store) -> None:
         msg = f"Reports are in memory only: {table_name('reports')} unavailable ({_aws_reason(exc)})"
         store.storage_warnings.append(msg)
         log.warning("%s; full error: %s. %s", msg, exc, hint)
+
+
+def use_runtime_table(agents_api, name: str) -> None:
+    """Workload tokens, taint marks and runs in DynamoDB (`HOMEFRONT_RUNTIME_TABLE`, set on Lambda).
+
+    No fallback to memory: with many Lambda processes, a taint mark kept in one process
+    would not stop an outbound call landing on another. A missing table stops the app.
+    """
+    from identity_gateway.runtime_repo import DynamoRunStore, DynamoTaintRepository, DynamoTokenRepository
+
+    from app.core.dynamodb import dynamodb_resource
+
+    table = dynamodb_resource().Table(name)
+    table.get_item(Key={"id": "_probe"})  # raises now if the table or permission is missing
+    agents_api.store.use_token_repository(DynamoTokenRepository(table))
+    agents_api.store.use_taint_repository(DynamoTaintRepository(table))
+    agents_api.runs = DynamoRunStore(table)
 
 
 def configure_bedrock_runner() -> None:

@@ -50,6 +50,9 @@ CHILD_ENV_KEYS = (
     "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE",  # python.org Python on macOS needs these for HTTPS to Cognito
     "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
     "AWS_PROFILE", "AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_REGION", "AWS_DEFAULT_REGION",
+    # Container credentials (App Runner / ECS instance role): how boto3 finds the role in the cloud.
+    "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN", "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
     "MANDATE_GATEWAY_URL", "MANDATE_API_URL",
 )  # never AWS_CONTAINER_*: on Fargate those would hand the agent the gateway's own task role
 
@@ -304,16 +307,169 @@ class AgentSupervisor:
                 self.stop(sid, "session revoked, expired or staffer inactive")
 
 
+# --- on AWS: one Fargate task per session ---------------------------------------------
+
+
+class EcsAgentSupervisor:
+    """Same job as AgentSupervisor when the API runs on AWS Lambda (deploy/lambda).
+
+    A Lambda process is short-lived and there are many of them, so the agent can't be a child
+    process: each session's agent is an ECS Fargate task (the `agent` image, which signs in with
+    its own Cognito secret from its task definition). Which task runs for which session, and how
+    many times it was started, is kept in the runtime table (`agent#<sid>`), so every Lambda
+    process sees the same answer. Starting is claimed with a conditional write, so two messages
+    arriving together start one task.
+    """
+
+    CLAIM_SECONDS = 60  # a start claimed this recently is treated as running
+
+    def __init__(self, table, ecs, *, cluster: str, task_definition: str, subnets: list[str],
+                 security_groups: list[str], gateway_url: Callable[[], str],
+                 container: str = "agent", max_starts: int = MAX_STARTS_PER_SESSION):
+        self.table, self.ecs = table, ecs
+        self.cluster, self.task_definition, self.container = cluster, task_definition, container
+        self.subnets, self.security_groups = subnets, security_groups
+        self.gateway_url = gateway_url
+        self._max_starts = max_starts
+
+    @staticmethod
+    def _key(sid: str) -> dict[str, str]:
+        return {"id": f"agent#{sid}"}
+
+    def _task_is_live(self, task_arn: str) -> bool:
+        tasks = self.ecs.describe_tasks(cluster=self.cluster, tasks=[task_arn]).get("tasks", [])
+        return bool(tasks) and tasks[0].get("lastStatus") != "STOPPED" and tasks[0].get("desiredStatus") != "STOPPED"
+
+    def ensure_running(self, sid: str, staffer_id: str, ends_at: float) -> Literal["started", "running"]:
+        from botocore.exceptions import ClientError
+
+        item = self.table.get_item(Key=self._key(sid), ConsistentRead=True).get("Item") or {}
+        task_arn = item.get("task_arn") or ""
+        if task_arn and self._task_is_live(task_arn):
+            return "running"
+        if not task_arn and item and time.time() - float(item.get("claimed_at", 0)) < self.CLAIM_SECONDS:
+            return "running"  # another request is starting it right now
+        if task_arn:
+            log.info("agent exited sid=%s task=%s", sid, task_arn.rsplit("/", 1)[-1])
+        if time.time() >= ends_at:
+            raise AgentStartError("this session has expired; start a new conversation")
+        starts = int(item.get("starts", 0))
+        if starts >= self._max_starts:
+            raise AgentStartError(f"it stopped {starts} times in this session, so it is not restarted again")
+
+        claim = {"id": f"agent#{sid}", "kind": "agent", "staffer_id": staffer_id, "ends_at": int(ends_at),
+                 "starts": starts + 1, "task_arn": "", "claimed_at": int(time.time()), "expires": int(ends_at) + 3600}
+        try:
+            self.table.put_item(
+                Item=claim,
+                ConditionExpression="attribute_not_exists(id) OR (starts = :old AND task_arn = :arn)",
+                ExpressionAttributeValues={":old": starts, ":arn": task_arn},
+            )
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                return "running"  # another request claimed this start
+            raise
+
+        try:
+            response = self.ecs.run_task(
+                cluster=self.cluster,
+                taskDefinition=self.task_definition,
+                launchType="FARGATE",
+                count=1,
+                startedBy=f"homefront-{sid}"[:36],
+                networkConfiguration={"awsvpcConfiguration": {
+                    "subnets": self.subnets, "securityGroups": self.security_groups, "assignPublicIp": "ENABLED"}},
+                overrides={"containerOverrides": [{
+                    "name": self.container,
+                    "command": ["--sid", sid, "--chat"],
+                    "environment": [{"name": "MANDATE_GATEWAY_URL", "value": self.gateway_url()}],
+                }]},
+            )
+        except Exception as error:
+            raise AgentStartError(f"the agent task could not be started ({type(error).__name__})") from error
+        tasks = response.get("tasks") or []
+        if not tasks:
+            reason = (response.get("failures") or [{}])[0].get("reason", "no task started")
+            raise AgentStartError(f"the agent task could not be started ({reason})")
+        task_arn = tasks[0]["taskArn"]
+        self.table.update_item(Key=self._key(sid), UpdateExpression="SET task_arn = :arn",
+                               ExpressionAttributeValues={":arn": task_arn})
+        log.info("agent started sid=%s task=%s for=%s (start %d of %d)",
+                 sid, task_arn.rsplit("/", 1)[-1], staffer_id, starts + 1, self._max_starts)
+        return "started"
+
+    def stop(self, sid: str, reason: str) -> None:
+        item = self.table.get_item(Key=self._key(sid), ConsistentRead=True).get("Item") or {}
+        task_arn = item.get("task_arn")
+        if not task_arn:
+            return
+        self.ecs.stop_task(cluster=self.cluster, task=task_arn, reason=reason[:255])
+        self.table.update_item(Key=self._key(sid), UpdateExpression="SET task_arn = :none",
+                               ExpressionAttributeValues={":none": ""})
+        log.info("agent stopped sid=%s task=%s reason=%s", sid, task_arn.rsplit("/", 1)[-1], reason)
+
+    def _running_items(self) -> list[dict]:
+        from boto3.dynamodb.conditions import Attr
+
+        items: list[dict] = []
+        kwargs: dict = {"FilterExpression": Attr("kind").eq("agent") & Attr("task_arn").gt("")}
+        while True:
+            page = self.table.scan(**kwargs)
+            items.extend(page.get("Items", []))
+            if "LastEvaluatedKey" not in page:
+                return items
+            kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
+
+    def stop_staffer(self, staffer_id: str, reason: str) -> None:
+        for item in self._running_items():
+            if item.get("staffer_id") == staffer_id:
+                self.stop(item["id"].removeprefix("agent#"), reason)
+
+    def stop_all(self, reason: str) -> None:
+        """Lambda processes end all the time; that must not stop anyone's agent."""
+
+    def sweep(self, is_live: Callable[[str], bool]) -> None:
+        now = time.time()
+        for item in self._running_items():
+            sid = item["id"].removeprefix("agent#")
+            if now >= float(item.get("ends_at", 0)):
+                self.stop(sid, "session expired")
+            elif not is_live(sid):
+                self.stop(sid, "session revoked, expired or staffer inactive")
+
+
+def ecs_from_env() -> EcsAgentSupervisor:
+    import boto3
+
+    from app.core.dynamodb import dynamodb_resource
+
+    def split(name: str) -> list[str]:
+        return [v.strip() for v in os.environ.get(name, "").split(",") if v.strip()]
+
+    return EcsAgentSupervisor(
+        dynamodb_resource().Table(os.environ["HOMEFRONT_RUNTIME_TABLE"]),
+        boto3.client("ecs"),
+        cluster=os.environ["AGENT_ECS_CLUSTER"],
+        task_definition=os.environ["AGENT_ECS_TASK_DEFINITION"],
+        subnets=split("AGENT_ECS_SUBNETS"),
+        security_groups=split("AGENT_ECS_SECURITY_GROUPS"),
+        # Set at cold start by app.lambda_handler (the function URL, known only once deployed).
+        gateway_url=lambda: os.environ["PUBLIC_URL"].rstrip("/") + "/mcp",
+    )
+
+
 # --- the server's one supervisor -----------------------------------------------------
 
-_supervisor: AgentSupervisor | None = None
+_supervisor: AgentSupervisor | EcsAgentSupervisor | None = None
 _configured = False
 
 
-def from_env() -> AgentSupervisor | None:
+def from_env() -> AgentSupervisor | EcsAgentSupervisor | None:
     flag = os.environ.get("HOMEFRONT_AUTOSTART_AGENT", "").strip().lower()
     if flag not in {"1", "true", "yes", "on"}:
         return None
+    if os.environ.get("HOMEFRONT_AGENT_LAUNCHER", "").strip().lower() == "ecs":
+        return ecs_from_env()
     from app.services.agent_failures import report_exit
 
     return AgentSupervisor(on_exit=report_exit)

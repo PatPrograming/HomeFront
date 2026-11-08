@@ -1,0 +1,257 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  HomeFront on AWS Lambda: the API, /mcp and console as one function behind a function URL,
+  a runtime table (workload tokens, taint marks, runs, agent tasks), and the chat agent as one
+  ECS Fargate task per session. Uses the existing Cognito pool, `mandate` table, homefront-*
+  tables and Verified Permissions policy store; creates none of them. Deployed by deploy.py.
+
+Parameters:
+  ApiImageUri: { Type: String }
+  AgentImageUri: { Type: String }
+  ConfigSecretArn: { Type: String, Description: "homefront/config: the API's settings and keys (JSON)" }
+  ConfigVersion: { Type: String, Description: "Changes when the config changes, so new instances load it" }
+  AgentSecretArn: { Type: String, Default: "", Description: "homefront/agent: the agent's Cognito client secret" }
+  PolicyStoreId: { Type: String }
+  MandateTable: { Type: String, Default: mandate }
+  TablePrefix: { Type: String, Default: homefront- }
+  VpcId: { Type: AWS::EC2::VPC::Id }
+  SubnetIds: { Type: CommaDelimitedList, Description: "Public subnets for agent tasks (they need outbound internet)" }
+  CognitoDomain: { Type: String }
+  AgentClientId: { Type: String }
+  AgentModelId: { Type: String, Default: us.anthropic.claude-sonnet-5 }
+  GuardrailId: { Type: String, Default: "" }
+  GuardrailVersion: { Type: String, Default: "" }
+
+Conditions:
+  HasAgentSecret: !Not [!Equals [!Ref AgentSecretArn, ""]]
+
+Resources:
+  # --- state ---------------------------------------------------------------
+  RuntimeTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${TablePrefix}runtime
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: id, AttributeType: S }]
+      KeySchema: [{ AttributeName: id, KeyType: HASH }]
+      TimeToLiveSpecification: { AttributeName: expires, Enabled: true }
+      SSESpecification: { SSEEnabled: true }
+
+  # --- API function --------------------------------------------------------
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: /aws/lambda/homefront-api, RetentionInDays: 14 }
+
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: homefront-api
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Tables
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem,
+                         dynamodb:Query, dynamodb:Scan, dynamodb:BatchGetItem, dynamodb:BatchWriteItem,
+                         dynamodb:ConditionCheckItem, dynamodb:DescribeTable]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MandateTable}
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MandateTable}/index/*
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}*
+              - Sid: Cedar
+                Effect: Allow
+                Action: verifiedpermissions:IsAuthorized
+                Resource: !Sub arn:${AWS::Partition}:verifiedpermissions::${AWS::AccountId}:policy-store/${PolicyStoreId}
+              - Sid: Models
+                Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+                Resource:
+                  # us.* inference profiles route to several US regions, hence the region wildcard.
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/*
+                  - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*
+                  - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:application-inference-profile/*
+              - Sid: Guardrail
+                Effect: Allow
+                Action: bedrock:ApplyGuardrail
+                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/*
+              - Sid: Email
+                Effect: Allow
+                Action: [ses:SendEmail, ses:GetAccount, ses:GetEmailIdentity, ses:CreateEmailIdentity]
+                Resource: "*"
+              - Sid: Config
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref ConfigSecretArn
+              - Sid: SelfInvokeForRuns
+                Effect: Allow
+                Action: [lambda:InvokeFunction, lambda:GetFunctionUrlConfig]
+                Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:homefront-api
+              - Sid: StartAgents
+                Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/homefront-agent:*
+              - Sid: WatchAndStopAgents
+                Effect: Allow
+                Action: [ecs:DescribeTasks, ecs:StopTask]
+                Resource: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/homefront/*
+              - Sid: PassAgentRoles
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: [!GetAtt AgentTaskRole.Arn, !GetAtt AgentExecutionRole.Arn]
+                Condition: { StringEquals: { iam:PassedToService: ecs-tasks.amazonaws.com } }
+
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ApiLogGroup
+    Properties:
+      FunctionName: homefront-api
+      PackageType: Image
+      Code: { ImageUri: !Ref ApiImageUri }
+      Architectures: [arm64]
+      MemorySize: 2048
+      Timeout: 900  # agent runs execute in their own invocation, up to 15 minutes
+      Role: !GetAtt ApiRole.Arn
+      Environment:
+        Variables:
+          HOMEFRONT_CONFIG_SECRET: !Ref ConfigSecretArn
+          HOMEFRONT_CONFIG_VERSION: !Ref ConfigVersion
+          HOMEFRONT_RUNTIME_TABLE: !Ref RuntimeTable
+          HOMEFRONT_AGENT_LAUNCHER: ecs
+          AGENT_ECS_CLUSTER: !Ref AgentCluster
+          AGENT_ECS_TASK_DEFINITION: !Ref AgentTaskDefinition
+          AGENT_ECS_SUBNETS: !Join [",", !Ref SubnetIds]
+          AGENT_ECS_SECURITY_GROUPS: !Ref AgentSecurityGroup
+
+  # Runs are queued with an async self-invoke; a failed run is recorded, never retried.
+  ApiAsyncConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 0
+
+  ApiUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt ApiFunction.Arn
+      AuthType: NONE  # public site; the app checks Cognito logins and mandate tokens itself
+
+  ApiUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  ApiUrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+  # --- chat agent on Fargate -----------------------------------------------
+  AgentCluster:
+    Type: AWS::ECS::Cluster
+    Properties: { ClusterName: homefront }
+
+  AgentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: /homefront/agent, RetentionInDays: 14 }
+
+  AgentSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: HomeFront agent tasks (outbound only)
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - { IpProtocol: "-1", CidrIp: 0.0.0.0/0 }
+
+  # Pulls the image, writes logs, reads the agent's own secret.
+  AgentExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: agent-secret
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !If [HasAgentSecret, !Ref AgentSecretArn, !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:homefront/agent-*"]
+
+  # What the agent itself may call in AWS: the model and the guardrail. Tools go through the gateway.
+  AgentTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - { Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }
+      Policies:
+        - PolicyName: agent-model
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/*
+                  - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*
+              - Effect: Allow
+                Action: bedrock:ApplyGuardrail
+                Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/*
+
+  AgentTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: homefront-agent
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "512"
+      Memory: "1024"
+      RuntimePlatform: { CpuArchitecture: ARM64, OperatingSystemFamily: LINUX }
+      ExecutionRoleArn: !GetAtt AgentExecutionRole.Arn
+      TaskRoleArn: !GetAtt AgentTaskRole.Arn
+      ContainerDefinitions:
+        - Name: agent
+          Image: !Ref AgentImageUri
+          Essential: true
+          Environment:
+            - { Name: AWS_REGION, Value: !Ref AWS::Region }
+            - { Name: COGNITO_DOMAIN, Value: !Ref CognitoDomain }
+            - { Name: COGNITO_AGENT_CLIENT_ID, Value: !Ref AgentClientId }
+            - { Name: BEDROCK_MODEL_ID, Value: !Ref AgentModelId }
+            - { Name: GUARDRAIL_ID, Value: !Ref GuardrailId }
+            - { Name: GUARDRAIL_VERSION, Value: !Ref GuardrailVersion }
+          Secrets: !If
+            - HasAgentSecret
+            - [{ Name: COGNITO_AGENT_CLIENT_SECRET, ValueFrom: !Ref AgentSecretArn }]
+            - !Ref AWS::NoValue
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AgentLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: agent
+
+Outputs:
+  Url:
+    Value: !GetAtt ApiUrl.FunctionUrl
+  RuntimeTable:
+    Value: !Ref RuntimeTable
