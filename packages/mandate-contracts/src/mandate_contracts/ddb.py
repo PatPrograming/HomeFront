@@ -127,3 +127,4 @@ class ChatMessageItem(WireModel):
     ts: str
     role: Literal["user", "assistant"]
     text: str
+    connect: Literal["gmail", "x"] | None = None  # set on a "connect your account" message; the console adds a Connect button

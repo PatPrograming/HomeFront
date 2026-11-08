@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
-from identity_gateway.autonomy import CATEGORIES, LABELS, LOCKED, SOCIAL_CATEGORY, reviews, view
+from identity_gateway.autonomy import CATEGORIES, CATEGORY_TOOL, LABELS, LOCKED, reviews, view
 from identity_gateway.gateway import DraftAlreadyDecided, get_gateway
 from identity_gateway.tokens import InvalidToken, verify_mandate_token
 from mandate_contracts import MandateClaims
@@ -36,7 +36,12 @@ bearer = HTTPBearer(auto_error=False)
 MAX_MESSAGE_CHARS = 4000
 # What the staffer may change before approving. Never the recipient or the account: those are
 # what Cedar checked.
-EDITABLE_FIELDS = {"email_send": ("subject", "body"), "social_post": ("text",)}
+EDITABLE_FIELDS = {
+    "email_send": ("subject", "body"),
+    "email_send_list": ("subject", "body"),
+    "social_post": ("text",),
+    "social_reply": ("text",),
+}
 
 
 class MessageIn(BaseModel):
@@ -175,6 +180,8 @@ def approve_draft(draft_id: str, body: ApproveIn, staff: StaffIdentity = Depends
         outcome = get_gateway().send_draft(draft_id, draft, text)
     except DraftAlreadyDecided:
         raise HTTPException(status.HTTP_409_CONFLICT, "Draft already decided") from None
+    if outcome.result and outcome.result["status"] == "needs_connection":  # the draft stays pending
+        return {"id": draft_id, **outcome.result}
     if not outcome.allowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, outcome.deny_text())
     edited = get_gateway().store.get_draft(draft_id).edited
@@ -212,7 +219,7 @@ def _within_role(category: str, staff: StaffIdentity) -> None:
     """
     staffer = get_gateway().store.get_staffer(staff.username)
     role = staffer.office_role if staffer else None
-    tool = "social_post" if category == SOCIAL_CATEGORY else "email_send"
+    tool = CATEGORY_TOOL[category]
     if tool not in ROLE_TOOLS.get(role or "", ()):
         raise HTTPException(status.HTTP_403_FORBIDDEN, f"Not part of your role: {role_reason(role, tool)}")
 

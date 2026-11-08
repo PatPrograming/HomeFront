@@ -26,11 +26,12 @@ from typing import Any, Callable
 
 from atlas_enricher import AnnotateRequest, AtlasEnricher
 from atlas_enricher.enricher import TOOL_RESIDUAL_RISK, AnnotateEvent
+from mcp_tools import handlers as report_handlers
 from mcp_tools.handlers import invoke_tool
 from mcp_tools.registry import get_tool
 
 from mandate_contracts import TOOLS, DecisionEvent, GuardrailFlag, MandateClaims, Reason, cedar
-from mandate_contracts.ddb import DraftItem
+from mandate_contracts.ddb import ChatMessageItem, DraftItem
 from mandate_contracts.roles import role_reason
 
 from .authz import Authorizer, AuthzRequest
@@ -172,7 +173,7 @@ class Gateway:
                 try:  # before the hold: no draft for a call that cannot be sent
                     self._require_connection(claims.act, tool, params)
                 except ConnectionMissing as missing:
-                    return self._record(claims, tool, resource, "DENY", NEEDS_CONNECTION, result=missing.result)
+                    return self._deny_needs_connection(claims, tool, resource, missing)
                 category = self._outbound_category(tool, params)
                 # A locked category is held even if its stored level says "auto" or a grant exists.
                 # Otherwise it runs if the staffer set it to "auto", or granted it for this session.
@@ -190,7 +191,7 @@ class Gateway:
             try:
                 result = self._run(tool, params, case, claims)
             except ConnectionMissing as missing:  # the account was disconnected between the check and the send
-                return self._record(claims, tool, resource, "DENY", NEEDS_CONNECTION, result=missing.result)
+                return self._deny_needs_connection(claims, tool, resource, missing)
 
             # 6. Untrusted output (public inbox, web pages): flag it, never change it.
             flag = self.scan(json.dumps(result)) if spec.untrusted_output else GuardrailFlag()
@@ -254,7 +255,7 @@ class Gateway:
             result = self._run(tool, params, None, claims)
         except ConnectionMissing as missing:
             self.store.put_draft(draft_id, draft)
-            return self._record(claims, tool, resource, "DENY", NEEDS_CONNECTION, result=missing.result)
+            return self._deny_needs_connection(claims, tool, resource, missing)
         except Exception:
             log.exception("sending draft %s failed; it stays in the review queue", draft_id)
             self.store.put_draft(draft_id, draft)
@@ -298,6 +299,22 @@ class Gateway:
             "category": category,
             "note": f"NOT sent. Saved as a draft for {claims.act} to review in the console.",
         }
+
+    def _deny_needs_connection(
+        self, claims: MandateClaims, tool: str, resource: str | None, missing: ConnectionMissing
+    ) -> Outcome:
+        """Audit the deny and tell the staffer in the chat, so it shows without the agent repeating it."""
+        self.store.put_chat_message(
+            claims.sid,
+            ChatMessageItem(
+                id=str(uuid.uuid4()),
+                ts=datetime.now(timezone.utc).isoformat(),
+                role="assistant",
+                text=f"I couldn't send this: {claims.act} hasn't connected {missing.result['label']}. Nothing was sent.",
+                connect=missing.result["provider"],
+            ),
+        )
+        return self._record(claims, tool, resource, "DENY", NEEDS_CONNECTION, result=missing.result)
 
     def _recipient_known(self, to: str, office: str) -> bool:
         """One address that is a .gov address or a constituent of this office's cases."""
@@ -348,6 +365,12 @@ class Gateway:
         if tool == "email_send_list":  # the list is read here, at send time, never from input
             handler_args["recipients"] = sorted(self.store.constituent_emails(claims.office))
         if tool == "report_save":  # who saved it comes from the token, never from input
+            # The standalone gateway never loads agents_api, which owns the report store. Register it here
+            # unless a sink is already set. Lazy because agents_api imports this module.
+            if report_handlers._report_sink is None:
+                from .agents_api import _save_report
+
+                report_handlers.set_report_sink(_save_report)
             handler_args |= {"agent_id": f"assistant-{claims.act}", "trace_id": claims.sid, "run_id": None}
         result = invoke_tool(LEGACY_TOOLS[tool], handler_args)
         registered = get_tool(LEGACY_TOOLS[tool])
