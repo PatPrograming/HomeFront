@@ -158,7 +158,8 @@ def retry_agent(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dict
     try:
         agent, left = supervisor.retry(sid, staff.username, _created_epoch(session.created_at) + SESSION_TTL_SECONDS)
     except RetryRefused as refused:
-        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(refused)) from None
+        detail = {"message": str(refused), "code": "agent_retry_refused", "actions": refused.actions}
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail) from None
     except AgentStartError as error:
         raise _start_failed(error) from None
     return {"sid": sid, "agent": agent, "retriesLeft": left}

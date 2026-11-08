@@ -67,7 +67,11 @@ class AgentStartError(Exception):
 
 
 class RetryRefused(Exception):
-    """Try again was pressed too soon, or too often for one conversation."""
+    """Try again was pressed too soon, or too often for one conversation. `actions`: what is still possible."""
+
+    def __init__(self, message: str, actions: tuple[str, ...]):
+        super().__init__(message)
+        self.actions = list(actions)
 
 
 class Proc(Protocol):
@@ -178,9 +182,11 @@ class AgentSupervisor:
         with self._lock:
             done = self._retries.setdefault(sid, [])
             if len(done) >= MAX_RETRIES_PER_SESSION:
-                raise RetryRefused("Try again was used 3 times in this conversation. Start a new conversation.")
+                raise RetryRefused("Try again was used 3 times in this conversation. Start a new conversation.",
+                                   ("new_conversation",))
             if done and now - done[-1] < RETRY_COOLDOWN_SECONDS:
-                raise RetryRefused(f"Please wait {int(RETRY_COOLDOWN_SECONDS - (now - done[-1])) + 1} s before trying again.")
+                raise RetryRefused(f"Please wait {int(RETRY_COOLDOWN_SECONDS - (now - done[-1])) + 1} s before trying again.",
+                                   ("retry",))
             done.append(now)
             self._starts.pop(sid, None)
             self._blocked.pop(sid, None)

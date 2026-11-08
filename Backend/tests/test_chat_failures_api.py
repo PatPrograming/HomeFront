@@ -180,7 +180,8 @@ def test_try_again_is_rate_limited(client, launcher):
     assert client.post(f"/api/v1/sessions/{sid}/agent/retry").status_code == 200
     launcher.started[-1][1].crash(6)
     r = client.post(f"/api/v1/sessions/{sid}/agent/retry")
-    assert r.status_code == 429 and "wait" in r.json()["detail"].lower()
+    assert r.status_code == 429 and "wait" in r.json()["detail"]["message"].lower()
+    assert r.json()["detail"]["actions"] == ["retry"]
 
 
 def test_try_again_has_a_limit_per_conversation(client, launcher, monkeypatch):
@@ -194,6 +195,8 @@ def test_try_again_has_a_limit_per_conversation(client, launcher, monkeypatch):
         clock[0] += 120
         codes.append(client.post(f"/api/v1/sessions/{sid}/agent/retry").status_code)
     assert codes == [200, 200, 200, 429]
+    r = client.post(f"/api/v1/sessions/{sid}/agent/retry")
+    assert r.json()["detail"]["actions"] == ["new_conversation"], "the way back after the last Try again"
 
 
 def test_try_again_clears_a_missing_secret_once_it_is_fixed(client, launcher):
