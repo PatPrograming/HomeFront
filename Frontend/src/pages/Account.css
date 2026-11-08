@@ -1,0 +1,67 @@
+/* Connected accounts list (Account page) and the chat's connect prompt. Mobile first: rows stack, buttons fill the width. */
+.accounts-heading {
+  font-size: 22px;
+  margin-top: 8px;
+}
+
+.accounts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.account-row {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.account-row-highlight {
+  border-color: var(--accent);
+  background: var(--tone);
+}
+
+.account-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.account-row .btn {
+  width: 100%;
+}
+
+.connect-prompt {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.connect-prompt p {
+  margin: 0;
+}
+
+.connect-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+@media (min-width: 481px) {
+  .account-row {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .account-row .btn {
+    width: auto;
+  }
+}

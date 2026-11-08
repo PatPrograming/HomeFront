@@ -11,6 +11,7 @@ import { TOOL_NAMES, type DecisionEvent } from "../../../packages/mandate-contra
 import sampleEvents from "../../../packages/mandate-contracts/samples/events.json";
 import { eventKey, nextCursor } from "./events";
 import { assistantRoute, emptyAssistantState, mergeAssistantState, MockError, type AssistantState } from "./mockAssistant";
+import { mockConnectionsRoute } from "./mockConnections";
 import { decodeJwt } from "./pkce";
 import { groupsFromAccessToken } from "./roles";
 
@@ -180,6 +181,8 @@ export async function mockRequest(method: string, path: string, body: unknown, t
     state.offboarded[id] = now;
     const revoked = Object.values(state.sessions).filter((s) => s.actingFor === id && !s.stopped);
     result = { staffer: id, active: false, revokedSessions: revoked.length };
+  } else if (url.pathname.startsWith("/connections")) {
+    result = mockConnectionsRoute(method, url.pathname, body);
   } else {
     const revoked = (s: { sid: string; actingFor: string }) => Boolean(state.offboarded[s.actingFor] || state.sessions[s.sid]?.stopped);
     result = assistantRoute(state.assistant, state.events, state.sessions, revoked, {
