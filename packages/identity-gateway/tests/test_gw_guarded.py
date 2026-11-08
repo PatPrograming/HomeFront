@@ -425,10 +425,29 @@ def test_an_unaudited_call_is_never_allowed(gateway, store, make_token, monkeypa
 
 def test_scan_runs_only_for_untrusted_output_tools(gateway, scan_spy, make_token, world):
     untrusted = {name for name, spec in TOOLS.items() if spec.untrusted_output}
-    assert untrusted == {"inbox_read", "web_scrape"}
+    research = {
+        "census_query", "openfda_search", "eia_query", "nasa_search", "noaa_climate",
+        "nps_parks", "bls_series", "fec_search", "epa_search", "fcc_search",
+    }  # fmt: skip
+    assert untrusted == {"inbox_read", "web_scrape", "usaspending_search", "sam_entity_lookup", *research}
     for tool, args in KNOWN_ARGS.items():
         scan_spy.calls.clear()
         gateway.guarded(tool, args, make_token())
+        assert bool(scan_spy.calls) == (tool in untrusted), tool
+    # The new tools too, as the chief of staff (who may use all of them).
+    chief = make_token(act="chiefofstaff", sid=world.chief_sid)
+    new_tools = {
+        "usaspending_search": {"keywords": "cameras", "fiscal_year": 2025},
+        "sam_entity_lookup": {"name": "Axon"},
+        "nasa_search": {"q": "mars"},
+        "census_query": {"year": "2023", "dataset": "acs/acs1", "get": "NAME", "for": "place:1", "in": ""},
+        "report_save": {"title": "t", "body": "b"},
+        "email_send_list": {"subject": "s", "body": "b"},
+        "social_reply": {"account": "official", "reply_to": "1", "text": "t"},
+    }
+    for tool, args in new_tools.items():
+        scan_spy.calls.clear()
+        gateway.guarded(tool, args, chief)
         assert bool(scan_spy.calls) == (tool in untrusted), tool
 
 
