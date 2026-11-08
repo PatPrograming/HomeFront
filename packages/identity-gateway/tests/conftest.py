@@ -43,6 +43,20 @@ def _offline_env(monkeypatch):
     monkeypatch.delenv("DATA_GOV_API_KEY", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _no_connection_gate(monkeypatch):
+    """Tests here run without Lane I's connection gate unless they install one. Once Lane I's real
+    `identity_gateway.connections` is merged it would gate every send, and it finds its store through
+    the global `get_gateway()`, not the gateway a test built, so older tests written for the held ->
+    approve -> SES flow would fail closed. The gate's own tests (test_gw_needs_connection.py,
+    test_gw_connections_merged.py, and the parity, escalation and draft-revise tests) install a double
+    or the real module with the test's store through the same `gateway.connections` name, after this
+    fixture runs. Before the merge the name is already None, so this changes nothing."""
+    import identity_gateway.gateway as gw
+
+    monkeypatch.setattr(gw, "connections", None, raising=False)
+
+
 @pytest.fixture
 def secret():
     return SECRET

@@ -117,6 +117,20 @@ def _no_real_email(monkeypatch):
     email_admin.clear_cache()
 
 
+@pytest.fixture(autouse=True)
+def _no_connection_gate(monkeypatch):
+    """Same rule as packages/identity-gateway/tests/conftest.py: tests here run without Lane I's
+    connection gate unless they install one (test_connect_prompt.py and test_draft_edit.py install a
+    double through `gateway.connections`). The gate itself is tested in
+    packages/identity-gateway/tests/test_gw_needs_connection.py and test_gw_connections_merged.py."""
+    from app.agent_iam import ensure_package_paths
+
+    ensure_package_paths()
+    import identity_gateway.gateway as gw
+
+    monkeypatch.setattr(gw, "connections", None, raising=False)
+
+
 # --- Agents-tab role resolver (docs/loops/agent-permissions.md, Design 6) ----------------------
 
 
