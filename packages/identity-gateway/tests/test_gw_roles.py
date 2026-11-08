@@ -70,7 +70,7 @@ def _req(tool, role, *, case_office="rep-x", delegator=True, known=True, account
         context=cedar.build_context(
             delegatorActive=delegator,
             recipientKnown=tool == "email_send" and known,
-            account=account if tool == "social_post" else "",
+            account=account if tool in ("social_post", "social_reply") else "",
         ),
     )
 
@@ -84,6 +84,11 @@ ROLE_CASES = [
     ("communications_director", "social_post", "case_read", "role-case-read"),
     ("legislative_aide", "datagov_search", "email_send", "role-email-send"),
     ("intern", "web_scrape", "inbox_read", "role-inbox-read"),
+    ("chief_of_staff", "email_send_list", "records_bulk_export", "forbid-bulk-export"),
+    ("caseworker", "report_save", "email_send_list", "role-email-send-list"),
+    ("communications_director", "social_reply", "usaspending_search", "role-usaspending-search"),
+    ("legislative_aide", "sam_entity_lookup", "social_reply", "role-social-reply"),
+    ("intern", "census_query", "report_save", "role-report-save"),
 ]
 
 
@@ -102,7 +107,9 @@ def test_real_cedar_allows_exactly_the_roles_tool_list(role, tool):
 
 def test_the_intern_is_read_only():
     allowed = [t for t in TOOL_NAMES if CEDAR.is_authorized(_req(t, "intern")).allowed]
-    assert allowed == ["datagov_search", "web_scrape"]
+    assert sorted(allowed) == sorted(
+        ["datagov_search", "web_scrape", "census_query", "nasa_search", "nps_parks", "noaa_climate"]
+    )
 
 
 # ---- fail closed ---------------------------------------------------------------
@@ -131,6 +138,26 @@ def test_forbids_still_win_for_the_chief_of_staff():
     assert bulk.allowed is False and bulk.policy_ids == ["forbid-bulk-export"]
     campaign = CEDAR.is_authorized(_req("social_post", "chief_of_staff", account="campaign"))
     assert campaign.allowed is False and campaign.policy_ids == ["forbid-campaign-post"]
+
+
+def test_a_campaign_reply_is_forbidden_for_every_role_that_may_reply():
+    for role in ("chief_of_staff", "communications_director"):
+        official = CEDAR.is_authorized(_req("social_reply", role, account="official"))
+        assert official.allowed is True and "social-reply-official" in official.policy_ids
+        campaign = CEDAR.is_authorized(_req("social_reply", role, account="campaign"))
+        assert campaign.allowed is False and campaign.policy_ids == ["forbid-campaign-reply"]
+
+
+def test_only_the_chief_may_email_the_mailing_list_and_a_staff_account_is_not_needed():
+    allowed = [r for r in ROLES if CEDAR.is_authorized(_req("email_send_list", r)).allowed]
+    assert allowed == ["chief_of_staff"]
+    assert CEDAR.is_authorized(_req("email_send_list", "chief_of_staff", delegator=False)).allowed is False
+
+
+def test_the_new_permits_need_an_active_delegator():
+    for tool in ("census_query", "usaspending_search", "report_save"):
+        assert CEDAR.is_authorized(_req(tool, "chief_of_staff")).allowed is True
+        assert CEDAR.is_authorized(_req(tool, "chief_of_staff", delegator=False)).allowed is False
 
 
 def test_the_starter_conditions_still_apply_inside_a_role():
@@ -258,11 +285,27 @@ CALLS = [  # (tool, args) for every tool, with the inputs that pass the starter 
     ("email_send", {"to": "a@b.gov", "subject": "s", "body": "b"}),
     ("social_post", {"account": "official", "text": "Town hall"}),
     ("records_bulk_export", {"query": "all"}),
+    ("email_send_list", {"subject": "News", "body": "Hello"}),
+    ("social_reply", {"account": "official", "reply_to": "https://x.com/a/status/1", "text": "Thanks"}),
+    ("usaspending_search", {"keywords": "cameras", "fiscal_year": 2025}),
+    ("sam_entity_lookup", {"name": "Axon"}),
+    ("report_save", {"title": "t", "body": "b"}),
+    ("census_query", {"year": "2023", "dataset": "acs/acs1", "get": "NAME", "for": "place:1", "in": ""}),
+    ("openfda_search", {"endpoint": "drug/event", "search": "x", "limit": "1"}),
+    ("eia_query", {"route": "petroleum/crd/crpdn", "frequency": "monthly", "length": "1", "facet": ""}),
+    ("nasa_search", {"q": "mars"}),
+    ("noaa_climate", {"datasetid": "GHCND", "locationid": "ZIP:95050", "startdate": "2025-01-01", "enddate": "2025-01-02", "datatypeid": ""}),
+    ("nps_parks", {"q": "yosemite", "parkCode": ""}),
+    ("bls_series", {"series_id": "CUUR0000SA0", "startyear": "2024", "endyear": "2025"}),
+    ("fec_search", {"q": "Smith"}),
+    ("epa_search", {"q": "SANTA CLARA"}),
+    ("fcc_search", {"q": "KQED"}),
 ]
 OUT_OF_BOUNDS = [  # inputs every role is refused, whatever it may otherwise do
     ("case_read", {"case_id": "case-2"}),  # another office's case
     ("email_send", {"to": "stranger@example.com", "subject": "s", "body": "b"}),  # unknown recipient
     ("social_post", {"account": "campaign", "text": "Vote"}),  # campaign account
+    ("social_reply", {"account": "campaign", "reply_to": "1", "text": "Vote"}),  # campaign account
     ("records_bulk_export", {"query": "all"}),
 ]
 

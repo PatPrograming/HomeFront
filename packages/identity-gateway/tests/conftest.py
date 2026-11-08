@@ -265,3 +265,60 @@ def events_of():
         return events
 
     return _events
+
+
+# ---- real Cedar (cedarpy) on the committed policy files ----------------------------------------
+
+
+def _build_real_cedar():
+    from pathlib import Path
+
+    import cedarpy
+
+    from identity_gateway.authz import AuthzDecision
+
+    policy_dir = Path(__file__).resolve().parents[2] / "mandate-contracts" / "policies"
+    files = sorted(policy_dir.glob("*.cedar"))
+    text = "\n".join(p.read_text() for p in files)
+    names = {f"policy{i}": p.stem for i, p in enumerate(files)}  # cedarpy numbers policies in file order
+
+    def plain(typed):
+        return {k: next(iter(v.values())) for k, v in typed.items()}
+
+    def uid(identifier):
+        return {"__entity": {"type": identifier["entityType"], "id": identifier["entityId"]}}
+
+    class RealCedar:
+        """The real Cedar engine, fed by the same contract helpers AvpAuthorizer uses."""
+
+        def is_authorized(self, req):
+            from mandate_contracts import cedar
+
+            agent = cedar.agent_entity(req.agent_id, req.office, req.mode, req.role)
+            entities = [
+                {"uid": uid(e["identifier"]), "attrs": plain(e["attributes"]), "parents": []}
+                for e in (agent, req.resource)
+            ]
+            ident = req.resource["identifier"]
+            request = {
+                "principal": f'Mandate::Agent::"{req.agent_id}"',
+                "action": f'Mandate::Action::"{req.tool}"',
+                "resource": f'{ident["entityType"]}::"{ident["entityId"]}"',
+                "context": plain(req.context["contextMap"]),
+            }
+            result = cedarpy.is_authorized(request, text, entities)
+            assert not result.diagnostics.errors, result.diagnostics.errors
+            ids = sorted(names[p] for p in result.diagnostics.reasons)
+            return AuthzDecision(allowed=result.decision == cedarpy.Decision.Allow, policy_ids=ids)
+
+    return RealCedar()
+
+
+@pytest.fixture(params=["double", "cedar"])
+def engine_gateway(request, store, secret, scan_spy):
+    """A Gateway on each policy engine: the in-Python StarterPolicyAuthorizer and the real Cedar engine."""
+    from identity_gateway.authz import StarterPolicyAuthorizer
+    from identity_gateway.gateway import Gateway
+
+    authorizer = StarterPolicyAuthorizer() if request.param == "double" else _build_real_cedar()
+    return Gateway(store, authorizer, secret, scan=scan_spy)
