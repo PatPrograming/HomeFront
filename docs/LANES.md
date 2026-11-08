@@ -129,3 +129,6 @@ endpoint exists, `agent/stub_server.py` (FastMCP, same 7 tools, `http://127.0.0.
    `/Users/tranquanghuy/Projects/aws-a10-hack-2026/docs/DECISION_LOG.md` (format in its header), right away and
    at least once per converge round. Append only. Cross-lane judgement calls: Status "needs lead" and message the
    lead session `local_9db058b7-0856-43ff-b18c-b27bacef8c1d`.
+10. **Anything you ask Huy to do by hand** is a numbered list in the README conventions of
+    `~/.claude/skills/clean-docs/rules.md` (skill `giving-step-instructions`): prerequisites first, one
+    imperative action per step, the command block then one line on what it does, and how to tell it worked.
