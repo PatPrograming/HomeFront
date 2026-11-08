@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import StorageStatus from "../components/StorageStatus/StorageStatus";
-import { api } from "../lib/api.js";
+import { agentsApi as api } from "../lib/agentsApi";
 import { useAuth } from "../lib/AuthProvider";
 import {
   EVENT_LABELS,
@@ -20,7 +20,7 @@ const FILTERS = { agent: "agent_id", trace: "trace_id", decision: "decision", ty
 type FilterParam = keyof typeof FILTERS;
 
 export default function Activity() {
-  const { user } = useAuth();
+  const { session: user } = useAuth();
   const [params, setParams] = useSearchParams();
   const [events, setEvents] = useState<AuditEvent[] | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -71,7 +71,7 @@ export default function Activity() {
 
   const actorLabel = (actor?: string) => {
     if (!actor) return "—";
-    if (user && actor === `user:${user.id}`) return "You";
+    if (user && actor === `user:${user.username}`) return "You";
     if (actor.startsWith("agent:")) return `Agent · ${agentName(actor.slice(6))}`;
     if (actor.startsWith("user:")) return `User ${actor.slice(5, 13)}…`;
     return actor === "anonymous" ? "Anonymous" : actor;

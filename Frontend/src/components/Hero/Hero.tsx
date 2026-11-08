@@ -33,7 +33,7 @@ export default function Hero({ mission, buttons }: HeroProps) {
               </svg>
             </Link>
             {session ? (
-              <Link className="btn btn-outline" to="/monitoring">
+              <Link className="btn btn-outline" to="/agents">
                 {secondaryLabel}
               </Link>
             ) : (

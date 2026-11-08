@@ -91,7 +91,7 @@ export interface HomeContent {
   buttons: string[];
 }
 
-type Method = "GET" | "POST" | "PUT";
+type Method = "GET" | "POST" | "PUT" | "PATCH";
 
 interface RequestOptions {
   auth?: boolean;
@@ -118,7 +118,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, { auth = true, method = "GET", body, headers }: RequestOptions = {}): Promise<T> {
+export async function request<T>(path: string, { auth = true, method = "GET", body, headers }: RequestOptions = {}): Promise<T> {
   if (MOCK) {
     // Dev-only fake backend; this branch and mockApi.ts are removed from production builds.
     const { mockRequest } = await import("./mockApi");

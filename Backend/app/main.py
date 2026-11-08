@@ -30,7 +30,7 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "X-Agent-Token"],
     )
 
     app.include_router(health.router, prefix=API_PREFIX)

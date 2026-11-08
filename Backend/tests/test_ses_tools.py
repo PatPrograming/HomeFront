@@ -1,10 +1,3 @@
-import pytest
-
-pytest.skip(
-    "Not ported in the third origin/main merge: tests main's old-gateway email setup routes (/agents/{id}/email-settings, /email/*, /approvals), parked in packages/identity-gateway/unported/ with app.py, store.py and email_admin.py. Restored in the next commit.",
-    allow_module_level=True,
-)
-
 """SES setup tools: sandbox status, identity verification, permission check and test send.
 
 Every AWS client here is a fake; conftest's autouse fixture makes real SES/IAM/STS
@@ -16,12 +9,15 @@ import pytest
 from botocore.exceptions import ClientError
 from fastapi.testclient import TestClient
 
-from app.main import app  # puts packages/*/src on sys.path
+from app.main import app
+from tests.helpers import ADMIN
 
 from identity_gateway import email_admin  # noqa: E402
 from mcp_tools import handlers  # noqa: E402
 
-client = TestClient(app)
+# Every call signs in as an admin with our Cognito login (tests/helpers.py).
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login")
 SENDER = "notices@city.example"
 LIST = ["ana@example.gov", "ben@example.gov", "cy@verified.example"]
 
@@ -228,7 +224,7 @@ def test_verify_recipients_without_credentials_is_400():
 def _pending(agent, tool, args):
     tok = client.post("/api/v1/auth/token", json={"agent_id": agent["agent_id"]}).json()["access_token"]
     out = client.post(
-        "/api/v1/mcp/call", json={"tool": tool, "arguments": args}, headers={"Authorization": f"Bearer {tok}"}
+        "/api/v1/agents/tool-call", json={"tool": tool, "arguments": args}, headers={"X-Agent-Token": tok}
     ).json()
     return client.get(f"/api/v1/approvals/{out['approval_id']}").json()
 

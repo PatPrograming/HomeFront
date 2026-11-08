@@ -1,5 +1,5 @@
 // Shared shapes and helpers for agents, agent types and tools (see GET /agent-types).
-import { ApiError } from "./api.js";
+import { ApiError } from "./api";
 
 export type AgentKind = "email" | "social" | "research" | "custom";
 

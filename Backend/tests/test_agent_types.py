@@ -1,24 +1,20 @@
-import pytest
-
-pytest.skip(
-    "Not ported in the origin/main merge: main's agent types (identity_gateway/agent_types.py) are a tool ceiling on the removed agent store and /agents routes; on this branch what an agent may call is decided per call by Cedar via mandate_contracts.cedar. agent_types.py is parked in packages/identity-gateway/unported/ (not importable).",
-    allow_module_level=True,
-)
-
 import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app  # also puts packages/*/src on sys.path
+from app.main import app
+from tests.helpers import ADMIN
 
-from identity_gateway import app as gateway  # noqa: E402
+from identity_gateway import agents_api as gateway  # noqa: E402
 from identity_gateway.agent_types import AGENT_TYPES, disallowed_tools  # noqa: E402
 from identity_gateway.dynamo_repo import agent_from_item, agent_to_item  # noqa: E402
 from identity_gateway.store import AgentRecord  # noqa: E402
 from mcp_tools.registry import TOOL_REGISTRY  # noqa: E402
 
-client = TestClient(app)
+# Every call signs in as an admin with our Cognito login (tests/helpers.py).
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login")
 
 OUTBOUND = {"email.send", "social.post", "social.reply"}
 
@@ -165,17 +161,17 @@ def test_call_time_check_blocks_grant_written_around_the_api():
     gateway.store.grant_tool(aid, "email.send")
     token = client.post("/api/v1/auth/token", json={"agent_id": aid}).json()["access_token"]
     r = client.post(
-        "/api/v1/mcp/call",
+        "/api/v1/agents/tool-call",
         json={"tool": "email.send", "arguments": {"to": "a@b.gov", "subject": "s", "body": "b"}},
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"X-Agent-Token": token},
     )
     assert r.status_code == 403
     assert r.json()["detail"]["error"] == "tool_not_allowed_for_kind"
 
     ok = client.post(
-        "/api/v1/mcp/call",
+        "/api/v1/agents/tool-call",
         json={"tool": "web.scrape", "arguments": {"url": "https://example.gov"}},
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"X-Agent-Token": token},
     )
     assert ok.status_code == 200
 

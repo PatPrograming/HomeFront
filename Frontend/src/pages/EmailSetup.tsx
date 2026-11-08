@@ -1,7 +1,7 @@
 // "Email setup" on an agent card: sender details, signature and the mailing list.
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../lib/api.js";
+import { agentsApi as api } from "../lib/agentsApi";
 import EmailDelivery from "./EmailDelivery";
 import {
   describeError,

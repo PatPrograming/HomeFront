@@ -139,16 +139,17 @@ def test_catalog_lists_the_seven_mandate_tools(client):
         assert name in r.text
 
 
-def test_in_memory_agent_admin_routes_are_removed(client):
-    assert client.get("/api/v1/agents").status_code == 404
-    assert client.get("/api/v1/audit").status_code == 404
-    assert client.post("/api/v1/agents/agent-comms-01/grants/email.send/revoke").status_code == 404
+def test_teammates_agent_routes_need_our_login(client):
+    # Huy's call (third main merge): the teammates' agent routes are back, but never open.
+    assert client.get("/api/v1/agents").status_code == 401
+    assert client.get("/api/v1/audit").status_code == 401
+    assert client.post("/api/v1/agents/agent-comms-01/grants/email.send/revoke").status_code == 401
 
 
-def test_open_token_endpoint_is_gone(client):
-    for method in ("post", "get"):
-        r = getattr(client, method)("/api/v1/auth/token", **({"json": {"agent_id": "a"}} if method == "post" else {}))
-        assert r.status_code in (404, 405)
+def test_workload_token_endpoint_never_mints_for_an_anonymous_caller(client):
+    r = client.post("/api/v1/auth/token", json={"agent_id": "agent-comms-01"})
+    assert r.status_code == 401
+    assert "access_token" not in r.text
 
 
 # ---- POST /sessions -------------------------------------------------------

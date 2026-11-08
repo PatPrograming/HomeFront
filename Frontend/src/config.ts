@@ -8,6 +8,11 @@ export const NAV_LINKS: NavLink[] = [
   { label: "Emails", href: "/emails" },
   { label: "Social Platform", href: "/social-platform" },
   { label: "Console", href: "/console" },
+  // The teammates' agent tabs (old-gateway agent store, behind our Cognito login).
+  { label: "Agents", href: "/agents" },
+  { label: "Monitoring", href: "/monitoring" },
+  { label: "Approvals", href: "/approvals" },
+  { label: "Activity", href: "/activity" },
 ];
 
 // Shown only to the Cognito group "admin".

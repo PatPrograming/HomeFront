@@ -1,8 +1,8 @@
-"""DynamoDB tables of the teammates' alternative stack (infra/README.md).
+"""DynamoDB tables of the teammates' agent store (infra/README.md).
 
-Not used by the running app, which keeps everything in the `mandate` table
-(packages/mandate-contracts `ddb`). Kept for scripts/create_tables.py and
-tests/test_infra.py.
+The mandate flow keeps everything in the `mandate` table (packages/mandate-contracts
+`ddb`). These tables back the teammates' agent tabs (identity_gateway.agents_api),
+only when AGENT_STORE=dynamodb; the default keeps them in memory.
 
 TABLES is the single source of truth for key schemas. The CloudFormation
 template (infra/cloudformation/homefront.yaml) declares the same tables for
@@ -12,11 +12,11 @@ them in DynamoDB Local or a moto mock.
 Tables (names are <DYNAMODB_TABLE_PREFIX><name>):
 - profiles   pk id        one row per Cognito user (`sub`)
 - usernames  pk username  reservation row; makes profile usernames unique
-- agents     pk id        agent definitions (packages/identity-gateway/unported/dynamo_repo.py, not wired in)
+- agents     pk id        agent definitions (identity_gateway/dynamo_repo.py)
 - audit      pk agent_id  activity log, sk "<ts>#<id>", 90-day TTL on expires_at
-                          (packages/identity-gateway/unported/audit.py, not wired in)
+                          (identity_gateway/audit.py)
 - approvals  pk id        human approvals for high-risk tool calls
-                          (packages/identity-gateway/unported/approvals.py, not wired in)
+                          (identity_gateway/approvals.py)
 """
 from __future__ import annotations
 

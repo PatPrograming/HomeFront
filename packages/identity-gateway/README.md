@@ -63,6 +63,20 @@ Built in step 3 with `mandate_contracts.cedar`:
 | `app.py` | `/api/v1/tools`, `/api/v1/demo/matrix`, `/api/v1/mcp/call` (dashboard buttons, same `guarded()`) |
 | `auth_stub.py` | Stand-in for lane A's Cognito checks; refuses everything until `Backend/app/core/cognito.py` exists |
 
+### The teammates' agent tabs (a second, separate path)
+
+`agents_api.py` is main's old gateway API, restored for the Agents, Monitoring, Approvals and Activity tabs:
+agents with per-tool grants, a mailing list and an SES sender (`store.py`, `email_admin.py`, `agent_types.py`),
+runs of Claude on Bedrock (`runner.py`), a human approval queue (`approvals.py`) and an activity log
+(`audit.py`), in memory or in the `homefront-*` tables (`dynamo_repo.py`, `AGENT_STORE=dynamodb`).
+It never mints or accepts a mandate token and never touches the `mandate` table.
+
+`Backend/app/agent_iam.py` mounts it behind our Cognito login: GET routes need `require_staff`, every
+other method (create, edit, grant, `/auth/token`, SES admin, test email, approve, start a run) needs
+`require_admin`. An anonymous caller gets 401 everywhere, and `Backend/tests/test_route_auth.py` walks
+every route to prove it. Its workload-token tool call is `POST /api/v1/agents/tool-call` (admin login in
+`Authorization`, workload token in `X-Agent-Token`), and every call re-checks the agent's grants.
+
 The broker and admin routes are in `Backend/app/routers/{sessions,staff,events}.py`.
 
 ## Run it

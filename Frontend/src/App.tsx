@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { AuthProvider } from "./lib/AuthProvider";
 import RequireAuth from "./components/RequireAuth";
 import Home from "./pages/Home";
@@ -9,6 +9,11 @@ import Console from "./pages/Console";
 import Admin from "./pages/Admin";
 import Emails from "./pages/Emails";
 import SocialPlatform from "./pages/SocialPlatform";
+import Agents from "./pages/Agents";
+import NewAgent from "./pages/NewAgent";
+import Approvals from "./pages/Approvals";
+import Activity from "./pages/Activity";
+import Monitoring from "./pages/Monitoring";
 
 // Cognito sends the browser back to the site root with ?code=…&state=… (or ?error=…), because the
 // staff-web client's callback URL is the root. Finish the sign-in there; otherwise show the home page.
@@ -16,6 +21,23 @@ function HomeOrCallback() {
   const params = new URLSearchParams(useLocation().search);
   return params.has("code") || params.has("error") ? <AuthCallback /> : <Home />;
 }
+
+// /agents/<id>/email: open that agent's Email setup on the Agents tab.
+function AgentEmailRedirect() {
+  const { agentId = "" } = useParams();
+  return <Navigate replace to={`/agents?edit=${encodeURIComponent(agentId)}&section=email`} />;
+}
+
+// The teammates' agent tabs. Any signed-in staffer can open them; the API lets staffers read and
+// only the admin group change anything (agents, grants, email setup, approvals, runs).
+const TEAM_TABS = [
+  { path: "/agents", element: <Agents /> },
+  { path: "/agents/new", element: <NewAgent /> },
+  { path: "/agents/:agentId/email", element: <AgentEmailRedirect /> },
+  { path: "/approvals", element: <Approvals /> },
+  { path: "/activity", element: <Activity /> },
+  { path: "/monitoring", element: <Monitoring /> },
+];
 
 export default function App() {
   return (
@@ -58,8 +80,9 @@ export default function App() {
               </RequireAuth>
             }
           />
-          {/* The old in-memory gateway demo lived here; its API routes are gone, so send old links to the console. */}
-          <Route path="/monitoring" element={<Navigate to="/console" replace />} />
+          {TEAM_TABS.map(({ path, element }) => (
+            <Route key={path} path={path} element={<RequireAuth>{element}</RequireAuth>} />
+          ))}
           <Route path="*" element={<Home />} />
         </Routes>
       </BrowserRouter>

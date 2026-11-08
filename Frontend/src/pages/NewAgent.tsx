@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
-import { api } from "../lib/api.js";
+import { agentsApi as api } from "../lib/agentsApi";
 import { describeError, type Agent, type AgentKind, type AgentType, type Tool } from "../lib/agents";
 import "./Agents.css";
 

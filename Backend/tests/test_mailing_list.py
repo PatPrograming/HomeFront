@@ -1,24 +1,20 @@
-import pytest
-
-pytest.skip(
-    "Not ported in the origin/main merge: main's mailing lists live on the removed agent store (/agents/{id}/recipients) and email.send_list is not in mandate_contracts.TOOLS, so it is not exposed over /mcp. The mcp_tools handler is kept; the runner it tests is parked in packages/identity-gateway/unported/.",
-    allow_module_level=True,
-)
-
 """Per-agent mailing lists: an allowlist for email.send and the audience of email.send_list."""
 import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app  # puts packages/*/src on sys.path
+from app.main import app
+from tests.helpers import ADMIN
 from tests.test_runner import response, text, use_model  # noqa: F401 (fixture)
 
-from identity_gateway import app as gateway  # noqa: E402
+from identity_gateway import agents_api as gateway  # noqa: E402
 from identity_gateway.runner import system_prompt  # noqa: E402
 from mcp_tools import handlers  # noqa: E402
 
-client = TestClient(app)
+# Every call signs in as an admin with our Cognito login (tests/helpers.py).
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login")
 LIST = ["ana@example.gov", "ben@example.gov"]
 
 
@@ -33,8 +29,8 @@ def _agent(recipients=None, kind="email"):
 
 def _call(agent_id, tool, args):
     r = client.post("/api/v1/auth/token", json={"agent_id": agent_id})
-    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
-    return client.post("/api/v1/mcp/call", json={"tool": tool, "arguments": args}, headers=headers)
+    headers = {"X-Agent-Token": r.json()['access_token']}
+    return client.post("/api/v1/agents/tool-call", json={"tool": tool, "arguments": args}, headers=headers)
 
 
 def _put(agent_id, emails):

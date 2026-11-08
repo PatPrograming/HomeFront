@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,6 +39,19 @@ class Settings(BaseSettings):
     dynamodb_table_prefix: str = "homefront-"
     dynamodb_endpoint_url: str = ""  # http://localhost:8000 for DynamoDB Local
 
+    # Teammates' agent store (identity_gateway.agents_api). "memory" (default) is
+    # lost on restart; "dynamodb" uses the <prefix>agents/audit/approvals tables.
+    agent_store: Literal["memory", "dynamodb"] = "memory"
+
+    # Teammates' agent runner (Run a task): Claude on Amazon Bedrock. Region enables
+    # it (falls back to AWS_REGION); empty = POST /agents/{id}/runs returns 503.
+    bedrock_region: str = ""
+    aws_bearer_token_bedrock: str = ""
+    bedrock_model_id: str = "anthropic.claude-opus-5-5"
+    # Retried automatically if the primary model declines (refusal) a request.
+    bedrock_fallback_model_id: str = "anthropic.claude-opus-4-8"
+    runner_effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
+
     # Outbound email (SES). Fallback sender when an agent has none of its own.
     homefront_email_from: str = ""
     homefront_ses_region: str = ""
@@ -61,6 +75,10 @@ class Settings(BaseSettings):
             or os.environ.get("AWS_REGION", "").strip()
             or os.environ.get("AWS_DEFAULT_REGION", "").strip()
         )
+
+    @property
+    def resolved_bedrock_region(self) -> str:
+        return self.bedrock_region.strip() or self.resolved_aws_region
 
     @property
     def cors_origins(self) -> list[str]:

@@ -1,3 +1,15 @@
+"""Teammates' agent-management API (main's old gateway), restored behind our Cognito login.
+
+Agents with per-tool grants, a mailing list and an SES sender; runs of Claude on
+Bedrock; human approvals; the activity log. It is a separate path from the
+mandate flow (`app.py`, `gateway.py`, `/mcp`): nothing here mints or accepts a
+mandate token, and nothing in the mandate flow reads this store.
+
+Every route is mounted by `Backend/app/agent_iam.py` behind our Cognito login:
+GET routes need `require_staff`, every other method `require_admin`. The actor
+resolver below is set there too; until it is, every call is refused (401).
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -7,8 +19,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 # Allow running without editable installs by putting sibling packages on path.
@@ -24,7 +35,6 @@ for rel in (
 
 from atlas_enricher import AnnotateRequest, AtlasEnricher  # noqa: E402
 from atlas_enricher.enricher import AnnotateEvent  # noqa: E402
-from atlas_enricher.router import build_router  # noqa: E402
 from mcp_tools import handlers as email_handlers  # noqa: E402
 from mcp_tools.handlers import invoke_tool, resolve_sender, ses_identity_status  # noqa: E402
 from mcp_tools.registry import get_tool, list_tools, tool_public_view  # noqa: E402
@@ -64,21 +74,7 @@ runs = RunStore()
 runner: AgentRunner | None = None
 enricher = AtlasEnricher()
 
-app = FastAPI(
-    title="HomeFront Identity Gateway",
-    description="Agent workload identity + MCP tool authorization with MITRE ATLAS enrichment",
-    version="0.1.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(build_router(enricher))
+router = APIRouter()
 
 
 class AuthRequest(BaseModel):
@@ -213,8 +209,8 @@ def _recipient_problem(agent: AgentRecord, tool_name: str, arguments: dict[str, 
 class Actor:
     """Who is calling an agent-management route.
 
-    user_id None = anonymous operator (standalone demo console). Agents with
-    no owner are shared demo agents any caller may manage; owned agents are
+    user_id is the Cognito username of the signed-in staffer. Agents with no
+    owner are shared demo agents any signed-in caller may see; owned agents are
     visible only to their owner.
     """
 
@@ -232,13 +228,13 @@ class Actor:
 ActorResolver = Callable[[str | None], Actor]
 
 
-def _anonymous(_authorization: str | None) -> Actor:
-    return Actor()
+def _refuse(_authorization: str | None) -> Actor:
+    raise HTTPException(status_code=401, detail="Authentication failed")
 
 
-# The host app replaces this to authenticate users (see Backend/app/agent_iam.py).
-# Standalone, every caller is anonymous and sees only ownerless agents.
-_actor_resolver: ActorResolver = _anonymous
+# The host app sets this to verify our Cognito login (Backend/app/agent_iam.py).
+# Until then every call is refused: there is no anonymous caller (fail closed).
+_actor_resolver: ActorResolver = _refuse
 
 
 def set_actor_resolver(resolver: ActorResolver) -> None:
@@ -256,16 +252,6 @@ def _accessible_agent(agent_id: str, actor: Actor) -> AgentRecord:
     if agent is None or not actor.can_access(agent):
         raise HTTPException(status_code=404, detail="Unknown agent")
     return agent
-
-
-def _bearer(authorization: str | None) -> str:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing Bearer token")
-    return authorization.removeprefix("Bearer ").strip()
-
-
-def require_agent(authorization: str | None = Header(default=None)):
-    return resolve_agent_token(_bearer(authorization))
 
 
 def resolve_agent_token(token: str) -> tuple[AgentRecord, Any]:
@@ -297,24 +283,16 @@ def resolve_agent_token(token: str) -> tuple[AgentRecord, Any]:
     return resolved
 
 
-@app.get("/health")
-def health() -> dict[str, Any]:
-    return {
-        "status": "ok",
-        "atlas_version": enricher.version,
-        "agents": store.agent_count(),
-    }
-
-
-@app.get("/tools")
+@router.get("/agent-tools")
 def tools_catalog() -> list[dict[str, Any]]:
-    """Public tool catalog with ATLAS risk labels (no secrets)."""
+    """The old gateway's tool catalog (email.send, ...) with ATLAS risk labels.
+    `/tools` is the mandate flow's seven-tool catalog (app.py)."""
     return [tool_public_view(t) for t in list_tools()]
 
 
-@app.get("/agent-types")
+@router.get("/agent-types")
 def agent_types_catalog() -> list[dict[str, Any]]:
-    """Public catalog of agent types: templates and tool ceilings."""
+    """Catalog of agent types: templates and tool ceilings."""
     return [agent_type_view(t) for t in AGENT_TYPES.values()]
 
 
@@ -359,12 +337,12 @@ def _enforce_kind_ceiling(agent: AgentRecord, tools: list[str], actor: Actor) ->
     )
 
 
-@app.get("/agents")
+@router.get("/agents")
 def agents(actor: Actor = Depends(get_actor)) -> list[dict[str, Any]]:
     return [_agent_view(a) for a in store.list_agents() if actor.can_access(a)]
 
 
-@app.post("/agents", status_code=201)
+@router.post("/agents", status_code=201)
 def create_agent(
     body: CreateAgentRequest, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
@@ -414,12 +392,12 @@ def create_agent(
     return _agent_view(agent)
 
 
-@app.get("/agents/{agent_id}")
+@router.get("/agents/{agent_id}")
 def get_agent(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
     return _agent_view(_accessible_agent(agent_id, actor))
 
 
-@app.patch("/agents/{agent_id}")
+@router.patch("/agents/{agent_id}")
 def update_agent(
     agent_id: str, body: UpdateAgentRequest, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
@@ -446,7 +424,7 @@ def update_agent(
     return _agent_view(agent)
 
 
-@app.put("/agents/{agent_id}/recipients")
+@router.put("/agents/{agent_id}/recipients")
 def replace_recipients(
     agent_id: str, body: RecipientsUpdate, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
@@ -474,7 +452,7 @@ def replace_recipients(
     return _agent_view(agent)
 
 
-@app.put("/agents/{agent_id}/email-settings")
+@router.put("/agents/{agent_id}/email-settings")
 def replace_email_settings(
     agent_id: str, body: EmailSettingsUpdate, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
@@ -505,7 +483,7 @@ def replace_email_settings(
     return _agent_view(agent)
 
 
-@app.get("/agents/{agent_id}/email-settings/verification")
+@router.get("/agents/{agent_id}/email-settings/verification")
 def email_settings_verification(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
     """Is the effective sender verified in SES? verified=null when it can't be checked."""
     agent = _accessible_agent(agent_id, actor)
@@ -520,19 +498,19 @@ def _ses_http_error(exc: email_admin.SesActionError) -> HTTPException:
     return HTTPException(status_code=exc.status, detail={"error": exc.code, "message": str(exc)})
 
 
-@app.get("/email/account")
+@router.get("/email/account")
 def email_account(actor: Actor = Depends(get_actor)) -> dict[str, Any]:
     """SES sandbox status and sending quota (cached ~60s). Nulls + reason when it can't be read."""
     return email_admin.account_status()
 
 
-@app.get("/email/permissions")
+@router.get("/email/permissions")
 def email_permissions(actor: Actor = Depends(get_actor)) -> dict[str, Any]:
     """Whether the server's AWS role may send email / request verification (IAM simulation)."""
     return email_admin.permissions()
 
 
-@app.post("/agents/{agent_id}/email-settings/verify-sender")
+@router.post("/agents/{agent_id}/email-settings/verify-sender")
 def verify_sender(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
     """Ask SES to email the sender address a verification link (CreateEmailIdentity)."""
     agent = _accessible_agent(agent_id, actor)
@@ -557,7 +535,7 @@ def verify_sender(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str,
     return out
 
 
-@app.post("/agents/{agent_id}/email-settings/test")
+@router.post("/agents/{agent_id}/email-settings/test")
 def send_test_email(
     agent_id: str, body: TestEmailRequest, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
@@ -613,7 +591,7 @@ def send_test_email(
     return out
 
 
-@app.get("/agents/{agent_id}/recipients/verification")
+@router.get("/agents/{agent_id}/recipients/verification")
 def recipients_verification(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
     """Per-recipient SES verification status (matters only in the sandbox)."""
     agent = _accessible_agent(agent_id, actor)
@@ -628,7 +606,7 @@ def recipients_verification(agent_id: str, actor: Actor = Depends(get_actor)) ->
     }
 
 
-@app.post("/agents/{agent_id}/recipients/verify")
+@router.post("/agents/{agent_id}/recipients/verify")
 def verify_recipients(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
     """Ask SES to send verification links to unverified recipients, up to
     email_admin.CREATE_BATCH per call (SES allows ~1 such request per second).
@@ -656,7 +634,7 @@ def verify_recipients(agent_id: str, actor: Actor = Depends(get_actor)) -> dict[
     return out
 
 
-@app.post("/auth/token", response_model=AuthResponse)
+@router.post("/auth/token", response_model=AuthResponse)
 def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthResponse:
     agent = _accessible_agent(body.agent_id, actor)
     if not agent.active:
@@ -695,13 +673,7 @@ def authenticate(body: AuthRequest, actor: Actor = Depends(get_actor)) -> AuthRe
     )
 
 
-@app.get("/auth/me")
-def me(resolved=Depends(require_agent)) -> dict[str, Any]:
-    agent, tok = resolved
-    return {**_agent_view(agent), "token_version": tok.token_version}
-
-
-@app.put("/agents/{agent_id}/grants")
+@router.put("/agents/{agent_id}/grants")
 def replace_grants(
     agent_id: str, body: GrantUpdate, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
@@ -733,7 +705,7 @@ def replace_grants(
     }
 
 
-@app.post("/agents/{agent_id}/grants/{tool_name}/revoke")
+@router.post("/agents/{agent_id}/grants/{tool_name}/revoke")
 def revoke_tool(
     agent_id: str, tool_name: str, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
@@ -773,7 +745,7 @@ def revoke_tool(
     }
 
 
-@app.post("/agents/{agent_id}/grants/{tool_name}")
+@router.post("/agents/{agent_id}/grants/{tool_name}")
 def grant_tool(
     agent_id: str, tool_name: str, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
@@ -810,9 +782,20 @@ def grant_tool(
     }
 
 
-@app.post("/mcp/call")
-def mcp_call(body: ToolCallRequest, resolved=Depends(require_agent)) -> dict[str, Any]:
-    agent, tok = resolved
+@router.post("/agents/tool-call")
+def agent_tool_call(
+    body: ToolCallRequest,
+    x_agent_token: str | None = Header(default=None),
+    actor: Actor = Depends(get_actor),
+) -> dict[str, Any]:
+    """Monitoring page's manual tool call: an admin login (Authorization) AND the
+    agent's workload token (X-Agent-Token). Same grant re-check as the runner.
+    `/mcp/call` is the mandate flow's dashboard path (app.py), not this."""
+    if not x_agent_token:
+        raise HTTPException(status_code=401, detail="Missing agent token")
+    agent, tok = resolve_agent_token(x_agent_token.strip())
+    if not actor.can_access(agent):
+        raise HTTPException(status_code=404, detail="Unknown agent")
     return call_tool(agent, tok, body.tool, body.arguments)
 
 
@@ -1194,7 +1177,7 @@ def _expire_if_stale(rec: ApprovalRecord, actor: Actor) -> None:
     raise _decision_conflict("expired")
 
 
-@app.get("/approvals")
+@router.get("/approvals")
 def list_approvals(
     status: str | None = None, actor: Actor = Depends(get_actor)
 ) -> list[dict[str, Any]]:
@@ -1212,13 +1195,13 @@ def list_approvals(
     return out[:200]
 
 
-@app.get("/approvals/{approval_id}")
+@router.get("/approvals/{approval_id}")
 def get_approval(approval_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
     rec, agent = _accessible_approval(approval_id, actor)
     return _approval_view(rec, agent)
 
 
-@app.post("/approvals/{approval_id}/approve")
+@router.post("/approvals/{approval_id}/approve")
 def approve(
     approval_id: str, body: ApprovalDecision, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
@@ -1357,7 +1340,7 @@ def approve(
     return _approval_view(done, agent)
 
 
-@app.post("/approvals/{approval_id}/reject")
+@router.post("/approvals/{approval_id}/reject")
 def reject(
     approval_id: str, body: ApprovalDecision, actor: Actor = Depends(get_actor)
 ) -> dict[str, Any]:
@@ -1417,7 +1400,7 @@ def _issue_run_token(agent_id: str, run_id: str | None = None) -> str:
     return tok.token
 
 
-@app.post("/agents/{agent_id}/runs", status_code=202)
+@router.post("/agents/{agent_id}/runs", status_code=202)
 def start_run(
     agent_id: str,
     body: CreateRunRequest,
@@ -1466,13 +1449,13 @@ def _execute_and_audit(active_runner: AgentRunner, run: Any, agent: AgentRecord)
     )
 
 
-@app.get("/agents/{agent_id}/runs")
+@router.get("/agents/{agent_id}/runs")
 def list_runs(agent_id: str, actor: Actor = Depends(get_actor)) -> list[dict[str, Any]]:
     _accessible_agent(agent_id, actor)
     return [r.view() for r in runs.for_agent(agent_id)]
 
 
-@app.get("/agents/{agent_id}/runs/{run_id}")
+@router.get("/agents/{agent_id}/runs/{run_id}")
 def get_run(agent_id: str, run_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
     _accessible_agent(agent_id, actor)
     run = runs.get(run_id)
@@ -1481,7 +1464,7 @@ def get_run(agent_id: str, run_id: str, actor: Actor = Depends(get_actor)) -> di
     return run.view()
 
 
-@app.get("/audit")
+@router.get("/audit")
 def audit(
     limit: int = 100,
     agent_id: str | None = None,
@@ -1501,7 +1484,7 @@ def audit(
     )
 
 
-@app.get("/status")
+@router.get("/status")
 def storage_status() -> dict[str, Any]:
     """Where agents and the activity log are actually being stored right now."""
     return {
@@ -1515,35 +1498,6 @@ def storage_status() -> dict[str, Any]:
     }
 
 
-@app.get("/demo/matrix")
-def demo_matrix() -> dict[str, Any]:
-    """Compact Agentic AI technique strip for the demo sidebar."""
-    ids = [
-        "AML.T0051",
-        "AML.T0051.001",
-        "AML.T0053",
-        "AML.T0084.001",
-        "AML.T0086",
-        "AML.T0098",
-        "AML.T0101",
-        "AML.T0110",
-    ]
-    mitigations = ["AML.M0024", "AML.M0026", "AML.M0028", "AML.M0029", "AML.M0030", "AML.M0033"]
-    return {
-        "atlas_version": enricher.version,
-        "techniques": [
-            enricher.get_technique(i) or {"id": i, "name": None} for i in ids
-        ],
-        "mitigations": [
-            enricher.get_mitigation(i) or {"id": i, "name": None} for i in mitigations
-        ],
-    }
-
-
 def _hash_args(args: dict[str, Any]) -> str:
     blob = repr(sorted(args.items())).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()[:16]
-
-
-def create_app() -> FastAPI:
-    return app

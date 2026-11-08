@@ -1,7 +1,8 @@
 // "Run a task": give an agent a task, then watch its tool calls live.
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, ApiError } from "../lib/api.js";
+import { ApiError } from "../lib/api";
+import { agentsApi as api } from "../lib/agentsApi";
 import { describeError, TERMINAL_RUN_STATUSES, type Agent, type Run, type RunStep } from "../lib/agents";
 import "./RunTask.css";
 

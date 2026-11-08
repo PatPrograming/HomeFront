@@ -1,25 +1,21 @@
-import pytest
-
-pytest.skip(
-    "Not ported in the third origin/main merge: tests main's old-gateway email setup routes (/agents/{id}/email-settings, /email/*, /approvals), parked in packages/identity-gateway/unported/ with app.py, store.py and email_admin.py. Restored in the next commit.",
-    allow_module_level=True,
-)
-
 """Per-agent email settings: sender, display name, reply-to and signature."""
 import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app  # puts packages/*/src on sys.path
+from app.main import app
+from tests.helpers import ADMIN
 
-from identity_gateway import app as gateway  # noqa: E402
+from identity_gateway import agents_api as gateway  # noqa: E402
 from identity_gateway.dynamo_repo import agent_from_item, agent_to_item  # noqa: E402
 from identity_gateway.runner import system_prompt  # noqa: E402
 from identity_gateway.store import EmailSettings  # noqa: E402
 from mcp_tools import handlers  # noqa: E402
 
-client = TestClient(app)
+# Every call signs in as an admin with our Cognito login (tests/helpers.py).
+client = TestClient(app, headers=ADMIN)
+pytestmark = pytest.mark.usefixtures("cognito_login")
 TO = "ana@example.gov"
 SETTINGS = {
     "from_email": "Notices@City.gov",
@@ -42,8 +38,8 @@ def _put(agent_id, settings):
 
 def _approve(agent_id, tool, args):
     r = client.post("/api/v1/auth/token", json={"agent_id": agent_id})
-    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
-    out = client.post("/api/v1/mcp/call", json={"tool": tool, "arguments": args}, headers=headers).json()
+    headers = {"X-Agent-Token": r.json()['access_token']}
+    out = client.post("/api/v1/agents/tool-call", json={"tool": tool, "arguments": args}, headers=headers).json()
     assert out["decision"] == "pending_approval", out
     view = client.get(f"/api/v1/approvals/{out['approval_id']}").json()
     done = client.post(f"/api/v1/approvals/{out['approval_id']}/approve", json={}).json()
@@ -165,9 +161,9 @@ def test_reviewer_edits_cannot_change_sender(ses):
     agent = _agent()
     _put(agent["agent_id"], SETTINGS)
     r = client.post("/api/v1/auth/token", json={"agent_id": agent["agent_id"]})
-    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    headers = {"X-Agent-Token": r.json()['access_token']}
     out = client.post(
-        "/api/v1/mcp/call",
+        "/api/v1/agents/tool-call",
         json={"tool": "email.send", "arguments": {"to": TO, "subject": "s", "body": "b"}},
         headers=headers,
     ).json()
