@@ -12,3 +12,13 @@ export function connectionMessage(error: unknown, retrying: boolean): string {
   }
   return error instanceof Error ? error.message : String(error);
 }
+
+export type AgentAction = "retry" | "new_conversation";
+
+// What the server offers when the assistant can't start (it stopped too often, or isn't set up): a 503 whose detail
+// carries `actions`. Anything else offers nothing.
+export function agentActions(error: unknown): AgentAction[] {
+  const detail = (error as { data?: { detail?: unknown } } | null)?.data?.detail;
+  const actions = detail && typeof detail === "object" && "actions" in detail ? (detail as { actions: unknown }).actions : [];
+  return Array.isArray(actions) ? actions.filter((a): a is AgentAction => a === "retry" || a === "new_conversation") : [];
+}

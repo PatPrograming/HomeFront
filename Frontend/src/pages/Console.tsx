@@ -170,6 +170,8 @@ export default function Console() {
               disabled={revoked}
               activity={{ card, events, categories: review.categories, grants: card ? grants[card.sid] ?? [] : [], admin }}
               review={{ drafts: chatDrafts, onOpen: openReview }}
+              onNewConversation={newConversation}
+              retryAgent={card ? () => api.retryAgent(card.sid) : undefined}
             />
           </div>
 

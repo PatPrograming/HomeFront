@@ -45,10 +45,19 @@ export function permissionLines(
 
 const lower = (s: string) => s[0].toLowerCase() + s.slice(1);
 
+// Fail-closed denials where the check itself couldn't run: a server problem, not something the assistant may not do.
+const SERVER_TROUBLE: Record<string, string> = {
+  "AWS credentials expired on the server": "the server's AWS sign-in has expired (ask your admin)",
+  "server lacks AWS permission": "the server isn't allowed to make this check (ask your admin)",
+  "permission service unavailable": "the permission check is unavailable right now, try again shortly",
+  "server error (failed closed)": "a server problem stopped it, so nothing was done",
+};
+
 // One action, as a staffer would say it.
 export function describeEvent(e: DecisionEvent): { text: string; blocked: boolean } {
   const what = e.resource ?? "";
   if (e.reason === "session revoked / delegator inactive") return { text: "Blocked: your access was removed", blocked: true };
+  if (SERVER_TROUBLE[e.reason]) return { text: `Not done: ${SERVER_TROUBLE[e.reason]}`, blocked: true };
   if (e.decision === "DENY") {
     const never = e.policyIds.some((p) => p.startsWith("forbid-")) ? " (never allowed)" : what ? ` (${what} is outside what it may do)` : "";
     return { text: `Blocked: ${lower(toolLabel(e.tool))}${never}`, blocked: true };

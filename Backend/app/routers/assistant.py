@@ -28,7 +28,8 @@ except ModuleNotFoundError as exc:  # STUB until lane A (WP1) merges Backend/app
 
 from app.routers.sessions import SESSION_TTL_SECONDS, _created_epoch  # noqa: E402  (same session clock as the broker)
 from app.services import conversations  # noqa: E402
-from app.services.agent_supervisor import AgentStartError, get_supervisor  # noqa: E402
+from app.services import agent_failures  # noqa: E402
+from app.services.agent_supervisor import AgentStartError, RetryRefused, get_supervisor  # noqa: E402
 
 router = APIRouter(tags=["assistant"])
 bearer = HTTPBearer(auto_error=False)
@@ -113,7 +114,13 @@ def read_messages(sid: str, after: str | None = None, staff: StaffIdentity = Dep
     session = get_gateway().store.get_session(sid)
     if session is None or session.acting_for != staff.username or conversations.get_meta(sid, staff.username).deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")
-    return _chat_page(sid, after)
+    page = _chat_page(sid, after)
+    if "admin" in staff.groups:  # admins also see what went wrong technically; staffers see plain words
+        details = agent_failures.details_for(sid)
+        for message in page["messages"]:
+            if message["id"] in details:
+                message["detail"] = details[message["id"]]
+    return page
 
 
 def _ensure_agent(sid: str, staff: StaffIdentity) -> None:
@@ -130,7 +137,31 @@ def _ensure_agent(sid: str, staff: StaffIdentity) -> None:
     try:
         supervisor.ensure_running(sid, staff.username, ends_at)
     except AgentStartError as error:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"The assistant could not start: {error}") from None
+        raise _start_failed(error) from None
+
+
+def _start_failed(error: AgentStartError) -> HTTPException:
+    """503 with the reason; for the cases the console can act on, a code and the actions it offers."""
+    message = str(error) if error.code == "agent_not_set_up" else f"The assistant could not start: {error}"
+    detail = {"message": message, "code": error.code, "actions": error.actions} if error.code else message
+    return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail)
+
+
+@router.post("/sessions/{sid}/agent/retry")
+def retry_agent(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dict:
+    """"Try again" after the start cap or a missing agent secret: owner only, rate-limited, audited."""
+    _own_active_session(sid, staff)
+    supervisor = get_supervisor()
+    if supervisor is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "auto-start is off: start the agent from a terminal")
+    session = get_gateway().store.get_session(sid)
+    try:
+        agent, left = supervisor.retry(sid, staff.username, _created_epoch(session.created_at) + SESSION_TTL_SECONDS)
+    except RetryRefused as refused:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(refused)) from None
+    except AgentStartError as error:
+        raise _start_failed(error) from None
+    return {"sid": sid, "agent": agent, "retriesLeft": left}
 
 
 @router.post("/sessions/{sid}/messages")
@@ -152,9 +183,16 @@ def agent_read_messages(after: str | None = None, claims: MandateClaims = Depend
     return _chat_page(claims.sid, after)
 
 
+class AgentMessageIn(MessageIn):
+    detail: str | None = Field(default=None, max_length=300)  # e.g. "ClientError: ThrottlingException"; admins only
+
+
 @router.post("/agent/messages")
-def agent_send_message(body: MessageIn, claims: MandateClaims = Depends(require_agent_session)) -> dict:
-    return _post(claims.sid, "assistant", body.text)
+def agent_send_message(body: AgentMessageIn, claims: MandateClaims = Depends(require_agent_session)) -> dict:
+    message = _post(claims.sid, "assistant", body.text)
+    if body.detail:
+        agent_failures.save_detail(claims.sid, message["id"], body.detail)
+    return message
 
 
 # --- review queue -------------------------------------------------------------

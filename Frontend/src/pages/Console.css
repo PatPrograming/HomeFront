@@ -1360,3 +1360,20 @@
 .gate-message p {
   margin: 8px 0 12px;
 }
+
+/* Admins only: the technical reason the assistant stopped. */
+.msg-detail {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+/* The way back when the assistant can't start. */
+.start-failure {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}

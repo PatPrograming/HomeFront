@@ -132,6 +132,30 @@ sent", whatever the model says.
 - The rules live in `packages/identity-gateway/src/identity_gateway/autonomy.py`; the routes in
   `Backend/app/routers/assistant.py`.
 
+### When the assistant can't answer
+
+Every failure reaches the chat in plain words, never silently; admins also see a short technical detail
+(an error class such as `ClientError: ThrottlingException`, never the error's text or a secret).
+
+| What failed | What the staffer reads | Where the fix is |
+|---|---|---|
+| `COGNITO_AGENT_CLIENT_SECRET` (or the domain / client id) missing in `agent/.env` | "The assistant isn't set up on this computer (agent secret missing). Ask your admin." | the gateway terminal names the variable; fill it in, then **Try again** |
+| Cognito refused the agent's id or secret | "The assistant couldn't sign in: its credentials were refused." | copy the current agent client secret into `agent/.env` |
+| Server AWS credentials expired / missing | "the server's AWS sign-in has expired" | refresh the server's AWS credentials |
+| Bedrock access denied, or throttled | "isn't allowed to use the AI model" / "busy right now" | model access in Bedrock; or wait |
+| Gateway or broker unreachable | "can't reach the HomeFront gateway" / "couldn't reach its sign-in service" | start the gateway |
+| The agent crashed | "The assistant stopped unexpectedly. Send your message again to restart it." | the agent's output in the gateway terminal |
+
+The agent posts the message itself when it still holds a mandate token. When it can't (no identity), it
+exits with a code (`agent/mandate_agent/chat.py`, `EXIT_*`) and the console's supervisor posts the message
+(`Backend/app/services/agent_failures.py`). After 3 starts in one conversation, or a missing secret, the
+chat offers **Try again** (`POST /api/v1/sessions/{sid}/agent/retry`: owner only, once a minute, 3 times
+per conversation, logged as `audit: agent retry …`) and **Start a new conversation**.
+
+A gateway check that could not run is still a DENY, but its reason says why: "AWS credentials expired on
+the server", "server lacks AWS permission", "permission service unavailable" or "server error (failed
+closed)", instead of "denied by policy", which now always means Cedar said no.
+
 ### Asking for permission (per-session grants)
 
 When something is held, the agent may ask Maya whether it can send that kind alone. Maya answers

@@ -169,7 +169,7 @@ def test_restarts_stop_after_the_cap(client, session, store, launcher):
 
     r = send(client, "Hello?")
 
-    assert r.status_code == 503 and "3" in r.json()["detail"]
+    assert r.status_code == 503 and "3" in r.json()["detail"]["message"]  # + code and actions for "Try again"
     assert len(launcher.started) == 3
     assert len(store.chat_since(SID, None)[0]) == messages_before, "a refused message is not stored"
 

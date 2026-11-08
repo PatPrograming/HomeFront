@@ -20,6 +20,28 @@ from .runner import EXIT_STOPPED, run_chat_turn
 POLL_SECONDS = 1.0
 TOKEN_REFRESH_SECONDS = 10 * 60  # mandate tokens last 15 minutes; get a new one well before that
 
+# Exit codes the console's supervisor reads (3, EXIT_STOPPED, means the session is over).
+EXIT_NOT_SET_UP = 4  # no usable agent identity: a Cognito setting is missing
+EXIT_UNREACHABLE = 5  # Cognito or the broker could not be reached, before any reply was possible
+EXIT_FAILED = 6  # a turn failed; the agent has already said why in the chat (when it could)
+EXIT_IDENTITY_REFUSED = 7  # Cognito refused the agent's client id or secret
+
+# The staffer's words for each cause. Never the exception's own text: it can carry keys or tracebacks.
+CREDENTIALS_EXPIRED = (
+    "I stopped: the server's AWS sign-in has expired, so I can't reach the AI model. "
+    "Ask your admin to refresh the server's AWS credentials, then send your message again."
+)
+MODEL_ACCESS_DENIED = "I stopped: this server isn't allowed to use the AI model (Bedrock access denied). Ask your admin."
+MODEL_BUSY = "I stopped: the AI model is busy right now. Wait a minute, then send your message again."
+GATEWAY_DOWN = (
+    "I stopped: I can't reach the HomeFront gateway. Ask your admin to check that it's running, "
+    "then send your message again."
+)
+UNEXPECTED = "I stopped because of an unexpected problem on the server. Send your message again, or ask your admin."
+EXPIRED_CODES = {"ExpiredToken", "ExpiredTokenException", "UnrecognizedClientException", "InvalidClientTokenId",
+                 "RequestExpired", "InvalidSignatureException"}
+BUSY_CODES = {"ThrottlingException", "ServiceUnavailableException", "ModelNotReadyException", "TooManyRequestsException"}
+
 
 class ChatClosed(RuntimeError):
     """The API refused the agent's token for the chat: the session is over."""
@@ -44,8 +66,52 @@ class ChatChannel:
         page = self._check(self.http.get(self.url, params=params, headers={"Authorization": f"Bearer {token}"}))
         return page["messages"], page["next"]
 
-    def post(self, token: str, text: str) -> None:
-        self._check(self.http.post(self.url, json={"text": text}, headers={"Authorization": f"Bearer {token}"}))
+    def post(self, token: str, text: str, detail: str | None = None) -> None:
+        body = {"text": text, **({"detail": detail} if detail else {})}
+        self._check(self.http.post(self.url, json=body, headers={"Authorization": f"Bearer {token}"}))
+
+
+def _chain(error: BaseException):
+    """The error and everything it was raised from (model libraries wrap the AWS error)."""
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        yield error
+        error = error.__cause__ or error.__context__
+
+
+def explain(error: BaseException) -> tuple[str, str]:
+    """(what the staffer reads, a short technical detail for admins). Neither includes the error's text."""
+    for e in _chain(error):
+        name = type(e).__name__
+        code = getattr(e, "response", None)
+        code = code.get("Error", {}).get("Code", "") if isinstance(code, dict) else ""
+        if name in {"NoCredentialsError", "PartialCredentialsError", "CredentialRetrievalError"} or code in EXPIRED_CODES:
+            return CREDENTIALS_EXPIRED, f"{name}: {code}" if code else name
+        if code == "AccessDeniedException":
+            return MODEL_ACCESS_DENIED, f"{name}: {code}"
+        if code in BUSY_CODES or "Throttl" in name:
+            return MODEL_BUSY, f"{name}: {code}" if code else name
+        if isinstance(e, (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError)) or name in {
+            "EndpointConnectionError", "ConnectTimeoutError", "ReadTimeoutError"}:
+            return GATEWAY_DOWN, name
+        if isinstance(e, httpx.HTTPStatusError) and e.response.status_code >= 500:
+            return GATEWAY_DOWN, f"{name}: HTTP {e.response.status_code}"
+    return UNEXPECTED, type(error).__name__
+
+
+def _broker_failure(error: BrokerError) -> tuple[int, str]:
+    """Exit code and terminal line for a broker failure: the real cause, not always "revoked"."""
+    if error.kind == "credentials_refused":
+        return EXIT_IDENTITY_REFUSED, f"Cannot start: {error}"
+    if error.kind == "not_set_up":
+        return EXIT_NOT_SET_UP, (
+            f"Cannot start: the agent has no usable identity. {error} "
+            "(needs COGNITO_DOMAIN, COGNITO_AGENT_CLIENT_ID and COGNITO_AGENT_CLIENT_SECRET in agent/.env)"
+        )
+    if error.kind == "unreachable":
+        return EXIT_UNREACHABLE, f"Cannot reach Cognito or the broker: {error}"
+    return EXIT_STOPPED, f"Stopping: {error} The session was revoked, ended or expired."
 
 
 def unanswered(messages: list[dict[str, Any]]) -> list[str]:
@@ -63,8 +129,14 @@ def serve_chat(
     out: Callable[[str], None] = print,
     sleep: Callable[[float], None] = time.sleep,
 ) -> int:
-    """Answer chat messages until the session is revoked. Returns the exit code (3: stopped)."""
+    """Answer chat messages until the session is revoked. Returns the exit code.
+
+    Every failure ends with a reason: in the chat when the agent can still post (staff words, plus a
+    short technical detail only admins see), and always in the terminal. EXIT_* codes above tell the
+    console's supervisor which message to post when the agent couldn't.
+    """
     history: list[Any] = []
+    token: str | None = None
     try:
         token, minted = get_token(), time.monotonic()
         messages, cursor = channel.fetch(token, None)
@@ -83,6 +155,19 @@ def serve_chat(
                 token, minted = get_token(), time.monotonic()
             messages, cursor = channel.fetch(token, cursor)
             pending = [m["text"] for m in messages if m["role"] == "user"]
-    except (ChatClosed, BrokerError) as closed:
-        out(f"Stopping: {closed}. The session was revoked or has ended.")
+    except ChatClosed as closed:
+        out(f"Stopping: {closed}. The session was revoked, or the staffer was offboarded.")
         return EXIT_STOPPED
+    except BrokerError as error:
+        code, line = _broker_failure(error)
+        out(line)
+        return code
+    except Exception as error:  # Bedrock, AWS credentials, the gateway: say so instead of dying silently
+        text, detail = explain(error)
+        out(f"{text} [{detail}]")
+        if token is not None:
+            try:
+                channel.post(token, text, detail)
+            except Exception as post_error:  # the gateway itself may be what failed
+                out(f"Could not post that to the chat either ({type(post_error).__name__}).")
+        return EXIT_FAILED

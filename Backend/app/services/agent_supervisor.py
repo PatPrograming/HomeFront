@@ -36,6 +36,8 @@ REPO = Path(__file__).resolve().parents[3]
 AGENT_PYTHON = REPO / "agent" / ".venv" / "bin" / "python"
 AGENT_ENV_FILE = REPO / "agent" / ".env"
 MAX_STARTS_PER_SESSION = 3
+RETRY_COOLDOWN_SECONDS = 60  # Try again: at most once a minute per conversation
+MAX_RETRIES_PER_SESSION = 3  # ... and at most 3 times, so the cap still stops a restart loop
 MAX_RUNNING_PER_STAFFER = 3  # open conversations with a live agent at once
 SWEEP_SECONDS = 15
 STOP_GRACE_SECONDS = 5
@@ -52,7 +54,20 @@ CHILD_ENV_KEYS = (
 
 
 class AgentStartError(Exception):
-    """The agent could not be started; the message says why, for the staffer."""
+    """The agent could not be started; the message says why, for the staffer.
+
+    `code` names the case the console can act on (agent_start_cap, agent_not_set_up), with `actions`
+    such as "retry" (Try again) and "new_conversation".
+    """
+
+    def __init__(self, message: str, code: str | None = None, actions: tuple[str, ...] = ()):
+        super().__init__(message)
+        self.code = code
+        self.actions = list(actions)
+
+
+class RetryRefused(Exception):
+    """Try again was pressed too soon, or too often for one conversation."""
 
 
 class Proc(Protocol):
@@ -95,8 +110,12 @@ class AgentSupervisor:
         launcher: Callable[[str], Proc] | None = None,
         max_starts: int = MAX_STARTS_PER_SESSION,
         max_running_per_staffer: int = MAX_RUNNING_PER_STAFFER,
+        on_exit: Callable[[str, int | None], None] | None = None,
     ):
         self._launch = launcher or launch
+        self._on_exit = on_exit  # explains an exit in the chat (app.services.agent_failures.report_exit)
+        self._blocked: dict[str, str] = {}  # sid -> why restarting can't help until someone presses Try again
+        self._retries: dict[str, list[float]] = {}
         self._max_starts = max_starts
         self._max_running = max_running_per_staffer
         self._running: dict[str, _Running] = {}
@@ -110,8 +129,9 @@ class AgentSupervisor:
             if current and current.proc.poll() is None:
                 return "running"
             if current:
-                log.info("agent exited sid=%s pid=%s code=%s", sid, current.proc.pid, current.proc.poll())
-                del self._running[sid]
+                self._reap(sid, current)
+            if sid in self._blocked:
+                raise AgentStartError(self._blocked[sid], "agent_not_set_up", ("retry",))
             if time.time() >= ends_at:
                 raise AgentStartError("this session has expired; start a new conversation")
             starts = self._starts.get(sid, 0)
@@ -121,7 +141,12 @@ class AgentSupervisor:
                     f"too many conversations running ({running}); wait for one to finish or end, then try again"
                 )
             if starts >= self._max_starts:
-                raise AgentStartError(f"it stopped {starts} times in this session, so it is not restarted again")
+                raise AgentStartError(
+                    f"it stopped {starts} times in this conversation. Press Try again to restart it, "
+                    "or start a new conversation.",
+                    "agent_start_cap",
+                    ("retry", "new_conversation"),
+                )
             try:
                 proc = self._launch(sid)
             except OSError as error:  # e.g. the agent's python is missing
@@ -131,6 +156,37 @@ class AgentSupervisor:
             log.info("agent started sid=%s pid=%s for=%s (start %d of %d)",
                      sid, proc.pid, staffer_id, starts + 1, self._max_starts)
             return "started"
+
+    def _reap(self, sid: str, running: _Running) -> None:
+        """A process that exited by itself: forget it, and let the chat say why (once). Lock held."""
+        code = running.proc.poll()
+        self._running.pop(sid, None)
+        log.info("agent exited sid=%s pid=%s code=%s", sid, running.proc.pid, code)
+        from app.services.agent_failures import BLOCKING
+
+        if code in BLOCKING:
+            self._blocked[sid] = BLOCKING[code]
+        if self._on_exit:
+            try:
+                self._on_exit(sid, code)
+            except Exception:  # explaining must never break the supervisor
+                log.exception("could not report the exit of sid=%s", sid)
+
+    def retry(self, sid: str, staffer_id: str, ends_at: float) -> tuple[str, int]:
+        """Try again: clear the start count and any block, then start. Rate-limited and audited."""
+        now = time.time()
+        with self._lock:
+            done = self._retries.setdefault(sid, [])
+            if len(done) >= MAX_RETRIES_PER_SESSION:
+                raise RetryRefused("Try again was used 3 times in this conversation. Start a new conversation.")
+            if done and now - done[-1] < RETRY_COOLDOWN_SECONDS:
+                raise RetryRefused(f"Please wait {int(RETRY_COOLDOWN_SECONDS - (now - done[-1])) + 1} s before trying again.")
+            done.append(now)
+            self._starts.pop(sid, None)
+            self._blocked.pop(sid, None)
+            log.info("audit: agent retry sid=%s by=%s (reset %d of %d)", sid, staffer_id, len(done), MAX_RETRIES_PER_SESSION)
+            left = MAX_RETRIES_PER_SESSION - len(done)
+        return self.ensure_running(sid, staffer_id, ends_at), left
 
     def stop(self, sid: str, reason: str) -> None:
         with self._lock:
@@ -161,6 +217,9 @@ class AgentSupervisor:
         """Stop agents whose session ended, was revoked, or whose staffer is no longer active."""
         now = time.time()
         with self._lock:
+            for sid, r in list(self._running.items()):
+                if r.proc.poll() is not None:
+                    self._reap(sid, r)  # exited by itself: say why in the chat now, not at the next message
             running = list(self._running.items())
         for sid, r in running:
             if now >= r.ends_at:
@@ -177,7 +236,11 @@ _configured = False
 
 def from_env() -> AgentSupervisor | None:
     flag = os.environ.get("HOMEFRONT_AUTOSTART_AGENT", "").strip().lower()
-    return AgentSupervisor() if flag in {"1", "true", "yes", "on"} else None
+    if flag not in {"1", "true", "yes", "on"}:
+        return None
+    from app.services.agent_failures import report_exit
+
+    return AgentSupervisor(on_exit=report_exit)
 
 
 def get_supervisor() -> AgentSupervisor | None:

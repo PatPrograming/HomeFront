@@ -99,6 +99,7 @@ class Gateway:
             raise
 
         resource: str | None = None
+        stage = "checks"  # which step failed, if one does: names the real cause in the DENY event
         try:
             spec = TOOLS[tool]  # unknown tool -> KeyError -> DENY
             params = spec.input_model.model_validate(args)  # drops extra keys such as `office`
@@ -136,7 +137,9 @@ class Gateway:
             )
 
             # 4. Ask Verified Permissions.
+            stage = "permission"
             decision = self.authorizer.is_authorized(request)
+            stage = "tool"
             if not decision.allowed:
                 return self._record(claims, tool, resource, "DENY", "denied by policy", decision.policy_ids)
 
@@ -164,9 +167,9 @@ class Gateway:
 
             # 7. Audit, then hand the result back.
             return self._record(claims, tool, resource, "ALLOW", "allowed", decision.policy_ids, flag, result)
-        except Exception:
+        except Exception as error:
             log.exception("guarded(%s) failed; denying", tool)
-            return self._record(claims, tool, resource, "DENY", "denied by policy")
+            return self._record(claims, tool, resource, "DENY", failure_reason(error, stage))
 
     def send_draft(self, draft_id: str, draft: DraftItem, text: dict[str, str]) -> Outcome:
         """The staffer approved a held draft, maybe with new wording. Check it again, then send it.
@@ -318,6 +321,40 @@ class Gateway:
                 event = event.model_copy(update={"decision": "DENY", "reason": "denied by policy", "atlas": self._atlas(tool, "DENY", flag)})
                 return Outcome(event)
         return Outcome(event, result if decision == "ALLOW" else None)
+
+
+EXPIRED_CODES = {"ExpiredToken", "ExpiredTokenException", "UnrecognizedClientException", "InvalidClientTokenId",
+                 "RequestExpired", "InvalidSignatureException"}
+UNAVAILABLE_CODES = {"ThrottlingException", "ServiceUnavailableException", "InternalServerException",
+                     "RequestTimeout", "TooManyRequestsException"}
+
+
+def failure_reason(error: Exception, stage: str) -> Reason:
+    """Why a check could not run, for the DENY event. Fail closed either way; only the label differs.
+
+    A Cedar "no" is recorded where it happens ("denied by policy"); this is for exceptions, which used
+    to be recorded as "denied by policy" too, so expired AWS credentials looked like a forbid.
+    """
+    chain, seen = [], error
+    while seen is not None and len(chain) < 5:
+        chain.append(seen)
+        seen = seen.__cause__ or seen.__context__
+    for e in chain:
+        name = type(e).__name__
+        response = getattr(e, "response", None)
+        code = response.get("Error", {}).get("Code", "") if isinstance(response, dict) else ""
+        if name in {"NoCredentialsError", "PartialCredentialsError", "CredentialRetrievalError"} or code in EXPIRED_CODES:
+            return "AWS credentials expired on the server"
+        if code in {"AccessDeniedException", "AccessDenied", "UnauthorizedOperation"}:
+            return "server lacks AWS permission"
+        if stage == "permission" and (
+            code in UNAVAILABLE_CODES or isinstance(e, TimeoutError) or name in {"EndpointConnectionError",
+                                                                                  "ConnectTimeoutError", "ReadTimeoutError"}
+        ):
+            return "permission service unavailable"
+    if stage == "checks" and isinstance(error, (KeyError, ValueError)):
+        return "denied by policy"  # an unknown tool or invalid input: the caller's request, not the server
+    return "server error (failed closed)"
 
 
 def _resource_label(tool: str, params: Any) -> str | None:
