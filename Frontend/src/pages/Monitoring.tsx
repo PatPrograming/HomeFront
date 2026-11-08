@@ -1,24 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
+import StorageStatus from "../components/StorageStatus/StorageStatus";
 import { api, ApiError } from "../lib/api.js";
+import {
+  describeError,
+  kindLabel,
+  typeAllows,
+  type Agent,
+  type AgentType,
+  type Tool,
+} from "../lib/agents";
+import "./Agents.css";
 import "./Monitoring.css";
 
 const DEMO_AGENT = "agent-comms-01";
-
-interface Agent {
-  agent_id: string;
-  name: string;
-  agency: string;
-  token_version: number | string;
-  tool_grants: string[];
-}
-
-interface Tool {
-  name: string;
-  description: string;
-  risk_level: string;
-  atlas_techniques?: string[];
-}
 
 interface AtlasEntry {
   id: string;
@@ -44,6 +40,7 @@ interface Flash {
   kind: "ok" | "deny" | "info";
   title: string;
   body: string;
+  link?: { to: string; label: string };
   technique_ids?: string[];
   mitigation_ids?: string[];
 }
@@ -51,29 +48,48 @@ interface Flash {
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export default function Monitoring() {
+  const [params, setParams] = useSearchParams();
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [types, setTypes] = useState<AgentType[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [matrix, setMatrix] = useState<Matrix | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  // Trace id of the current token's calls in the activity log.
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [flash, setFlash] = useState<Flash | null>(null);
   const [busy, setBusy] = useState(false);
   const [lastResult, setLastResult] = useState<unknown>(null);
   const [atlasVersion, setAtlasVersion] = useState("");
 
+  // ?agent=<id> picks the agent; otherwise the shared demo agent.
+  const selectedId = params.get("agent") || DEMO_AGENT;
   const agent = useMemo(
-    () => agents.find((a) => a.agent_id === DEMO_AGENT) || agents[0],
-    [agents],
+    () =>
+      agents.find((a) => a.agent_id === selectedId) ||
+      agents.find((a) => a.agent_id === DEMO_AGENT) ||
+      agents[0],
+    [agents, selectedId],
   );
+  const agentType = useMemo(() => types.find((t) => t.kind === agent?.kind), [types, agent?.kind]);
+
+  // A workload token belongs to one agent: drop it when switching agents.
+  useEffect(() => {
+    setToken(null);
+    setSessionId(null);
+    setLastResult(null);
+  }, [agent?.agent_id]);
 
   const refresh = useCallback(async () => {
-    const [a, t, au, m] = await Promise.all([
+    const [a, ty, t, au, m] = await Promise.all([
       api.agents(),
+      api.agentTypes(),
       api.tools(),
       api.audit(),
       api.matrix(),
     ]);
     setAgents(a);
+    setTypes(ty);
     setTools(t);
     setAudit(au);
     setMatrix(m);
@@ -101,6 +117,7 @@ export default function Monitoring() {
     try {
       const res = await api.mintAgentToken(agent.agent_id);
       setToken(res.access_token);
+      setSessionId(res.session_id || null);
       setFlash({
         kind: "ok",
         title: "Agent authenticated",
@@ -109,7 +126,7 @@ export default function Monitoring() {
       });
       await refresh();
     } catch (e) {
-      setFlash({ kind: "deny", title: "Auth failed", body: errText(e) });
+      setFlash({ kind: "deny", title: "Auth failed", body: describeError(e, types) });
     } finally {
       setBusy(false);
     }
@@ -128,6 +145,17 @@ export default function Monitoring() {
     try {
       const res = await api.callTool(token, tool, args);
       setLastResult(res.result);
+      if (res.decision === "pending_approval") {
+        setFlash({
+          kind: "info",
+          title: `${tool} is waiting for approval`,
+          body: "Nothing was sent. A person has to approve it first; edits are allowed.",
+          mitigation_ids: res.atlas?.mitigation_ids,
+          link: { to: "/approvals", label: "Review on the Approvals page" },
+        });
+        await refresh();
+        return;
+      }
       setFlash({
         kind: "ok",
         title: `Allowed ${tool}`,
@@ -145,7 +173,10 @@ export default function Monitoring() {
       setLastResult(detail ?? { error: errText(e) });
       setFlash({
         kind: "deny",
-        title: atlas?.message || `Denied ${tool}`,
+        title:
+          atlas?.error === "tool_not_allowed_for_kind"
+            ? describeError(e, types)
+            : atlas?.message || `Denied ${tool}`,
         body: atlas?.atlas?.narrative || errText(e) || "Request blocked",
         technique_ids: atlas?.atlas?.technique_ids || atlas?.technique_ids,
         mitigation_ids: atlas?.atlas?.mitigation_ids || atlas?.mitigation_ids,
@@ -170,7 +201,7 @@ export default function Monitoring() {
       });
       await refresh();
     } catch (e) {
-      setFlash({ kind: "deny", title: "Revoke failed", body: errText(e) });
+      setFlash({ kind: "deny", title: "Revoke failed", body: describeError(e, types) });
     } finally {
       setBusy(false);
     }
@@ -189,7 +220,7 @@ export default function Monitoring() {
       });
       await refresh();
     } catch (e) {
-      setFlash({ kind: "deny", title: "Restore failed", body: errText(e) });
+      setFlash({ kind: "deny", title: "Restore failed", body: describeError(e, types) });
     } finally {
       setBusy(false);
     }
@@ -212,13 +243,22 @@ export default function Monitoring() {
               <span className={`pill ${token ? "on" : ""}`}>
                 {token ? "Token live" : "Unauthenticated"}
               </span>
+              <StorageStatus compact />
             </div>
           </header>
 
           {flash && (
             <div className={`flash flash-${flash.kind}`} role="status">
               <strong>{flash.title}</strong>
-              <p>{flash.body}</p>
+              <p>
+                {flash.body}
+                {flash.link && (
+                  <>
+                    {" "}
+                    <Link to={flash.link.to}>{flash.link.label}</Link>
+                  </>
+                )}
+              </p>
               <div className="id-row">
                 {(flash.technique_ids || []).map((id) => (
                   <code key={id} className="tech">
@@ -239,7 +279,30 @@ export default function Monitoring() {
               <h2>Workload identity</h2>
               {agent ? (
                 <>
+                  <div className="agent-picker">
+                    <label htmlFor="agent-select">Agent</label>
+                    <select
+                      id="agent-select"
+                      value={agent.agent_id}
+                      onChange={(e) => setParams({ agent: e.target.value })}
+                    >
+                      {agents.map((a) => (
+                        <option key={a.agent_id} value={a.agent_id}>
+                          {a.name} · {kindLabel(types, a.kind)}
+                        </option>
+                      ))}
+                    </select>
+                    <Link to="/agents/new">New agent</Link>
+                  </div>
                   <dl>
+                    <div>
+                      <dt>Type</dt>
+                      <dd>
+                        <span className={`kind-badge kind-${agent.kind}`}>
+                          {kindLabel(types, agent.kind)}
+                        </span>
+                      </dd>
+                    </div>
                     <div>
                       <dt>Agent</dt>
                       <dd>{agent.name}</dd>
@@ -266,6 +329,7 @@ export default function Monitoring() {
                   <ul className="grants">
                     {tools.map((t) => {
                       const granted = agent.tool_grants.includes(t.name);
+                      const allowed = typeAllows(agentType, t.name);
                       return (
                         <li key={t.name}>
                           <div>
@@ -282,9 +346,13 @@ export default function Monitoring() {
                           </div>
                           <div className="grant-actions">
                             <span className={granted ? "yes" : "no"}>
-                              {granted ? "granted" : "revoked"}
+                              {granted ? "granted" : allowed ? "revoked" : "not allowed"}
                             </span>
-                            {granted ? (
+                            {!allowed && !granted ? (
+                              <span className="locked" title={`Outside the ${agentType?.label ?? agent.kind} type`}>
+                                Locked by type
+                              </span>
+                            ) : granted ? (
                               <button type="button" disabled={busy} onClick={() => revoke(t.name)}>
                                 Revoke
                               </button>
@@ -307,8 +375,8 @@ export default function Monitoring() {
             <section className="panel actions">
               <h2>Agent task (MCP calls)</h2>
               <p className="hint">
-                Demo path: scrape → datagov → email → revoke <code>email.send</code> → retry (blocked as{" "}
-                <code>AML.T0053</code>).
+                Demo path: scrape → datagov → email (held for <Link to="/approvals">approval</Link>,{" "}
+                <code>AML.M0029</code>) → revoke <code>email.send</code> → retry (blocked as <code>AML.T0053</code>).
               </p>
               <div className="action-row">
                 <button
@@ -391,7 +459,17 @@ export default function Monitoring() {
             </aside>
 
             <section className="panel audit">
-              <h2>Audit stream · AML.M0024</h2>
+              <div className="audit-title">
+                <h2>Audit stream · AML.M0024</h2>
+                <div className="audit-links">
+                  {sessionId && (
+                    <Link to={`/activity?trace=${encodeURIComponent(sessionId)}`}>Trace this session</Link>
+                  )}
+                  {agent && (
+                    <Link to={`/activity?agent=${encodeURIComponent(agent.agent_id)}`}>Full activity log</Link>
+                  )}
+                </div>
+              </div>
               <ul className="audit-list">
                 {audit.map((ev) => (
                   <li key={ev.id} className={`dec-${ev.decision}`}>
