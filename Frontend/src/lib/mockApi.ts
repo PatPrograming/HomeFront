@@ -1,7 +1,8 @@
-// Fake backend for mock mode (VITE_MOCK_API=1, dev server only). It answers the same three routes as
+// Fake backend for mock mode (VITE_MOCK_API=1, dev server only). It answers the same routes as
 // lane A/B's API so the whole demo can be clicked through without a server:
 //   GET  /me                   → { username, sub, email, groups } of the demo user
 //   POST /sessions             → a fake identity card, then a scripted agent run (one event every 2 s)
+//   GET  /sessions/{sid}       → { sid, status, actingFor, office, expiresAt }; own sessions, or any for an admin
 //   GET  /events?since=<key>   → contract sample events + the generated ones, same cursor rules
 //   POST /staff/{id}/offboard  → admin only; the agent's next call becomes a DENY and the run stops
 // State lives in localStorage so a Maya tab and a Chief of Staff tab see the same fake world.
@@ -163,10 +164,16 @@ export async function mockRequest(method: string, path: string, _body: unknown, 
       office: OFFICE,
       mode: "official",
       allowedTools: TOOL_NAMES.filter((t) => t !== "records_bulk_export"),
-      expiresAt: new Date(now + 15 * 60 * 1000).toISOString(),
+      expiresAt: new Date(now + 60 * 60 * 1000).toISOString(), // a session lasts one hour, like the real one
     };
     state.sessions[sid] = { ...card, startedAt: now, step: 0, stopped: false };
     result = card;
+  } else if (method === "GET" && /^\/sessions\/[^/]+$/.test(url.pathname)) {
+    const s = state.sessions[decodeURIComponent(url.pathname.split("/")[2])];
+    if (!s || (s.actingFor !== user.username && !user.groups.includes("admin"))) throw new MockError(404, "Unknown session");
+    // Offboarding marks the staffer, so every session acting for them reads as revoked (as on the server).
+    const status = state.offboarded[s.actingFor] ? "revoked" : "active";
+    result = { sid: s.sid, status, actingFor: s.actingFor, office: s.office, expiresAt: s.expiresAt };
   } else if (method === "GET" && url.pathname === "/events") {
     advance(state, now);
     const since = url.searchParams.get("since");

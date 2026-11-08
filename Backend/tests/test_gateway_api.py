@@ -122,6 +122,7 @@ def bearer(token):
     [
         ("post", "/api/v1/sessions"),
         ("post", "/api/v1/sessions/some-sid/mandate"),
+        ("get", "/api/v1/sessions/some-sid"),
         ("post", "/api/v1/staff/maya/offboard"),
         ("get", "/api/v1/events"),
     ],
@@ -184,6 +185,50 @@ def test_inactive_or_unknown_staffer_cannot_open_a_session(client, store, userna
     as_staff(StaffIdentity(username, "sub", None, frozenset({"staffer"})))
     r = client.post("/api/v1/sessions", json={})
     assert r.status_code == 403
+
+
+# ---- GET /sessions/{sid} ---------------------------------------------------
+
+
+def test_owner_reads_their_active_session(client):
+    sess = new_session(client)
+    r = client.get(f"/api/v1/sessions/{sess['sid']}")
+    assert r.status_code == 200
+    assert r.json() == {
+        "sid": sess["sid"], "status": "active", "actingFor": "maya", "office": "rep-x", "expiresAt": sess["expiresAt"],
+    }
+
+
+def test_another_staffer_cannot_read_the_session(client):
+    sess = new_session(client)
+    as_staff(StaffIdentity("dana", "sub-dana", "dana@example.gov", frozenset({"staffer"})))
+    assert client.get(f"/api/v1/sessions/{sess['sid']}").status_code == 404
+
+
+def test_admin_can_read_any_session(client):
+    sess = new_session(client)
+    as_staff(CHIEF)
+    r = client.get(f"/api/v1/sessions/{sess['sid']}")
+    assert r.status_code == 200 and r.json()["actingFor"] == "maya"
+
+
+def test_unknown_session_is_404(client):
+    as_staff()
+    assert client.get("/api/v1/sessions/does-not-exist").status_code == 404
+
+
+def test_session_reads_revoked_after_offboarding(client):
+    sess = new_session(client)
+    as_admin()
+    assert client.post("/api/v1/staff/maya/offboard", json={}).status_code == 200
+    r = client.get(f"/api/v1/sessions/{sess['sid']}")
+    assert r.status_code == 200 and r.json()["status"] == "revoked"
+
+
+def test_session_reads_revoked_when_only_the_staffer_is_inactive(client, store):
+    sess = new_session(client)
+    store.set_staffer_active("maya", False)  # sessions not revoked: the inactive staffer alone ends it
+    assert client.get(f"/api/v1/sessions/{sess['sid']}").json()["status"] == "revoked"
 
 
 # ---- POST /sessions/{sid}/mandate ----------------------------------------

@@ -1,4 +1,5 @@
 """Broker (WP2): a staffer starts a session, then the agent picks up its mandate token.
+The console reads a session's status back to show when it was revoked.
 
 Two different credentials are needed before any mandate token exists:
 1. `POST /sessions` needs the staffer's Cognito login.
@@ -68,6 +69,25 @@ def create_session(staff: StaffIdentity = Depends(require_staff)) -> dict:
         "mode": session.mode,
         "allowedTools": ALLOWED_TOOLS,
         "expiresAt": _iso(now + SESSION_TTL_SECONDS),
+    }
+
+
+@router.get("/sessions/{sid}")
+def read_session(sid: str, staff: StaffIdentity = Depends(require_staff)) -> dict:
+    """The session's own staffer, or an admin, sees its status. Anyone else gets 404, as if it did not exist."""
+    store = get_gateway().store
+    session = store.get_session(sid)
+    if session is None or (session.acting_for != staff.username and "admin" not in staff.groups):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown session")
+    staffer = store.get_staffer(session.acting_for)
+    # Same rule as the gateway: an inactive or missing staffer means the session is over.
+    active = session.status == "active" and staffer is not None and staffer.active
+    return {
+        "sid": sid,
+        "status": "active" if active else "revoked",
+        "actingFor": session.acting_for,
+        "office": session.office,
+        "expiresAt": _iso(int(_created_epoch(session.created_at)) + SESSION_TTL_SECONDS),
     }
 
 

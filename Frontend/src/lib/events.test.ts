@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DecisionEvent } from "../../../packages/mandate-contracts/ts/index";
 import sampleEvents from "../../../packages/mandate-contracts/samples/events.json";
-import { eventKey, eventsPath, mergeEvents, nextCursor } from "./events";
+import { eventKey, eventsPath, mergeEvents, nextCursor, sessionEvents } from "./events";
 
 const samples = sampleEvents as DecisionEvent[];
 const ev = (id: string, ts: string): DecisionEvent => ({ ...samples[0], id, ts });
@@ -44,5 +44,17 @@ describe("eventsPath", () => {
   it("omits since on the first poll and encodes it afterwards", () => {
     expect(eventsPath(null)).toBe("/events");
     expect(eventsPath("2026-11-07T20:00:00Z#a b")).toBe("/events?since=2026-11-07T20%3A00%3A00Z%23a%20b");
+  });
+});
+
+describe("sessionEvents", () => {
+  const mine = { ...ev("a", "2026-11-07T20:00:01Z"), sid: "sid-mine" };
+  const other = { ...ev("b", "2026-11-07T20:00:02Z"), sid: "sid-other" };
+
+  it("keeps only the current session's events", () => {
+    expect(sessionEvents([other, mine], "sid-mine")).toEqual([mine]);
+  });
+  it("shows nothing before a session exists", () => {
+    expect(sessionEvents([other, mine], null)).toEqual([]);
   });
 });

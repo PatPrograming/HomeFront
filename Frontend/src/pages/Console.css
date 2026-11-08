@@ -208,6 +208,12 @@
   grid-column: 1 / -1;
 }
 
+.facts .sid-revoked {
+  color: var(--ink-soft);
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
 .facts .sid dd {
   display: flex;
   align-items: center;

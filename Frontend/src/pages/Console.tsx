@@ -4,7 +4,9 @@ import EventFeed, { FeedSummary } from "../components/EventFeed";
 import IdentityCard from "../components/IdentityCard";
 import { api, type SessionCard } from "../lib/api";
 import { useSession } from "../lib/AuthProvider";
+import { sessionEvents } from "../lib/events";
 import { useEventFeed } from "../lib/useEventFeed";
+import { useSessionRevoked } from "../lib/useSessionRevoked";
 import "./Console.css";
 
 const CARD_KEY = "mandate.card"; // the running session's card, so a reload keeps the sid on screen
@@ -20,14 +22,15 @@ function loadCard(username: string): SessionCard | null {
   }
 }
 
-// Staff view: start the assistant (demo step 1), then watch every ALLOW / DENY it gets (steps 2 and 4).
+// Staff view: start the assistant (demo step 1), then watch every ALLOW / DENY this session gets (steps 2 and 4).
 export default function Console() {
   const session = useSession();
   const [card, setCard] = useState<SessionCard | null>(() => loadCard(session.username));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const feed = useEventFeed({ limit: 100 });
-  const revoked = card !== null && feed.events.some((e) => e.sid === card.sid && e.reason === REVOKED);
+  const events = sessionEvents(feed.events, card?.sid ?? null); // the admin Audit log shows every session
+  const revoked = useSessionRevoked(card?.sid ?? null) || events.some((e) => e.reason === REVOKED);
 
   async function start() {
     setBusy(true);
@@ -81,8 +84,15 @@ export default function Console() {
               {feed.error ? `Reconnecting: ${feed.error.message}` : feed.lastPollAt ? "Live, every second" : "Connecting…"}
             </p>
           </div>
-          <FeedSummary events={feed.events} />
-          <EventFeed events={feed.events} emptyText="No tool calls yet. They appear here within a second." />
+          <FeedSummary events={events} />
+          <EventFeed
+            events={events}
+            emptyText={
+              card
+                ? "No tool calls yet. They appear here within a second."
+                : "No assistant running. Its tool calls appear here once you start it."
+            }
+          />
         </section>
       </div>
     </Layout>

@@ -8,12 +8,14 @@ export function expiryMs(expiresAt: string | number): number {
   return Date.parse(expiresAt);
 }
 
-function useNow(intervalMs = 1000): number {
+// The current time, ticking every second until `paused` (a revoked session's countdown stops).
+function useNow(paused: boolean, intervalMs = 1000): number {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
+    if (paused) return;
     const id = window.setInterval(() => setNow(Date.now()), intervalMs);
     return () => window.clearInterval(id);
-  }, [intervalMs]);
+  }, [paused, intervalMs]);
   return now;
 }
 
@@ -22,10 +24,11 @@ function countdown(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-// The agent's delegated identity, as returned by POST /api/v1/sessions.
-// `revoked` is true once the feed shows this session's call denied as revoked (step 4 of the demo).
+// The agent's delegated identity, as returned by POST /api/v1/sessions. The countdown is the session's
+// one-hour lifetime (mandate tokens inside it last 15 minutes each).
+// `revoked` is true once GET /sessions/{sid} says revoked, or the feed shows a "session revoked" DENY.
 export default function IdentityCard({ card, revoked }: { card: SessionCard; revoked: boolean }) {
-  const now = useNow();
+  const now = useNow(revoked);
   const [copied, setCopied] = useState(false);
   const left = expiryMs(card.expiresAt) - now;
   const blocked = TOOL_NAMES.filter((t) => !card.allowedTools.includes(t));
@@ -41,20 +44,20 @@ export default function IdentityCard({ card, revoked }: { card: SessionCard; rev
   }
 
   return (
-    <section className="panel identity" aria-labelledby="identity-title">
+    <section className={`panel identity${revoked ? " is-revoked" : ""}`} aria-labelledby="identity-title">
       <div className="panel-head">
         <h2 id="identity-title">
           <code>{card.agent}</code> is acting for <strong>{card.actingFor}</strong>
         </h2>
-        <p className={`expiry ${left <= 0 || revoked ? "deny-text" : ""}`} aria-live="off">
+        <p className={`expiry ${left <= 0 || revoked ? "deny-text" : ""}`} aria-live={revoked ? "polite" : "off"}>
           {revoked ? (
-            <strong>Mandate revoked: access cut</strong>
+            <strong>Revoked: access was removed by the Chief of Staff</strong>
           ) : left > 0 ? (
             <>
-              Mandate expires in <strong className="figure">{countdown(left)}</strong>
+              Session expires in <strong className="figure">{countdown(left)}</strong>
             </>
           ) : (
-            <strong>Mandate expired</strong>
+            <strong>Session expired</strong>
           )}
         </p>
       </div>
@@ -68,9 +71,9 @@ export default function IdentityCard({ card, revoked }: { card: SessionCard; rev
           <dd>{card.mode}</dd>
         </div>
         <div className="sid">
-          <dt>Session id (give this to the agent)</dt>
+          <dt>{revoked ? "Session id (revoked, no longer valid)" : "Session id (give this to the agent)"}</dt>
           <dd>
-            <code>{card.sid}</code>
+            <code className={revoked ? "sid-revoked" : undefined}>{card.sid}</code>
             <button type="button" className="icon-btn" onClick={copySid} aria-label="Copy session id">
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                 <rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />

@@ -35,6 +35,11 @@ export function mergeEvents(
     .slice(0, limit);
 }
 
+// The staff console shows only the current session's calls; with no session, nothing.
+export function sessionEvents(events: DecisionEvent[], sid: string | null): DecisionEvent[] {
+  return sid ? events.filter((e) => e.sid === sid) : [];
+}
+
 export function eventsPath(cursor?: string | null): string {
   return cursor ? `/events?since=${encodeURIComponent(cursor)}` : "/events";
 }

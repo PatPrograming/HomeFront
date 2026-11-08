@@ -29,6 +29,15 @@ export interface SessionCard {
   expiresAt: string | number;
 }
 
+/** GET /sessions/{sid}: the session's live status, so the card can show a revocation. */
+export interface SessionStatus {
+  sid: string;
+  status: "active" | "revoked";
+  actingFor: string;
+  office: string;
+  expiresAt: string | number;
+}
+
 /** POST /staff/{id}/offboard */
 export interface OffboardResult {
   staffer: string;
@@ -106,6 +115,7 @@ export const api = {
 
   // HomeFront console (lane B contract, docs/LANES.md)
   startSession: () => request<SessionCard>("/sessions", { method: "POST", body: {} }),
+  sessionStatus: (sid: string) => request<SessionStatus>(`/sessions/${encodeURIComponent(sid)}`),
   events: (cursor?: string | null) => request<EventPage>(eventsPath(cursor)),
   offboard: (stafferId: string) =>
     request<OffboardResult>(`/staff/${encodeURIComponent(stafferId)}/offboard`, { method: "POST", body: {} }),
