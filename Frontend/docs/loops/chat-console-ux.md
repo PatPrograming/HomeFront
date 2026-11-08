@@ -53,9 +53,9 @@ Tests first: `ConsoleRoles.test.tsx`, `AgentActivity.test.tsx`, `agentActivity.t
 
 | # | Task | Role | Files it may touch | Done when | Depends on | Status |
 |---|------|------|--------------------|-----------|------------|--------|
-| 1 | Failing tests | lead | the three test files | C1–C3 fail for the right reason | — | todo |
-| 2 | Activity lib + disclosure | lead | agentActivity.ts, AgentActivity.tsx | C2 | 1 | todo |
-| 3 | Role gate + layout | lead | Console.tsx, ChatPanel.tsx, IdentityLine.tsx, Console.css, Console.test.tsx | C1, C3, C4 | 2 | todo |
+| 1 | Failing tests | lead | the three test files | C1–C3 fail for the right reason | — | done |
+| 2 | Activity lib + disclosure | lead | agentActivity.ts, AgentActivity.tsx | C2 | 1 | done |
+| 3 | Role gate + layout | lead | Console.tsx, ChatPanel.tsx, IdentityLine.tsx, Console.css, Console.test.tsx | C1, C3, C4 | 2 | done |
 
 ## Rounds
 
