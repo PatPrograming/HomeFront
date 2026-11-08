@@ -78,6 +78,13 @@ describe("ChatPanel: Connect prompt under assistant messages", () => {
     expect(out).not.toMatch(/Connect (Gmail|X)/);
   });
 
+  it.each(["__proto__", "toString", "constructor"])("renders the reply and no Connect button for the inherited name %s", (name) => {
+    const out = html([{ id: "a1", ts, role: "assistant", text: "Here is your answer.", connect: name as never }]);
+    expect(out).toContain("Here is your answer.");
+    expect(out).not.toContain("Nothing was sent");
+    expect(out).not.toContain("Connect ");
+  });
+
   it("ignores a connect field on a user message (assistant messages only)", () => {
     const out = html([{ id: "u1", ts, role: "user", text: "hello", connect: "gmail" }]);
     expect(out).not.toContain("Nothing was sent");

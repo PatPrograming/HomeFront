@@ -210,4 +210,20 @@ describe("ConnectCallback (/account/connected)", () => {
     expect(h.text()).not.toContain("HTTP 400");
     expect(h.links().map((a) => a.props.href)).toContain("/account");
   });
+
+  it("tells the person to tick every box on a 403 missing_permission, not that the link expired", async () => {
+    h.setRoutes({
+      "POST /api/v1/connections/callback": () => [
+        403,
+        { detail: "missing_permission: you signed in but did not allow sending on your behalf. Connect again and tick every box." },
+      ],
+    });
+    await open("?code=c&state=s");
+    expect(callbackPosts()).toHaveLength(1);
+    expect(h.text()).toMatch(/allow|tick|permission/i);
+    expect(h.text()).not.toMatch(/expired or invalid/i);
+    expect(h.text()).not.toContain("missing_permission");
+    expect(h.text()).not.toContain("HTTP 403");
+    expect(h.links().map((a) => a.props.href)).toContain("/account");
+  });
 });

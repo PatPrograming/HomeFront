@@ -1044,3 +1044,180 @@ def test_importing_connections_never_lowers_an_sdk_log_level(cx, sdk_logger, bef
     finally:
         sys.modules.pop(name, None)
         logger.setLevel(saved)
+
+
+# ==== round-2 review gaps (R1, R3, R4, R5) ====================================================
+
+
+def stored_tokens(svc, table, provider_id="gmail"):
+    return svc._decrypt("maya", provider_id, connection_item(table, "maya", provider_id))
+
+
+def _refresh_400(request):
+    if is_refresh(request):
+        return httpx.Response(400, json={"error": "invalid_grant"})
+
+
+def _new_tokens_on_exchange(request):
+    """Once a test flips the flag, the authorization-code exchange hands out NEW tokens."""
+    if str(request.url).split("?")[0] == GOOGLE_TOKEN and not is_refresh(request):
+        return httpx.Response(200, json=google_body(access_token="NEW-ACCESS", refresh_token="NEW-REFRESH"))
+
+
+# ---- R1: two parallel refreshes; the loser's 400 must not delete the winner's row ---------------
+
+
+def test_two_concurrent_refreshes_keep_the_winners_row_when_the_loser_400s_first(env, cx, staffers, provider, clock, kms_key, table):
+    holder = {}
+    fired = []
+
+    def a_handler(request):
+        if is_refresh(request) and not fired:
+            fired.append(True)
+            try:
+                holder["b"].require("maya", "gmail")  # B read the same stale row; the provider rejects B (400)
+            except (cx.NeedsConnection, cx.ProviderError):
+                pass
+
+    svc_a = build(cx, staffers, provider, clock, kms_key, a_handler)
+    holder["b"] = build(cx, staffers, provider, clock, kms_key, _refresh_400)
+    connect(svc_a)
+    clock.now += 3600
+    try:
+        svc_a.require("maya", "gmail")  # A's refresh answers 200 and then saves
+    except (cx.NeedsConnection, cx.ProviderError):
+        pass
+    assert connection_item(table) is not None, "the winner's refreshed row was deleted by the loser's 400"
+    assert stored_tokens(svc_a, table)["access_token"] == ACCESS_2
+    svc_a.send_gmail("maya", "jane@example.com", "Hi", "Body")
+    assert provider.to(GMAIL_SEND)[-1].headers["authorization"] == f"Bearer {ACCESS_2}"
+
+
+def test_two_concurrent_refreshes_keep_the_winners_row_when_the_winner_saves_first(env, cx, staffers, provider, clock, kms_key, table):
+    holder = {}
+    fired = []
+
+    def b_handler(request):
+        if is_refresh(request) and not fired:
+            fired.append(True)
+            holder["a"].require("maya", "gmail")  # A refreshes and saves while B waits on the provider
+            return httpx.Response(400, json={"error": "invalid_grant"})
+
+    svc_b = build(cx, staffers, provider, clock, kms_key, b_handler)
+    holder["a"] = build(cx, staffers, provider, clock, kms_key)
+    connect(svc_b)
+    clock.now += 3600
+    try:
+        svc_b.require("maya", "gmail")
+    except (cx.NeedsConnection, cx.ProviderError):
+        pass
+    assert connection_item(table) is not None
+    assert stored_tokens(svc_b, table)["access_token"] == ACCESS_2
+
+
+# ---- R3: a refresh save must not overwrite a newer connection -----------------------------------
+
+
+def test_refresh_save_does_not_overwrite_a_newer_connection(env, cx, staffers, provider, clock, kms_key, table):
+    holder = {}
+    state = {"reconnecting": False}
+
+    def reconnect_mid_refresh(request):
+        if is_refresh(request) and not state["reconnecting"]:
+            state["reconnecting"] = True
+            table.delete_item(Key={"pk": "CONNECTION#maya", "sk": "PROVIDER#gmail"})
+            clock.now += 1  # a later connected_at
+            connect(holder["svc"])
+        elif state["reconnecting"]:
+            return _new_tokens_on_exchange(request)
+
+    svc = holder["svc"] = build(cx, staffers, provider, clock, kms_key, reconnect_mid_refresh)
+    connect(svc)
+    clock.now += 3600 - 1
+    try:
+        svc.require("maya", "gmail")
+    except (cx.NeedsConnection, cx.ProviderError):
+        pass
+    tokens = stored_tokens(svc, table)
+    assert tokens["access_token"] == "NEW-ACCESS", "the stale refresh overwrote the newer connection"
+    assert tokens["refresh_token"] == "NEW-REFRESH"
+
+
+# ---- R4: a provider 401 must not delete a row that a reconnect replaced -------------------------
+
+
+def test_provider_401_keeps_a_row_replaced_by_a_reconnect(env, cx, staffers, provider, clock, kms_key, table):
+    holder = {}
+    state = {"replacing": False}
+
+    def replace_then_401(request):
+        if str(request.url).split("?")[0] == GMAIL_SEND:
+            state["replacing"] = True
+            table.delete_item(Key={"pk": "CONNECTION#maya", "sk": "PROVIDER#gmail"})
+            clock.now += 1
+            connect(holder["svc"])
+            return httpx.Response(401, json={"error": {"code": 401}})
+        if state["replacing"]:
+            return _new_tokens_on_exchange(request)
+
+    svc = holder["svc"] = build(cx, staffers, provider, clock, kms_key, replace_then_401)
+    connect(svc)
+    with pytest.raises(cx.NeedsConnection):
+        svc.send_gmail("maya", "jane@example.com", "Hi", "Body")
+    assert connection_item(table) is not None, "the 401 for the old token deleted the reconnected row"
+    assert stored_tokens(svc, table)["access_token"] == "NEW-ACCESS"
+
+
+# ---- R5: malformed provider responses are ProviderError, never a raw KeyError -------------------
+
+
+@pytest.mark.parametrize("missing", ["access_token", "expires_in"])
+def test_refresh_200_missing_a_field_is_provider_error_and_keeps_the_row(env, cx, staffers, provider, clock, kms_key, table, missing):
+    def bad_refresh(request):
+        if is_refresh(request):
+            body = {"access_token": ACCESS_2, "expires_in": 3600}
+            del body[missing]
+            return httpx.Response(200, json=body)
+
+    svc = build(cx, staffers, provider, clock, kms_key, bad_refresh)
+    connect(svc)
+    before = connection_item(table)["ciphertext"]
+    clock.now += 3600
+    with pytest.raises(cx.ProviderError):
+        svc.require("maya", "gmail")
+    row = connection_item(table)
+    assert row is not None and row["ciphertext"] == before
+
+
+def _jwt(payload_part: str) -> str:
+    return f"{b64url(json.dumps({'alg': 'RS256'}).encode())}.{payload_part}.sig"
+
+
+@pytest.mark.parametrize(
+    "bad_id_token",
+    [
+        "notajwt",
+        _jwt("a"),  # one base64 char: incorrect padding
+        _jwt(b64url(b"this is not json")),
+        _jwt(b64url(json.dumps({"sub": "g-1"}).encode())),  # no email claim
+    ],
+    ids=["not-three-parts", "bad-base64", "payload-not-json", "no-email"],
+)
+def test_malformed_id_token_is_provider_error_nothing_stored_and_grant_revoked(env, cx, staffers, provider, clock, kms_key, table, bad_id_token):
+    svc = build(cx, staffers, provider, clock, kms_key, token_override(GOOGLE_TOKEN, google_body(id_token=bad_id_token)))
+    with pytest.raises(cx.ProviderError):
+        connect(svc)
+    assert connection_item(table) is None
+    assert len(provider.to(GOOGLE_REVOKE)) == 1
+
+
+def test_x_users_me_200_with_an_empty_body_is_provider_error_nothing_stored_and_token_revoked(env, cx, staffers, provider, clock, kms_key, table):
+    def empty_me(request):
+        if str(request.url).split("?")[0] == X_ME:
+            return httpx.Response(200, json={})
+
+    svc = build(cx, staffers, provider, clock, kms_key, empty_me)
+    with pytest.raises(cx.ProviderError):
+        connect(svc, provider_id="x")
+    assert connection_item(table, "maya", "x") is None
+    assert len(provider.to(X_REVOKE)) == 1

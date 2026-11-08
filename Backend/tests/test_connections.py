@@ -62,6 +62,7 @@ class Provider:
         self.requests: list[httpx.Request] = []
         self.token_status = 200
         self.override: dict[str, dict] = {}  # token-endpoint url -> JSON body to return with 200
+        self.me_body: dict | None = None  # X /users/me JSON body to return with 200 instead of the default
 
     def to(self, url: str) -> list[httpx.Request]:
         return [r for r in self.requests if str(r.url).split("?")[0] == url]
@@ -83,6 +84,8 @@ class Provider:
             return httpx.Response(200, json={"access_token": X_ACCESS, "refresh_token": X_REFRESH, "expires_in": 7200,
                                              "scope": "tweet.read tweet.write users.read offline.access"})
         if url == X_ME:
+            if self.me_body is not None:
+                return httpx.Response(200, json=self.me_body)
             return httpx.Response(200, json={"data": {"id": "42", "username": "mayax"}})
         if url in (GOOGLE_REVOKE, X_REVOKE):
             return httpx.Response(200, json={})
@@ -512,8 +515,9 @@ def test_callback_when_gmail_send_was_not_granted_is_a_plain_error_and_stores_no
         "id_token": _id_token("maya@gmail.com"), "scope": "openid email",
     }
     r = _callback(client)
-    assert r.status_code in (400, 502)
-    assert isinstance(r.json()["detail"], str) and r.json()["detail"] != "Connected"
+    assert r.status_code == 403
+    assert r.json()["detail"].startswith("missing_permission")
+    assert r.json()["detail"] != "Connected"
     assert connection_rows(table) == []
     assert listing(client)["gmail"]["connected"] is False
     assert len(provider.to(GOOGLE_REVOKE)) == 1
@@ -526,7 +530,8 @@ def test_callback_when_tweet_write_was_not_granted_is_a_plain_error_and_stores_n
         "access_token": X_ACCESS, "refresh_token": X_REFRESH, "expires_in": 7200, "scope": "tweet.read users.read offline.access",
     }
     r = _callback(client, "x")
-    assert r.status_code in (400, 502)
+    assert r.status_code == 403
+    assert r.json()["detail"].startswith("missing_permission")
     assert connection_rows(table) == []
     assert len(provider.to(X_REVOKE)) == 1
 
@@ -542,3 +547,72 @@ def test_callback_with_an_incomplete_google_token_response_is_a_clean_error_not_
     r = _callback(client)
     assert r.status_code in (400, 502)
     assert connection_rows(table) == []
+
+
+# ==== round-2 review gaps (R5, R7) ============================================================
+
+
+def _jwt(payload_part: str) -> str:
+    return f"{_b64url(b'{}')}.{payload_part}.sig"
+
+
+@pytest.mark.parametrize(
+    "bad_id_token",
+    ["notajwt", _jwt("a"), _jwt(_b64url(b"this is not json")), _jwt(_b64url(json.dumps({"sub": "g-1"}).encode()))],
+    ids=["not-three-parts", "bad-base64", "payload-not-json", "no-email"],
+)
+def test_callback_with_a_malformed_id_token_is_502_and_stores_nothing(client, provider, table, bad_id_token):
+    provider.override[GOOGLE_TOKEN] = {
+        "access_token": ACCESS_1, "refresh_token": REFRESH_1, "expires_in": 3600,
+        "id_token": bad_id_token, "scope": "openid email https://www.googleapis.com/auth/gmail.send",
+    }
+    r = _callback(client)
+    assert r.status_code == 502
+    assert connection_rows(table) == []
+    assert len(provider.to(GOOGLE_REVOKE)) == 1
+    for secret in (ACCESS_1, REFRESH_1):
+        assert secret not in r.text
+
+
+def test_callback_when_x_users_me_returns_an_empty_body_is_502_and_the_token_is_revoked(client, provider, table):
+    provider.me_body = {}
+    r = _callback(client, "x")
+    assert r.status_code == 502
+    assert connection_rows(table) == []
+    assert len(provider.to(X_REVOKE)) == 1
+
+
+def test_offboard_reports_cleanup_failed_when_one_providers_disconnect_raises(client, svc, store, supervisor, monkeypatch):
+    connect(client, MAYA)
+    connect(client, MAYA, "x")
+    real = svc.disconnect
+
+    def flaky(staffer, provider_id):
+        if provider_id == "gmail":
+            raise RuntimeError("unexpected failure on gmail")
+        return real(staffer, provider_id)
+
+    monkeypatch.setattr(svc, "disconnect", flaky)
+    r = client.post("/api/v1/staff/maya/offboard", json={}, headers=CHIEF)
+    assert r.status_code == 200, r.text
+    assert r.json()["connectionCleanupFailed"] is True
+
+
+def test_offboard_reports_cleanup_not_failed_when_everything_was_removed(client, supervisor):
+    connect(client, MAYA)
+    connect(client, MAYA, "x")
+    r = client.post("/api/v1/staff/maya/offboard", json={}, headers=CHIEF)
+    assert r.status_code == 200, r.text
+    assert r.json()["connectionCleanupFailed"] is False
+
+
+def test_offboard_reports_cleanup_failed_when_revoke_all_itself_raises(client, svc, supervisor, monkeypatch):
+    connect(client, MAYA)
+
+    def boom(staffer):
+        raise RuntimeError("unexpected failure while revoking")
+
+    monkeypatch.setattr(svc, "revoke_all", boom)
+    r = client.post("/api/v1/staff/maya/offboard", json={}, headers=CHIEF)
+    assert r.status_code == 200, r.text
+    assert r.json()["connectionCleanupFailed"] is True

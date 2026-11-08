@@ -240,6 +240,14 @@ describe("parseNeedsConnection hardening", () => {
   });
 });
 
+describe("parseNeedsConnection: Object.prototype names are not providers", () => {
+  it.each(["__proto__", "toString", "constructor", "hasOwnProperty"])("returns null for provider %s (object and JSON string)", (name) => {
+    const result = { status: "needs_connection", provider: name, label: name, note: "NOT sent." };
+    expect(parseNeedsConnection(result)).toBeNull();
+    expect(parseNeedsConnection(JSON.stringify(result))).toBeNull();
+  });
+});
+
 describe("<ConnectPrompt> label", () => {
   it("shows Connect X for provider x even if the given label says otherwise", async () => {
     setUrl("");
