@@ -6,6 +6,7 @@ import { MOCK } from "./mode.js";
 // FastAPI (:8080). In production set VITE_API_BASE to the deployed API origin + /api/v1.
 // The browser never calls AWS: it sends the staffer's Cognito access token to our API, which does the rest.
 const BASE = import.meta.env.VITE_API_BASE || "/api/v1";
+const TIMEOUT_MS = 5000;
 
 export class ApiError extends Error {
   constructor(status, data) {
@@ -39,6 +40,8 @@ async function request(path, { auth = true, method = "GET", body, headers } = {}
     method,
     headers: finalHeaders,
     body: body ? JSON.stringify(body) : undefined,
+    // A hung request must fail, or the 1 s feed would wait on it forever while still saying "Live".
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
 
   const text = await res.text();
@@ -53,6 +56,9 @@ async function request(path, { auth = true, method = "GET", body, headers } = {}
 }
 
 export const api = {
+  // Who the API thinks you are: { username, sub, email, groups } from your Cognito token (lane A)
+  me: () => request("/me"),
+
   // Mandate console (lane B contract, docs/LANES.md)
   startSession: () => request("/sessions", { method: "POST", body: {} }),
   events: (cursor) => request(eventsPath(cursor)),

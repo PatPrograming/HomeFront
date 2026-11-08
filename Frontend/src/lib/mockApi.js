@@ -1,5 +1,6 @@
 // Fake backend for mock mode (VITE_MOCK_API=1, dev server only). It answers the same three routes as
-// lane B's API so the whole demo can be clicked through without a server:
+// lane A/B's API so the whole demo can be clicked through without a server:
+//   GET  /me                   → { username, sub, email, groups } of the demo user
 //   POST /sessions             → a fake identity card, then a scripted agent run (one event every 2 s)
 //   GET  /events?since=<key>   → contract sample events + the generated ones, same cursor rules
 //   POST /staff/{id}/offboard  → admin only; the agent's next call becomes a DENY and the run stops
@@ -51,8 +52,19 @@ function load() {
   return { events: [...samples], sessions: {}, offboarded: {} };
 }
 
+// Two tabs (Maya and the Chief of Staff) write here every second, so merge with what the other tab saved
+// instead of overwriting it: events by id (ids are "<sid>-<step>", the same in both tabs), the furthest
+// state of each session, and every offboard.
 function save(state) {
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  const latest = load();
+  const events = new Map([...latest.events, ...state.events].map((e) => [e.id, e]));
+  const sessions = { ...latest.sessions };
+  for (const [sid, s] of Object.entries(state.sessions)) {
+    const other = sessions[sid];
+    sessions[sid] = !other || s.step > other.step || (s.stopped && !other.stopped) ? s : other;
+  }
+  const offboarded = { ...latest.offboarded, ...state.offboarded };
+  localStorage.setItem(STORE_KEY, JSON.stringify({ events: [...events.values()], sessions, offboarded }));
 }
 
 export function resetMock() {
@@ -83,7 +95,7 @@ function advance(state, now) {
       if (offboardedAt && offboardedAt <= at) {
         state.events.push({
           ...base,
-          id: crypto.randomUUID(),
+          id: `${s.sid}-${s.step}`,
           ts: new Date(at).toISOString(),
           tool: SCRIPT[s.step % SCRIPT.length].tool,
           resource: SCRIPT[s.step % SCRIPT.length].resource,
@@ -95,7 +107,7 @@ function advance(state, now) {
         s.stopped = true;
         break;
       }
-      state.events.push({ ...base, ...SCRIPT[s.step % SCRIPT.length], id: crypto.randomUUID(), ts: new Date(at).toISOString() });
+      state.events.push({ ...base, ...SCRIPT[s.step % SCRIPT.length], id: `${s.sid}-${s.step}`, ts: new Date(at).toISOString() });
       s.step += 1;
     }
   }
@@ -109,7 +121,9 @@ export async function mockRequest(method, path, _body, token) {
   const user = caller(token);
   let result;
 
-  if (method === "POST" && url.pathname === "/sessions") {
+  if (method === "GET" && url.pathname === "/me") {
+    result = { username: user.username, sub: `mock-sub-${user.username}`, email: `${user.username}@rep-x.example.gov`, groups: user.groups };
+  } else if (method === "POST" && url.pathname === "/sessions") {
     if (state.offboarded[user.username]) throw new MockError(403, "staffer is offboarded");
     for (const s of Object.values(state.sessions)) if (s.actingFor === user.username) s.stopped = true;
     const sid = crypto.randomUUID();
