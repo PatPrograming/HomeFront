@@ -40,6 +40,7 @@ interface Flash {
   kind: "ok" | "deny" | "info";
   title: string;
   body: string;
+  link?: { to: string; label: string };
   technique_ids?: string[];
   mitigation_ids?: string[];
 }
@@ -144,6 +145,17 @@ export default function Monitoring() {
     try {
       const res = await api.callTool(token, tool, args);
       setLastResult(res.result);
+      if (res.decision === "pending_approval") {
+        setFlash({
+          kind: "info",
+          title: `${tool} is waiting for approval`,
+          body: "Nothing was sent. A person has to approve it first; edits are allowed.",
+          mitigation_ids: res.atlas?.mitigation_ids,
+          link: { to: "/approvals", label: "Review on the Approvals page" },
+        });
+        await refresh();
+        return;
+      }
       setFlash({
         kind: "ok",
         title: `Allowed ${tool}`,
@@ -238,7 +250,15 @@ export default function Monitoring() {
           {flash && (
             <div className={`flash flash-${flash.kind}`} role="status">
               <strong>{flash.title}</strong>
-              <p>{flash.body}</p>
+              <p>
+                {flash.body}
+                {flash.link && (
+                  <>
+                    {" "}
+                    <Link to={flash.link.to}>{flash.link.label}</Link>
+                  </>
+                )}
+              </p>
               <div className="id-row">
                 {(flash.technique_ids || []).map((id) => (
                   <code key={id} className="tech">
@@ -355,8 +375,8 @@ export default function Monitoring() {
             <section className="panel actions">
               <h2>Agent task (MCP calls)</h2>
               <p className="hint">
-                Demo path: scrape → datagov → email → revoke <code>email.send</code> → retry (blocked as{" "}
-                <code>AML.T0053</code>).
+                Demo path: scrape → datagov → email (held for <Link to="/approvals">approval</Link>,{" "}
+                <code>AML.M0029</code>) → revoke <code>email.send</code> → retry (blocked as <code>AML.T0053</code>).
               </p>
               <div className="action-row">
                 <button

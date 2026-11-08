@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 import time
 import uuid
@@ -8,6 +9,7 @@ from dataclasses import dataclass, field, replace
 from threading import Lock
 from typing import Any, Callable, Iterable, Protocol
 
+from .approvals import ApprovalRepository, MemoryApprovalRepository
 from .audit import AuditRepository, MemoryAuditRepository, compact_atlas
 
 log = logging.getLogger(__name__)
@@ -21,6 +23,32 @@ DEFAULT_MAX_STEPS = 10
 # Fields a caller may change through update_agent(). Grants and token_version
 # go through the grant methods so token invalidation stays consistent.
 EDITABLE_FIELDS = frozenset({"name", "agency", "instructions", "model", "max_steps", "active"})
+
+# Per-agent mailing list: the only addresses email.send may reach, and the
+# audience of email.send_list.
+MAX_RECIPIENTS = 500
+_EMAIL_RE = re.compile(r"^[^@\s,;<>\"']+@[^@\s,;<>\"']+\.[^@\s,;<>\"'.][^@\s,;<>\"']*$")
+
+
+class InvalidRecipientsError(ValueError):
+    def __init__(self, invalid: list[str], message: str | None = None) -> None:
+        self.invalid = invalid
+        super().__init__(message or f"Invalid email addresses: {', '.join(invalid)}")
+
+
+def normalize_email(address: str) -> str:
+    return address.strip().lower()
+
+
+def normalize_recipients(addresses: Iterable[str]) -> list[str]:
+    """Trimmed, lower-cased, de-duplicated and sorted. Raises InvalidRecipientsError."""
+    cleaned = {normalize_email(a) for a in addresses if a and a.strip()}
+    invalid = sorted(a for a in cleaned if len(a) > 254 or not _EMAIL_RE.match(a))
+    if invalid:
+        raise InvalidRecipientsError(invalid)
+    if len(cleaned) > MAX_RECIPIENTS:
+        raise InvalidRecipientsError([], f"A mailing list holds at most {MAX_RECIPIENTS} addresses.")
+    return sorted(cleaned)
 
 
 @dataclass
@@ -38,6 +66,8 @@ class AgentRecord:
     owner_id: str | None = None
     # Agent type (see agent_types.py); sets the tool ceiling. Fixed at creation.
     kind: str = "custom"
+    # Mailing list (normalized, see normalize_recipients).
+    recipients: list[str] = field(default_factory=list)
     token_version: int = 1
     active: bool = True
     created_at: float = field(default_factory=time.time)
@@ -76,7 +106,7 @@ class AgentRepository(Protocol):
 
 
 def _copy(agent: AgentRecord) -> AgentRecord:
-    return replace(agent, tool_grants=set(agent.tool_grants))
+    return replace(agent, tool_grants=set(agent.tool_grants), recipients=list(agent.recipients))
 
 
 class MemoryAgentRepository:
@@ -137,6 +167,8 @@ class GatewayStore:
         self._lock = Lock()
         self._agents: AgentRepository = agents or MemoryAgentRepository()
         self._audit: AuditRepository = audit or MemoryAuditRepository()
+        # Pending/decided human approvals for requires_hitl tools.
+        self.approvals: ApprovalRepository = MemoryApprovalRepository()
         # Events the durable audit store rejected; still listed so nothing vanishes.
         self._unsaved_audit = MemoryAuditRepository()
         self.audit_write_errors = 0
@@ -152,6 +184,14 @@ class GatewayStore:
     def use_audit_repository(self, repo: AuditRepository) -> None:
         with self._lock:
             self._audit = repo
+
+    def use_approval_repository(self, repo: ApprovalRepository) -> None:
+        with self._lock:
+            self.approvals = repo
+
+    @property
+    def approval_backend(self) -> str:
+        return getattr(self.approvals, "backend", type(self.approvals).__name__)
 
     @property
     def agent_backend(self) -> str:
@@ -184,6 +224,7 @@ class GatewayStore:
         max_steps: int = DEFAULT_MAX_STEPS,
         owner_id: str | None = None,
         kind: str = "custom",
+        recipients: Iterable[str] = (),
     ) -> AgentRecord:
         rec = AgentRecord(
             agent_id=agent_id or f"agent-{uuid.uuid4().hex[:8]}",
@@ -195,6 +236,7 @@ class GatewayStore:
             max_steps=max_steps,
             owner_id=owner_id,
             kind=kind,
+            recipients=normalize_recipients(recipients),
         )
         with self._lock:
             return self._agents.insert(rec)
@@ -207,6 +249,14 @@ class GatewayStore:
         def apply(agent: AgentRecord) -> None:
             for key, value in changes.items():
                 setattr(agent, key, value)
+
+        return self._mutate(agent_id, apply)
+
+    def set_recipients(self, agent_id: str, addresses: Iterable[str]) -> AgentRecord:
+        recipients = normalize_recipients(addresses)
+
+        def apply(agent: AgentRecord) -> None:
+            agent.recipients = recipients
 
         return self._mutate(agent_id, apply)
 

@@ -79,6 +79,14 @@
   border-left-color: var(--danger);
 }
 
+.activity-item.dec-pending {
+  border-left-color: #b7791f;
+}
+
+.decision-pending {
+  color: #8a5a12;
+}
+
 .activity-item.dec-info {
   border-left-color: var(--blue-600);
 }

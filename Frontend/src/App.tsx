@@ -8,6 +8,7 @@ import Monitoring from "./pages/Monitoring";
 import Agents from "./pages/Agents";
 import NewAgent from "./pages/NewAgent";
 import Activity from "./pages/Activity";
+import Approvals from "./pages/Approvals";
 import SocialPlatform from "./pages/SocialPlatform";
 
 export default function App() {
@@ -39,6 +40,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <NewAgent />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/approvals"
+            element={
+              <RequireAuth>
+                <Approvals />
               </RequireAuth>
             }
           />

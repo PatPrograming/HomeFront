@@ -14,7 +14,7 @@ import {
 import "./Agents.css";
 import "./Activity.css";
 
-const DECISIONS = ["allow", "deny", "revoke", "info"];
+const DECISIONS = ["allow", "deny", "revoke", "pending", "info"];
 // URL search param -> API filter name.
 const FILTERS = { agent: "agent_id", trace: "trace_id", decision: "decision", type: "type" } as const;
 type FilterParam = keyof typeof FILTERS;

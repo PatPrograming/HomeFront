@@ -11,6 +11,8 @@ Tables (names are <DYNAMODB_TABLE_PREFIX><name>):
 - agents     pk id        agent definitions (see identity_gateway.dynamo_repo)
 - audit      pk agent_id  activity log, sk "<ts>#<id>", 90-day TTL on expires_at
                           (see identity_gateway.audit)
+- approvals  pk id        human approvals for high-risk tool calls
+                          (see identity_gateway.approvals)
 """
 from __future__ import annotations
 
@@ -43,6 +45,10 @@ TABLES: dict[str, dict[str, Any]] = {
             {"AttributeName": "agent_id", "AttributeType": "S"},
             {"AttributeName": "sk", "AttributeType": "S"},
         ],
+    },
+    "approvals": {
+        "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
+        "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
     },
 }
 

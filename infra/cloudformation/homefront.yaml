@@ -157,6 +157,24 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  # Human approvals for high-risk tool calls (email.send, social.*): pending
+  # requests and who approved or rejected them.
+  ApprovalsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "${Prefix}approvals"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   # --- Access -----------------------------------------------------------
   # Attach to whatever runs the backend (an IAM user for local dev, or the
   # App Runner / ECS / Lambda role). Browsers never touch DynamoDB: this
@@ -183,6 +201,7 @@ Resources:
               - !GetAtt UsernamesTable.Arn
               - !GetAtt AgentsTable.Arn
               - !GetAtt AuditTable.Arn
+              - !GetAtt ApprovalsTable.Arn
 
 Outputs:
   Region:

@@ -70,6 +70,9 @@ export const api = {
   agent: (agentId) => request(`/agents/${encodeURIComponent(agentId)}`),
   // Fields left out (instructions, tool_grants, max_steps) take the kind's template defaults.
   createAgent: (body) => request("/agents", { method: "POST", body }),
+  // Replaces the agent's whole mailing list (the only addresses it may email).
+  setRecipients: (agentId, emails) =>
+    request(`/agents/${encodeURIComponent(agentId)}/recipients`, { method: "PUT", body: { emails } }),
   replaceGrants: (agentId, tools) =>
     request(`/agents/${encodeURIComponent(agentId)}/grants`, { method: "PUT", body: { tools } }),
   // filters: { agent_id, trace_id, decision, type } (any subset)
@@ -78,6 +81,14 @@ export const api = {
     for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
     return request(`/audit?${params}`);
   },
+  // Human approvals for high-risk tool calls (email.send, social.*).
+  approvals: (status) => request(`/approvals${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  approval: (id) => request(`/approvals/${encodeURIComponent(id)}`),
+  // body: { arguments?: edited args, note?: string }
+  approve: (id, body = {}) =>
+    request(`/approvals/${encodeURIComponent(id)}/approve`, { method: "POST", body }),
+  reject: (id, note) =>
+    request(`/approvals/${encodeURIComponent(id)}/reject`, { method: "POST", body: note ? { note } : {} }),
   // Where agents and the activity log are actually stored right now.
   status: () => request("/status", { auth: false }),
   revokeTool: (agentId, tool) =>

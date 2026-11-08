@@ -36,6 +36,7 @@ def agent_to_item(agent: AgentRecord) -> dict[str, Any]:
         "max_steps": agent.max_steps,
         # A list, not a string set: DynamoDB rejects empty sets.
         "tool_grants": sorted(agent.tool_grants),
+        "recipients": list(agent.recipients),
         "token_version": agent.token_version,
         "active": agent.active,
         "created_at": _iso(agent.created_at),
@@ -56,6 +57,7 @@ def agent_from_item(item: dict[str, Any]) -> AgentRecord:
         model=item.get("model"),
         max_steps=int(item["max_steps"]),
         tool_grants=set(item.get("tool_grants") or []),
+        recipients=list(item.get("recipients") or []),
         token_version=int(item["token_version"]),
         active=bool(item["active"]),
         created_at=datetime.fromisoformat(created).timestamp() if created else 0.0,

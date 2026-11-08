@@ -129,7 +129,7 @@ def test_grant_within_ceiling_is_allowed():
     agent = _create("email").json()
     r = client.post(f"/api/v1/agents/{agent['agent_id']}/grants/datagov.search")
     assert r.status_code == 200
-    assert r.json()["tool_grants"] == ["datagov.search", "email.send"]
+    assert r.json()["tool_grants"] == ["datagov.search", "email.send", "email.send_list"]
 
 
 def test_replace_grants_outside_ceiling_changes_nothing():

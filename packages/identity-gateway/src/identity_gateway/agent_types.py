@@ -43,10 +43,11 @@ AGENT_TYPES: dict[str, AgentType] = {
             "You draft and send official emails for the agency. Write in a clear, courteous, "
             "professional tone. Include only facts given in the task or found in official "
             "sources; never guess dates, figures or eligibility rules. Send only to the "
-            "recipients the task names. Keep emails concise and sign them with the agency's name."
+            "recipients the task names, or to the whole mailing list when the task asks for "
+            "it. Keep emails concise and sign them with the agency's name."
         ),
-        default_tools=frozenset({"email.send"}),
-        allowed_tools=frozenset({"email.send", "datagov.search"}),
+        default_tools=frozenset({"email.send", "email.send_list"}),
+        allowed_tools=frozenset({"email.send", "email.send_list", "datagov.search"}),
         default_max_steps=6,
     ),
     "social": AgentType(

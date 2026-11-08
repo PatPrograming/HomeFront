@@ -36,7 +36,9 @@ _PACKAGE_SRC = [
 ]
 
 # Gateway paths that manage agents rather than act as one.
-_ADMIN_PREFIXES = ("/agents", "/auth/token", "/audit")
+# /approvals is user-only on purpose: an agent's workload token can never
+# approve its own request.
+_ADMIN_PREFIXES = ("/agents", "/auth/token", "/audit", "/approvals")
 # Served by the host app's own router instead.
 _SKIP_PATHS = {"/health"}
 
@@ -120,6 +122,7 @@ def use_dynamodb_stores(store) -> None:
     from boto3.dynamodb.conditions import Key
     from botocore.exceptions import BotoCoreError, ClientError
 
+    from identity_gateway.approvals import DynamoApprovalRepository
     from identity_gateway.audit import DynamoAuditRepository
     from identity_gateway.dynamo_repo import DynamoAgentRepository, seed_demo_agent
 
@@ -145,6 +148,15 @@ def use_dynamodb_stores(store) -> None:
         store.use_audit_repository(DynamoAuditRepository(audit_table))
     except (ClientError, BotoCoreError) as exc:
         msg = f"Activity log is in memory only: {table_name('audit')} unavailable ({_aws_reason(exc)})"
+        store.storage_warnings.append(msg)
+        log.warning("%s; full error: %s. %s", msg, exc, hint)
+
+    try:
+        approvals_table = table("approvals")
+        approvals_table.get_item(Key={"id": "_probe"})  # GetItem is in BackendDataPolicy
+        store.use_approval_repository(DynamoApprovalRepository(approvals_table))
+    except (ClientError, BotoCoreError) as exc:
+        msg = f"Approvals are in memory only: {table_name('approvals')} unavailable ({_aws_reason(exc)})"
         store.storage_warnings.append(msg)
         log.warning("%s; full error: %s. %s", msg, exc, hint)
 

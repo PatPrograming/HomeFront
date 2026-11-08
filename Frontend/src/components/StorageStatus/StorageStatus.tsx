@@ -61,6 +61,7 @@ export default function StorageStatus({ compact = false }: { compact?: boolean }
       {!compact && (
         <span>
           Agents: {storeName(status.agent_store)} · Activity log: {storeName(status.audit_store)}
+          {status.approval_store && <> · Approvals: {storeName(status.approval_store)}</>}
         </span>
       )}
       {!compact && issues.length > 0 && (

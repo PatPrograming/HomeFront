@@ -4,5 +4,6 @@ export const NAV_LINKS = [
   { label: "Emails", href: "/emails" },
   { label: "Social Platform", href: "/social-platform" },
   { label: "Monitoring", href: "/monitoring" },
+  { label: "Approvals", href: "/approvals" },
   { label: "Activity", href: "/activity" },
 ];

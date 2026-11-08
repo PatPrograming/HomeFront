@@ -284,3 +284,33 @@
     padding: 20px 16px;
   }
 }
+
+/* ---------- Mailing list (email agents) ---------- */
+.mailing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.mailing-list-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mailing-list-head .btn {
+  margin-left: auto;
+}
+
+.mailing-list-empty {
+  color: var(--danger, #b42318);
+  font-size: 14px;
+}
+
+.mailing-list-hint {
+  font-size: 13px;
+  margin: 0;
+}

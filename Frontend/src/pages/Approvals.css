@@ -1,0 +1,155 @@
+.approvals-page .section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.4rem;
+  margin: 8px 0 14px;
+}
+
+.approvals-page .section-title .count {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 26px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--blue-700);
+  color: #fff;
+  text-align: center;
+}
+
+.approval-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+  margin-bottom: 36px;
+}
+
+.approval-card {
+  display: grid;
+  gap: 16px;
+  max-width: 820px;
+  padding: 22px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid #b7791f;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.approval-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.approval-what {
+  font-size: 17px;
+}
+
+.approval-sub {
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.approval-fields {
+  display: grid;
+  gap: 14px;
+}
+
+.edited-tag {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8a5a12;
+  background: #fdf3e1;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.approvals-page .btn.danger {
+  color: var(--danger);
+}
+
+.approvals-page .btn.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: var(--red-50);
+}
+
+.trace-link {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.history-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-width: 820px;
+}
+
+.history-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+.history-row .trace-link {
+  margin-left: auto;
+}
+
+.history-note {
+  flex-basis: 100%;
+  color: var(--ink-soft);
+}
+
+.history-note.error {
+  color: var(--danger);
+}
+
+.status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--canvas);
+  color: var(--ink-soft);
+}
+
+.status-badge.status-executed {
+  background: #e8f4ec;
+  color: var(--success);
+}
+
+.status-badge.status-rejected,
+.status-badge.status-failed {
+  background: var(--red-50);
+  color: var(--danger);
+}
+
+@media (max-width: 760px) {
+  .approval-card {
+    padding: 18px 16px;
+  }
+
+  .approval-head {
+    flex-direction: column;
+  }
+}
+
+.approval-audience {
+  margin: 0 0 12px;
+}

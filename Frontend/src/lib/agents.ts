@@ -13,6 +13,8 @@ export interface Agent {
   max_steps: number;
   owner_id: string | null;
   tool_grants: string[];
+  // Mailing list: the only addresses email tools can reach.
+  recipients: string[];
   token_version: number;
   active: boolean;
 }
@@ -40,6 +42,7 @@ export interface Tool {
 // Plain-language phrase for what each tool lets an agent do.
 const TOOL_ACTIONS: Record<string, string> = {
   "email.send": "send email",
+  "email.send_list": "email the mailing list",
   "social.post": "post to social media",
   "social.reply": "reply to comments",
   "web.scrape": "read web pages",
@@ -47,6 +50,9 @@ const TOOL_ACTIONS: Record<string, string> = {
 };
 
 export const toolAction = (tool: string) => TOOL_ACTIONS[tool] || `use ${tool}`;
+
+export const EMAIL_TOOLS = ["email.send", "email.send_list"];
+export const sendsEmail = (agent: Agent) => agent.tool_grants.some((t) => EMAIL_TOOLS.includes(t));
 
 export function typeAllows(type: AgentType | undefined, tool: string): boolean {
   if (!type) return false;
@@ -99,6 +105,7 @@ export interface AuditEvent {
 export interface StorageStatus {
   agent_store: "memory" | "dynamodb" | string;
   audit_store: "memory" | "dynamodb" | string;
+  approval_store?: "memory" | "dynamodb" | string;
   audit_write_errors: number;
   last_audit_error: string | null;
   warnings: string[];
@@ -107,7 +114,11 @@ export interface StorageStatus {
 
 /** True only when agents and the activity log both persist to DynamoDB without errors. */
 export const isDurable = (s: StorageStatus | null) =>
-  !!s && s.agent_store === "dynamodb" && s.audit_store === "dynamodb" && s.audit_write_errors === 0;
+  !!s &&
+  s.agent_store === "dynamodb" &&
+  s.audit_store === "dynamodb" &&
+  (s.approval_store ?? "dynamodb") === "dynamodb" &&
+  s.audit_write_errors === 0;
 
 export const EVENT_LABELS: Record<string, string> = {
   agent_created: "Agent created",
@@ -118,8 +129,40 @@ export const EVENT_LABELS: Record<string, string> = {
   grant_revoked: "Tool revoked",
   grants_replaced: "Tools replaced",
   grant_denied: "Grant blocked",
+  recipients_updated: "Mailing list changed",
   run_started: "Run started",
   run_finished: "Run finished",
+  approval_requested: "Approval requested",
+  approval_approved: "Approved",
+  approval_rejected: "Rejected",
+  approval_blocked: "Approval blocked",
+  approval_expired: "Approval expired",
 };
 
 export const eventLabel = (type: string) => EVENT_LABELS[type] || type;
+
+export type ApprovalStatus = "pending" | "approved" | "executed" | "failed" | "rejected" | "expired";
+
+export interface Approval {
+  approval_id: string;
+  agent_id: string;
+  tool: string;
+  arguments: Record<string, string>;
+  original_arguments: Record<string, string> | null;
+  edited: boolean;
+  status: ApprovalStatus;
+  trace_id: string | null;
+  run_id: string | null;
+  requested_at: number;
+  expires_at: number;
+  decided_by: string | null;
+  decided_at: number | null;
+  note: string | null;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  agent: { agent_id: string; name: string; agency: string; kind: AgentKind } | null;
+  tool_description: string | null;
+  input_schema: { properties?: Record<string, { description?: string }> } | null;
+  // email.send_list only: who it goes to if approved now.
+  recipients: string[] | null;
+}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import sys
+import time
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -35,13 +36,17 @@ from .agent_types import (
     disallowed_tools,
     get_agent_type,
 )
+from .approvals import ApprovalConflict, ApprovalRecord
 from .runner import AgentRunner, RunStore, new_run
 from .store import (
     AGENT_ID_PATTERN,
     DEFAULT_MAX_STEPS,
+    MAX_RECIPIENTS,
     AgentRecord,
     DuplicateAgentError,
     GatewayStore,
+    InvalidRecipientsError,
+    normalize_email,
 )
 
 # Agents live in memory by default; the host app can swap in DynamoDB via
@@ -108,6 +113,14 @@ class CreateAgentRequest(BaseModel):
     max_steps: int = Field(default=DEFAULT_MAX_STEPS, ge=1, le=50)
     tool_grants: list[str] = Field(default_factory=list)
     agent_id: str | None = Field(default=None, pattern=AGENT_ID_PATTERN)
+    # Mailing list; see PUT /agents/{id}/recipients.
+    recipients: list[str] = Field(default_factory=list, max_length=MAX_RECIPIENTS * 2)
+
+
+class RecipientsUpdate(BaseModel):
+    """Replaces the whole mailing list. Addresses are trimmed, lower-cased and de-duplicated."""
+
+    emails: list[str] = Field(max_length=MAX_RECIPIENTS * 2)
 
 
 class UpdateAgentRequest(BaseModel):
@@ -132,9 +145,33 @@ def _agent_view(agent: AgentRecord) -> dict[str, Any]:
         "max_steps": agent.max_steps,
         "owner_id": agent.owner_id,
         "tool_grants": sorted(agent.tool_grants),
+        "recipients": list(agent.recipients),
         "token_version": agent.token_version,
         "active": agent.active,
     }
+
+
+def _recipients_error(exc: InvalidRecipientsError) -> HTTPException:
+    return HTTPException(
+        status_code=400,
+        detail={"error": "invalid_recipients", "message": str(exc), "invalid": exc.invalid},
+    )
+
+
+# Tools whose audience is limited by the agent's mailing list.
+EMAIL_SEND = "email.send"
+EMAIL_SEND_LIST = "email.send_list"
+
+
+def _recipient_problem(agent: AgentRecord, tool_name: str, arguments: dict[str, Any]) -> str | None:
+    """Why this call would email someone outside the agent's list, or None if it's fine."""
+    if tool_name == EMAIL_SEND:
+        to = normalize_email(str(arguments.get("to") or ""))
+        if to not in agent.recipients:
+            return f"{to or 'the recipient'} isn't on this agent's mailing list"
+    elif tool_name == EMAIL_SEND_LIST and not agent.recipients:
+        return "this agent's mailing list is empty"
+    return None
 
 
 @dataclass(frozen=True)
@@ -322,7 +359,10 @@ def create_agent(
             max_steps=max_steps,
             owner_id=actor.user_id,
             kind=body.kind,
+            recipients=body.recipients,
         )
+    except InvalidRecipientsError as exc:
+        raise _recipients_error(exc)
     except DuplicateAgentError:
         raise HTTPException(status_code=409, detail=f"Agent {body.agent_id} already exists")
     store.append_audit(
@@ -366,6 +406,34 @@ def update_agent(
                 "actor": actor.label,
                 "fields": sorted(changes),
                 "detail": f"Changed {', '.join(sorted(changes))}",
+            }
+        )
+    return _agent_view(agent)
+
+
+@app.put("/agents/{agent_id}/recipients")
+def replace_recipients(
+    agent_id: str, body: RecipientsUpdate, actor: Actor = Depends(get_actor)
+) -> dict[str, Any]:
+    before = set(_accessible_agent(agent_id, actor).recipients)
+    try:
+        agent = store.set_recipients(agent_id, body.emails)
+    except InvalidRecipientsError as exc:
+        raise _recipients_error(exc)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    after = set(agent.recipients)
+    added, removed = sorted(after - before), sorted(before - after)
+    if added or removed:
+        store.append_audit(
+            {
+                "type": "recipients_updated",
+                "decision": "info",
+                "agent_id": agent_id,
+                "actor": actor.label,
+                "added": added,
+                "removed": removed,
+                "detail": f"Mailing list: {len(after)} addresses (+{len(added)}, -{len(removed)})",
             }
         )
     return _agent_view(agent)
@@ -652,6 +720,46 @@ def call_tool(
             },
         )
 
+    # Outbound email only reaches the agent's mailing list. Checked before
+    # queuing so an injected recipient never even reaches a reviewer.
+    problem = _recipient_problem(agent, tool_name, arguments)
+    if problem:
+        atlas = enricher.annotate(
+            AnnotateRequest(
+                event=AnnotateEvent.deny,
+                tool=tool_name,
+                agent_id=agent.agent_id,
+                reason="recipient not on agent mailing list",
+            )
+        )
+        event = store.append_audit(
+            {
+                "type": "tool_call",
+                "run_id": run_id,
+                "trace_id": run_id or getattr(tok, "session_id", None),
+                "actor": f"agent:{agent.agent_id}",
+                "decision": "deny",
+                "agent_id": agent.agent_id,
+                "tool": tool_name,
+                "args_hash": _hash_args(arguments),
+                "atlas": atlas.model_dump(),
+                "detail": f"Blocked: {problem}",
+            }
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "recipient_not_allowed",
+                "message": f"Blocked {tool_name}: {problem} (AML.M0028).",
+                "atlas": atlas.model_dump(),
+                "audit_id": event["id"],
+            },
+        )
+
+    # High-risk outbound tools wait for a person (AML.M0029).
+    if tool.requires_hitl:
+        return _request_approval(agent, tok, tool_name, arguments, run_id)
+
     # Annotate untrusted input tools before execution.
     if tool.untrusted_input:
         untrusted = enricher.annotate(
@@ -671,14 +779,7 @@ def call_tool(
             agent_id=agent.agent_id,
         )
     )
-    result = invoke_tool(tool_name, arguments)
-
-    # Hard guarantee: never leak gateway-held api keys.
-    if tool.holds_secrets:
-        result = {**result, "credentials_exposed": False}
-        if "api_key" in result or "X-Api-Key" in result:
-            result.pop("api_key", None)
-            result.pop("X-Api-Key", None)
+    result = _run_handler(tool, tool_name, arguments)
 
     event = store.append_audit(
         {
@@ -704,6 +805,345 @@ def call_tool(
         "untrusted_input_atlas": untrusted.model_dump() if untrusted else None,
         "audit_id": event["id"],
     }
+
+
+def _run_handler(tool: Any, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    result = invoke_tool(tool_name, arguments)
+    # Hard guarantee: never leak gateway-held api keys.
+    if tool.holds_secrets:
+        result = {**result, "credentials_exposed": False}
+        result.pop("api_key", None)
+        result.pop("X-Api-Key", None)
+    return result
+
+
+HITL_ATLAS = {
+    "mitigation_ids": ["AML.M0029"],
+    "narrative": "High-risk agent action held for human approval (AML.M0029 Human In-the-Loop).",
+}
+
+
+def _request_approval(
+    agent: AgentRecord, tok: Any, tool_name: str, arguments: dict[str, Any], run_id: str | None
+) -> dict[str, Any]:
+    trace_id = run_id or getattr(tok, "session_id", None)
+    rec = store.approvals.insert(
+        ApprovalRecord(
+            agent_id=agent.agent_id,
+            tool=tool_name,
+            arguments=dict(arguments),
+            trace_id=trace_id,
+            run_id=run_id,
+        )
+    )
+    event = store.append_audit(
+        {
+            "type": "approval_requested",
+            "decision": "pending",
+            "agent_id": agent.agent_id,
+            "run_id": run_id,
+            "trace_id": trace_id,
+            "actor": f"agent:{agent.agent_id}",
+            "tool": tool_name,
+            "approval_id": rec.approval_id,
+            "args_hash": _hash_args(arguments),
+            "atlas": HITL_ATLAS,
+            "detail": f"Waiting for a person to approve {tool_name}",
+        }
+    )
+    return {
+        "decision": "pending_approval",
+        "tool": tool_name,
+        "agent_id": agent.agent_id,
+        "token_version": tok.token_version,
+        "approval_id": rec.approval_id,
+        # What the agent sees as the tool result.
+        "result": {
+            "status": "pending_approval",
+            "approval_id": rec.approval_id,
+            "message": (
+                f"{tool_name} was queued for human approval and has NOT been performed yet. "
+                "Don't call it again for the same content; mention it in your summary."
+            ),
+        },
+        "atlas": HITL_ATLAS,
+        "audit_id": event["id"],
+    }
+
+
+class ApprovalDecision(BaseModel):
+    # Approve only: replacement arguments (a reviewer's edits). Omit to use the agent's.
+    arguments: dict[str, Any] | None = None
+    note: str | None = Field(default=None, max_length=1000)
+
+
+def _approval_view(rec: ApprovalRecord, agent: AgentRecord | None) -> dict[str, Any]:
+    view = rec.view()
+    tool = get_tool(rec.tool)
+    view["agent"] = (
+        {"agent_id": agent.agent_id, "name": agent.name, "agency": agent.agency, "kind": agent.kind}
+        if agent
+        else None
+    )
+    view["tool_description"] = tool.description if tool else None
+    view["input_schema"] = tool.input_schema if tool else None
+    # Who a list send goes to if approved now (the list as it is today).
+    view["recipients"] = list(agent.recipients) if agent and rec.tool == EMAIL_SEND_LIST else None
+    return view
+
+
+def _accessible_approval(approval_id: str, actor: Actor) -> tuple[ApprovalRecord, AgentRecord]:
+    rec = store.approvals.get(approval_id)
+    agent = store.get_agent(rec.agent_id) if rec else None
+    # 404 for other users' approvals, like agents.
+    if rec is None or agent is None or not actor.can_access(agent):
+        raise HTTPException(status_code=404, detail="Unknown approval")
+    return rec, agent
+
+
+def _validate_arguments(tool_name: str, arguments: dict[str, Any]) -> None:
+    """Edited arguments must still match the tool's schema (all strings, no extras)."""
+    tool = get_tool(tool_name)
+    props = (tool.input_schema or {}).get("properties", {}) if tool else {}
+    unknown = sorted(set(arguments) - set(props))
+    missing = sorted(set(props) - set(arguments))
+    wrong = sorted(k for k, v in arguments.items() if k in props and not isinstance(v, str))
+    if unknown or missing or wrong:
+        parts = []
+        if unknown:
+            parts.append(f"unknown fields {unknown}")
+        if missing:
+            parts.append(f"missing fields {missing}")
+        if wrong:
+            parts.append(f"non-text fields {wrong}")
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_arguments", "message": f"Invalid {tool_name} arguments: {'; '.join(parts)}"},
+        )
+
+
+def _decision_conflict(status: str) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={"error": "already_decided", "status": status, "message": f"This request is already {status}."},
+    )
+
+
+def _expire_if_stale(rec: ApprovalRecord, actor: Actor) -> None:
+    if not rec.is_expired():
+        return
+    try:
+        store.approvals.transition(rec.approval_id, "pending", status="expired")
+        store.append_audit(
+            {
+                "type": "approval_expired",
+                "decision": "deny",
+                "agent_id": rec.agent_id,
+                "run_id": rec.run_id,
+                "trace_id": rec.trace_id,
+                "actor": actor.label,
+                "tool": rec.tool,
+                "approval_id": rec.approval_id,
+                "detail": "Not decided within 24 hours",
+            }
+        )
+    except ApprovalConflict:
+        pass
+    raise _decision_conflict("expired")
+
+
+@app.get("/approvals")
+def list_approvals(
+    status: str | None = None, actor: Actor = Depends(get_actor)
+) -> list[dict[str, Any]]:
+    """Approval requests for the caller's agents, newest first. ?status=pending etc."""
+    agents_by_id = {a.agent_id: a for a in store.list_agents() if actor.can_access(a)}
+    out = []
+    for rec in store.approvals.list():
+        agent = agents_by_id.get(rec.agent_id)
+        if agent is None:
+            continue
+        view = _approval_view(rec, agent)
+        if status is None or view["status"] == status:
+            out.append(view)
+    out.sort(key=lambda v: v["requested_at"], reverse=True)
+    return out[:200]
+
+
+@app.get("/approvals/{approval_id}")
+def get_approval(approval_id: str, actor: Actor = Depends(get_actor)) -> dict[str, Any]:
+    rec, agent = _accessible_approval(approval_id, actor)
+    return _approval_view(rec, agent)
+
+
+@app.post("/approvals/{approval_id}/approve")
+def approve(
+    approval_id: str, body: ApprovalDecision, actor: Actor = Depends(get_actor)
+) -> dict[str, Any]:
+    """Approve (optionally with edited arguments) and execute the tool once."""
+    rec, agent = _accessible_approval(approval_id, actor)
+    _expire_if_stale(rec, actor)
+    if rec.status != "pending":
+        raise _decision_conflict(rec.status)
+
+    arguments = dict(body.arguments) if body.arguments is not None else dict(rec.arguments)
+    _validate_arguments(rec.tool, arguments)
+    if any(k.lower() in {"api_key", "x-api-key", "secret", "token"} for k in arguments):
+        raise HTTPException(status_code=400, detail="Credentials can't be passed as tool arguments")
+
+    # Re-check authorization at approval time: a revoke after the request wins.
+    blocked_reason = None
+    if not agent.active:
+        blocked_reason = "the agent is inactive"
+    elif rec.tool not in agent.tool_grants:
+        blocked_reason = f"{rec.tool} was revoked"
+    elif disallowed_tools(agent.kind, [rec.tool]):
+        blocked_reason = f"{rec.tool} isn't allowed for {agent.kind} agents"
+    else:
+        # Reviewer edits and list changes since the request both count.
+        blocked_reason = _recipient_problem(agent, rec.tool, arguments)
+    if blocked_reason:
+        atlas = enricher.annotate(
+            AnnotateRequest(
+                event=AnnotateEvent.deny,
+                tool=rec.tool,
+                agent_id=agent.agent_id,
+                reason=f"approval blocked: {blocked_reason}",
+            )
+        )
+        event = store.append_audit(
+            {
+                "type": "approval_blocked",
+                "decision": "deny",
+                "agent_id": agent.agent_id,
+                "run_id": rec.run_id,
+                "trace_id": rec.trace_id,
+                "actor": actor.label,
+                "tool": rec.tool,
+                "approval_id": rec.approval_id,
+                "atlas": atlas.model_dump(),
+                "detail": f"Can't approve: {blocked_reason}",
+            }
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "no_longer_authorized",
+                "message": f"Can't approve: {blocked_reason}. The request stays pending.",
+                "audit_id": event["id"],
+            },
+        )
+
+    edited = arguments != rec.arguments
+    try:
+        claimed = store.approvals.transition(
+            approval_id,
+            "pending",
+            status="approved",
+            decided_by=actor.label,
+            decided_at=time.time(),
+            note=body.note,
+            arguments=arguments,
+            original_arguments=dict(rec.arguments) if edited else None,
+        )
+    except ApprovalConflict as exc:
+        raise _decision_conflict(str(exc))
+
+    base = {
+        "agent_id": agent.agent_id,
+        "run_id": rec.run_id,
+        "trace_id": rec.trace_id,
+        "tool": rec.tool,
+        "approval_id": rec.approval_id,
+    }
+    store.append_audit(
+        {
+            **base,
+            "type": "approval_approved",
+            "decision": "allow",
+            "actor": actor.label,
+            "edited": edited,
+            "atlas": HITL_ATLAS,
+            "detail": ("Approved with edits" if edited else "Approved") + (f": {body.note}" if body.note else ""),
+        }
+    )
+
+    tool = get_tool(rec.tool)
+    run_args = dict(arguments)
+    if rec.tool == EMAIL_SEND_LIST:
+        # The audience comes from the gateway, never from the agent or reviewer.
+        run_args["recipients"] = list(agent.recipients)
+    try:
+        result = _run_handler(tool, rec.tool, run_args)
+    except Exception as exc:  # record the failure; the approval is spent either way
+        failed = store.approvals.transition(
+            approval_id, "approved", status="failed", error=f"{type(exc).__name__}: {exc}"
+        )
+        store.append_audit(
+            {
+                **base,
+                "type": "tool_call",
+                "decision": "deny",
+                "actor": f"agent:{agent.agent_id}",
+                "approved_by": actor.label,
+                "detail": f"Approved action failed: {type(exc).__name__}",
+            }
+        )
+        raise HTTPException(
+            status_code=502, detail={"error": "tool_failed", "approval": _approval_view(failed, agent)}
+        )
+
+    done = store.approvals.transition(approval_id, "approved", status="executed", result=result)
+    atlas = enricher.annotate(
+        AnnotateRequest(event=AnnotateEvent.allow, tool=rec.tool, agent_id=agent.agent_id)
+    )
+    store.append_audit(
+        {
+            **base,
+            "type": "tool_call",
+            "decision": "allow",
+            "actor": f"agent:{agent.agent_id}",
+            "approved_by": actor.label,
+            "args_hash": _hash_args(arguments),
+            "atlas": atlas.model_dump(),
+            "detail": f"Executed after approval by {actor.label}",
+        }
+    )
+    return _approval_view(done, agent)
+
+
+@app.post("/approvals/{approval_id}/reject")
+def reject(
+    approval_id: str, body: ApprovalDecision, actor: Actor = Depends(get_actor)
+) -> dict[str, Any]:
+    rec, agent = _accessible_approval(approval_id, actor)
+    _expire_if_stale(rec, actor)
+    try:
+        done = store.approvals.transition(
+            approval_id,
+            "pending",
+            status="rejected",
+            decided_by=actor.label,
+            decided_at=time.time(),
+            note=body.note,
+        )
+    except ApprovalConflict as exc:
+        raise _decision_conflict(str(exc))
+    store.append_audit(
+        {
+            "type": "approval_rejected",
+            "decision": "deny",
+            "agent_id": agent.agent_id,
+            "run_id": rec.run_id,
+            "trace_id": rec.trace_id,
+            "actor": actor.label,
+            "tool": rec.tool,
+            "approval_id": rec.approval_id,
+            "atlas": HITL_ATLAS,
+            "detail": "Rejected" + (f": {body.note}" if body.note else ""),
+        }
+    )
+    return _approval_view(done, agent)
 
 
 class CreateRunRequest(BaseModel):
@@ -822,6 +1262,7 @@ def storage_status() -> dict[str, Any]:
     return {
         "agent_store": store.agent_backend,
         "audit_store": store.audit_backend,
+        "approval_store": store.approval_backend,
         "audit_write_errors": store.audit_write_errors,
         "last_audit_error": store.last_audit_error,
         "warnings": list(store.storage_warnings),
