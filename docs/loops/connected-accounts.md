@@ -1,6 +1,6 @@
 # Loop: connected-accounts
 
-Status: BUILDING
+Status: PAUSED (usage-limit handoff; see docs/loops/connected-accounts-HANDOFF.md)
 Profile: feature (trial depth: full, because this handles OAuth and provider tokens)
 Round: 3 / 4
 Base commit: 23fa467
@@ -170,8 +170,11 @@ has none; cached per `sub`; any failure means `email: null`.
 | 2 | connections.py + router + offboard hook + /me email + guarded wiring | team-implementer | `packages/identity-gateway/src/identity_gateway/connections.py`, `Backend/app/routers/connections.py`, `Backend/app/main.py`, `Backend/app/routers/staff.py`, `Backend/app/routers/profiles.py`, `Backend/app/core/config.py`, `packages/identity-gateway/README.md` | C1 C2 C3 C4 | 1 | pending |
 | 3 | Infra script | team-implementer | `Backend/infra/connections.sh`, `Backend/infra/README.md` | C8 | — | pending |
 | 4 | Frontend tests first | team-test-author | `Frontend/src/pages/Account.test.tsx`, `Frontend/src/components/ConnectPrompt.test.tsx`, `Frontend/src/pages/ConnectCallback.test.tsx` | fail for missing code | — | pending |
-| 6 | Round-2 tests for G1–G9 + M4 | team-test-author | the three connections test files | fail for the gaps | 2, 5 | in progress |
-| 7 | Round-2 fixes G1–G9 | team-implementer | connections.py, staff.py, profiles.py, ConnectPrompt.tsx, connections.ts | C2 C3 C6 + new tests | 6 | pending |
+| 6 | Round-2 tests for G1–G9 + M4 | team-test-author | the three connections test files | fail for the gaps | 2, 5 | done (round 2) |
+| 7 | Round-2 fixes G1–G9 | team-implementer | connections.py, staff.py, profiles.py, ConnectPrompt.tsx, connections.ts | C2 C3 C6 + new tests | 6 | done (round 2) |
+| 8 | Round-3 tests R1–R8 | team-test-author | connections test files, ChatPanel/ConnectPrompt/ConnectCallback tests | fail for the gaps | 7 | done aaa05ab |
+| 9 | Round-3 fixes R1–R8 + X reply link | team-implementer | connections.py, staff.py, connections router, ChatPanel.tsx, ConnectPrompt.tsx, ConnectCallback.tsx | C2 C3 C6 + new tests | 8 | done 7b48183 f4af614 |
+| 10 | G11 merge probe with Lane H + real-module end-to-end test | lead (this lane) | throwaway worktree only | full suite on merged tree, e2e passes | 9 | done (probe; not committed anywhere) |
 | 5 | Frontend build | team-implementer | `Frontend/src/lib/connections.ts`, `Frontend/src/pages/Account.tsx`, `Frontend/src/pages/ConnectCallback.tsx`, `Frontend/src/components/ConnectPrompt.tsx`, `Frontend/src/pages/Account.css`, `Frontend/src/App.tsx` (route only), `Frontend/src/lib/mockApi.ts` (one hook) | C5 C6 C7 C9 | 4, 2 (API shape) | pending |
 
 ## Rounds
@@ -194,6 +197,14 @@ has none; cached per `sub`; any failure means `email: null`.
 - Merge probe (Lane H b240500 + 22861b4, throwaway detached worktree): 46 tests that pass on Lane H alone fail because the gate ran before the hold. Lead ruled option 1 (gate only at send; email Gmail → office SES → needs_connection). Lane H renamed its test file (0bd611c) and implements option 1.
 - Gap list for round 3: R1–R8 (task 8 tests, task 9 fixes); G11 re-run the merge probe after Lane H's option-1 commit, full suite + an end-to-end needs_connection test through the real modules, then the judge.
 - Decision: next round — gaps remain and round 2 fixed G1–G10.
+
+### Round 3 — 2026-11-08
+- Built: tasks 8–9, commits aaa05ab 7b48183 f4af614 (f4af614: `post_x` accepts the X post link Lane H passes as `reply_to`, refuses anything not an https x.com/twitter.com status link before sending).
+- Outcome checks (this branch, f4af614): C1 no new failures (854 passed, 66 baseline, 3 skipped); C2+C3+C4 171 passed; C5 tsc + vitest 112 passed; C6 (+ChatPanel, ReviewQueue) 40 passed; C7 built; C8 dry-run prints kms create-key; C9 exit 0. 9/9 pass. Removing either `ConnectPrompt` mount fails its test (ChatPanel 2, ReviewQueue 1).
+- G11 merge probe (Lane H 48318d6 + f4af614, throwaway `.claude/worktrees/lane-i-merge-probe-r3`, merge 10cef04, clean merge): as merged, 18 Lane H tests fail (they pass on Lane H alone, 447 passed) because they assume the connections module is absent and now get the ruled `needs connection`. With an autouse conftest fixture (module off unless a test asks for `svc`) in both conftest files: 2015 passed, 0 failed. Real-module end-to-end `test_e2e_real_connections.py`: 8 passed (4 × 2 policy engines); forcing `provider = None` fails 6/8. Recipe + file: side-session notes `lane-i-round3-merge-probe.md`.
+- Trial (full, scan + falsifier + advocate; judge NOT run — lead stopped new agents at the usage limit): falsifier INCONCLUSIVE (R1 CONFIRMED, R2 CONFIRMED in mock, R3 UNVERIFIED on this branch alone, 280 merged-tree tests pass; no mutation probes, turn limit; nothing FALSIFIED). Advocate PARTIAL (R1, R2 PROVEN in mock at 375px; R3 PROVEN on the merged tree; 9/10 mutations killed, survivor `require()` never raises is equivalent because the send path re-checks). Scan: 75 flags, all ruled benign by both.
+- Open: judge ruling; in-chat prompt never seen in a browser (mock assistant never emits `connect`); falsifier's R5 concern that the conftest fixture switches the module off for old tests (answered by the as-merged run: the 18 failures are exactly those tests getting the ruled outcome); SES fallback means an office with a sender never asks for Gmail (lead ruling, owner's call).
+- Decision: paused for the usage limit; next session runs the judge only.
 
 ## Decisions
 
