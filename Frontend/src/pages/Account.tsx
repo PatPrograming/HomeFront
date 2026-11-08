@@ -8,6 +8,35 @@ import "./Auth.css";
 import "./Console.css";
 import "./Account.css";
 
+// Accounts we plan to support. The buttons have no backend yet, so they only say so.
+const UPCOMING = ["Gmail", "LinkedIn", "Facebook", "Instagram", "Bluesky"];
+
+function AddAccount() {
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
+  return (
+    <div className="add-account">
+      <button type="button" className="btn btn-outline" aria-expanded={open} onClick={() => setOpen(!open)}>
+        + Add another account
+      </button>
+      {open && (
+        <div className="add-account-options">
+          {UPCOMING.map((name) => (
+            <button key={name} type="button" className="btn btn-outline" onClick={() => setPicked(name)}>
+              {name}
+            </button>
+          ))}
+          {picked && (
+            <p className="muted" role="status">
+              {picked} is coming soon.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function accountStatus(a: ConnectionView): string {
   if (a.connected) {
     const since = a.connectedAt ? ` since ${new Date(a.connectedAt).toLocaleDateString()}` : "";
@@ -105,7 +134,7 @@ export default function Account() {
             </p>
           )}
           <ul className="accounts">
-            {accounts?.map((a) => (
+            {accounts?.filter((a) => a.supported && a.configured).map((a) => (
               <li key={a.provider} id={`connect-${a.provider}`} className={a.provider === highlighted ? "account-row account-row-highlight" : "account-row"}>
                 <div className="account-info">
                   <strong>{a.label}</strong>
@@ -128,6 +157,7 @@ export default function Account() {
               </li>
             ))}
           </ul>
+          <AddAccount />
           <div className="login-actions">
             <button type="button" className="btn btn-outline" onClick={signOut}>
               Sign out

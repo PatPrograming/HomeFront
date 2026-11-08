@@ -65,3 +65,7 @@
     width: auto;
   }
 }
+
+.add-account { margin-top: 12px; }
+.add-account-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.add-account-options p { flex-basis: 100%; margin: 4px 0 0; }

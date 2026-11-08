@@ -176,7 +176,9 @@ class Gateway:
             # 2b. Task scope. Once the staffer approves a plan, the session may use only that plan's tools,
             #     whatever else the role allows. Checked before Cedar; it only narrows, never widens.
             plan_tools = self.store.plan_tools(claims.sid)
-            if plan_tools is not None and tool not in plan_tools:
+            # Revising its own held draft is part of any plan that writes one ("make it shorter").
+            revising_plan_draft = tool == "draft_revise" and plan_tools is not None and any(t in plan_tools for t in OUTBOUND_TOOLS)
+            if plan_tools is not None and tool not in plan_tools and not revising_plan_draft:
                 return self._record(
                     claims, tool, resource, "DENY", "not in the approved plan", auth_protocol=auth_protocol
                 )
