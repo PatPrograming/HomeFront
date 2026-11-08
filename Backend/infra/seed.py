@@ -5,8 +5,10 @@
 - Cases and emails: agent/data/cases.json and agent/data/emails.json (lane C) when
   present, otherwise the small fixture below.
 
-Usage: python Backend/infra/seed.py [--dry-run]
-  --dry-run prints the items and calls nothing.
+Usage: python Backend/infra/seed.py [--dry-run] [--dev-session]
+  --dry-run      prints the items and calls nothing.
+  --dev-session  also writes an active session for the dev token's sid
+                 (`python -m mandate_contracts.dev`), for testing before the broker and Cognito.
 """
 
 from __future__ import annotations
@@ -20,7 +22,8 @@ for rel in ("packages/mandate-contracts/src", "packages/atlas-enricher/src", "pa
     if str(ROOT / rel) not in sys.path:
         sys.path.insert(0, str(ROOT / rel))
 
-from mandate_contracts.ddb import CaseItem, EmailItem, StafferItem  # noqa: E402
+from mandate_contracts.ddb import CaseItem, EmailItem, SessionItem, StafferItem  # noqa: E402
+from mandate_contracts.dev import DEV_SID, dev_claims  # noqa: E402
 
 DATA_DIR = ROOT / "agent" / "data"
 
@@ -56,7 +59,13 @@ def _load(name: str, fixture: list[dict]) -> list[dict]:
     return fixture
 
 
-def main(dry_run: bool) -> None:
+def _dev_session() -> SessionItem:
+    claims = dev_claims()
+    return SessionItem(status="active", agent=claims.sub, acting_for=claims.act, office=claims.office,
+                       mode=claims.mode, created_at="dev")
+
+
+def main(dry_run: bool, dev_session: bool) -> None:
     cases = {c["id"]: CaseItem.model_validate(c) for c in _load("cases.json", FIXTURE_CASES)}
     emails = {e["id"]: EmailItem.model_validate(e) for e in _load("emails.json", FIXTURE_EMAILS)}
 
@@ -67,6 +76,8 @@ def main(dry_run: bool) -> None:
             print(f"PUT CASE#{cid}", item.model_dump_json(by_alias=True))
         for eid, item in emails.items():
             print(f"PUT EMAIL#{eid}", item.model_dump_json(by_alias=True)[:100])
+        if dev_session:
+            print(f"PUT SESSION#{DEV_SID}", _dev_session().model_dump_json(by_alias=True))
         return
 
     from identity_gateway.storage import MandateStore
@@ -78,8 +89,10 @@ def main(dry_run: bool) -> None:
         store.put_case(cid, item)
     for eid, item in emails.items():
         store.put_email(eid, item)
+    if dev_session:
+        store.put_session(DEV_SID, _dev_session())
     print(f"seeded {len(STAFFERS)} staffers, {len(cases)} cases, {len(emails)} emails into {store.table.name}")
 
 
 if __name__ == "__main__":
-    main(dry_run="--dry-run" in sys.argv)
+    main(dry_run="--dry-run" in sys.argv, dev_session="--dev-session" in sys.argv)
