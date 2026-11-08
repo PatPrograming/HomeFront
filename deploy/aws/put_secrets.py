@@ -4,7 +4,8 @@
 
 - MANDATE_SIGNING_SECRET: kept as CloudFormation generated it (it never leaves AWS).
 - COGNITO_AGENT_CLIENT_SECRET: read from the Cognito agent app client (describe-user-pool-client).
-- Government API keys: read from --env-file (your repo-root .env) when present there.
+- Government API keys and the Gmail / X OAuth app ids and secrets: read from --env-file (your
+  repo-root .env) when present there.
 
 Every key the task definition maps is written, empty when you have no value, because ECS refuses
 to start a task whose secret is missing a key. Prints key names and set/empty only, never a value.
@@ -29,7 +30,10 @@ GOV_KEYS = (
     "NASA_API_KEY", "NOAA_CDO_TOKEN", "NPS_API_KEY", "BLS_API_KEY", "EPA_API_KEY",
     "FEC_API_KEY", "FCC_API_KEY",
 )
-SECRET_KEYS = ("MANDATE_SIGNING_SECRET", "COGNITO_AGENT_CLIENT_SECRET", *GOV_KEYS)
+# Connected accounts (Gmail, X) OAuth apps. The ids aren't secret, but they live with their secrets.
+OAUTH_KEYS = ("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "X_OAUTH_CLIENT_ID", "X_OAUTH_CLIENT_SECRET")
+FROM_ENV_FILE = (*GOV_KEYS, *OAUTH_KEYS)
+SECRET_KEYS = ("MANDATE_SIGNING_SECRET", "COGNITO_AGENT_CLIENT_SECRET", *FROM_ENV_FILE)
 
 
 def read_env_file(path: Path, wanted: tuple[str, ...]) -> dict[str, str]:
@@ -79,7 +83,7 @@ def main(argv: list[str] | None = None, cognito=None, secrets=None) -> int:
     if not agent_secret:
         raise SystemExit("the agent app client has no secret; check Backend/infra/cognito.sh")
     current = json.loads(secrets.get_secret_value(SecretId=SECRET_ID)["SecretString"])
-    secret = merged_secret(current, agent_secret, read_env_file(Path(args.env_file), GOV_KEYS))
+    secret = merged_secret(current, agent_secret, read_env_file(Path(args.env_file), FROM_ENV_FILE))
 
     print(f"{SECRET_ID} will hold:\n{summary(secret)}")
     if not args.apply:

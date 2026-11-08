@@ -74,6 +74,20 @@ PARAMS=(ImageUri="$IMAGE" SecretArn="$SECRET_ARN" VpcId="$VPC_ID" SubnetIds="$SU
 [[ -n "${SES_FROM:-}" ]] && PARAMS+=(SesFromAddress="$SES_FROM")
 [[ -n "${AVP_POLICY_NAMES:-}" ]] && PARAMS+=(AvpPolicyNames="$AVP_POLICY_NAMES")
 [[ "${GRANT_COGNITO_ADMIN:-}" == true ]] && PARAMS+=(GrantCognitoAdmin=true)
+# Connected accounts: grant KMS only when Backend/infra/connections.sh has made the key.
+KMS_KEY_ARN="$(aws kms describe-key --key-id alias/homefront-connections --query KeyMetadata.Arn --output text 2>/dev/null || true)"
+if [[ "$KMS_KEY_ARN" == arn:* ]]; then
+  PARAMS+=(ConnectionsKmsKeyArn="$KMS_KEY_ARN"); echo "connected-accounts key $KMS_KEY_ARN"
+else
+  echo "no alias/homefront-connections key: connected accounts stay off (no KMS grant)"
+fi
+# The agents run as homefront-agent (Bedrock only), never as the gateway's task role.
+if aws iam get-role --role-name homefront-agent --query Role.Arn --output text >/dev/null 2>&1; then
+  echo "agent role homefront-agent exists"
+else
+  echo "WARNING: role homefront-agent is missing, so agents will have no AWS access until you create it:"
+  echo "  bash Backend/infra/agent-role.sh --apply --trust-principal arn:aws:iam::$ACCOUNT:role/homefront-gateway-task"
+fi
 # Only for a redeploy in another account (README, "If the event account is wiped"); the template's
 # defaults are this event's IDs.
 [[ -n "${COGNITO_USER_POOL_ID:-}" ]] && PARAMS+=(CognitoUserPoolId="$COGNITO_USER_POOL_ID")
@@ -84,7 +98,7 @@ PARAMS=(ImageUri="$IMAGE" SecretArn="$SECRET_ARN" VpcId="$VPC_ID" SubnetIds="$SU
 [[ -n "${GUARDRAIL_ID:-}" ]] && PARAMS+=(GuardrailId="$GUARDRAIL_ID")
 [[ -n "${GUARDRAIL_VERSION:-}" ]] && PARAMS+=(GuardrailVersion="$GUARDRAIL_VERSION")
 run aws cloudformation deploy --stack-name "$APP_STACK" --template-file "$HERE/app.yaml" \
-  --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset --parameter-overrides "${PARAMS[@]}"
+  --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset --parameter-overrides "${PARAMS[@]}"
 # A re-run with the same image tag would not restart the task; force it so new secrets load.
 CLUSTER="$(stack_output "$APP_STACK" ClusterName)"
 SERVICE="$(stack_output "$APP_STACK" ServiceName)"

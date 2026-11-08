@@ -16,7 +16,9 @@ browser ──HTTPS──> CloudFront ──┬── /            ──> S3 bu
   agent (`agent/agent.py --sid … --chat`) as a child process in the same container, exactly as on a laptop.
 - **CloudFront** serves the console and forwards `/api` and `/mcp` to the gateway, so the console calls the API on its
   own origin. The load balancer is internal: the only way in from the internet is CloudFront.
-- **The task role** replaces the developer's Workshop Studio keys. It grants only what the code calls (table below).
+- **Two identities, never shared.** The gateway runs as the task role `homefront-gateway-task`, which replaces the
+  developer's Workshop Studio keys and cannot call a model. For each agent, the gateway assumes the Bedrock-only role
+  `homefront-agent` and gives the child process only those temporary credentials (`HOMEFRONT_AGENT_ROLE_ARN`).
 - **Secrets Manager** holds one secret, `homefront/runtime`. ECS injects it as environment variables when the task
   starts. CloudFormation generates the mandate signing key inside AWS; nobody ever sees it.
 - **CloudWatch Logs** keeps the gateway's and the agents' output in `/homefront/gateway` for 14 days.
@@ -30,17 +32,29 @@ browser ──HTTPS──> CloudFront ──┬── /            ──> S3 bu
 - Fargate gives the container a normal process model with an init process (`InitProcessEnabled`), which reaps the
   agent children and forwards the stop signal to them.
 
-### What the task role may do
+### What each role may do
+
+`homefront-agent` (created by `Backend/infra/agent-role.sh`, the same role laptops use): `bedrock:InvokeModel`,
+`bedrock:InvokeModelWithResponseStream` on the Sonnet 5 and Haiku 5.5 inference profiles, and `bedrock:ApplyGuardrail`
+on `l74ju5pcrcdg`. Nothing else.
+
+`homefront-gateway-task` (this stack):
 
 | Service | Actions | Only on |
 |---|---|---|
 | DynamoDB | item reads and writes, `Query`, `Scan`, `DescribeTable` (no create or delete table) | `mandate`, `homefront-*` and their indexes |
 | Verified Permissions | `IsAuthorized` | policy store `Fmx8fLovCMpXgABUM1bHhb` |
-| Bedrock | `InvokeModel`, `InvokeModelWithResponseStream` | `us.anthropic.claude-sonnet-5*` and `us.anthropic.claude-haiku-5-5*` inference profiles and their models |
-| Bedrock | `ApplyGuardrail` | guardrail `l74ju5pcrcdg` |
+| STS | `AssumeRole` | `role/homefront-agent` only |
+| Bedrock | `ApplyGuardrail` (the gateway's own scan of untrusted tool output) | guardrail `l74ju5pcrcdg` |
+| KMS | `Encrypt`, `Decrypt`, only with the `staffer` + `provider` encryption context | `alias/homefront-connections`'s key, when it exists |
 | SES | `SendEmail` from the one configured sender, `GetEmailIdentity`, `ListEmailIdentities` | only when `SES_FROM` is set at deploy |
 | Cognito | nothing today | `main`'s routes call no Cognito admin API: tokens are checked against the pool's public keys, and offboarding writes DynamoDB. |
+| Secrets Manager | nothing | ECS's execution role reads `homefront/runtime` and injects it before the app starts. |
 | Cognito, after the Admin-Roles merge | `ListUsers`, `ListUsersInGroup`, `AdminAddUserToGroup`, `AdminRemoveUserFromGroup` | the mandate pool only; turn on with `GRANT_COGNITO_ADMIN=true deploy/aws/deploy.sh --apply` |
+
+The agent-role script's flag name `--trust-principal` is Lane E's; check `bash Backend/infra/agent-role.sh --help`
+after that merge. Connected accounts also need `https://<id>.cloudfront.net/account/connected` added as a redirect URI in
+the Google and X developer consoles.
 
 Not granted, on purpose: the teammates' "Run a task" runner (Opus 5.5 through Bedrock Mantle), and the IAM permission
 check on the Agents tab's email setup. Both report an error in the console instead of working.
@@ -54,7 +68,7 @@ check on the Agents tab's email setup. Both report an error in the console inste
 | `foundation.yaml` | CloudFormation stack `homefront-foundation`: the ECR repository and the `homefront/runtime` secret. |
 | `app.yaml` | CloudFormation stack `homefront-app`: roles, ECS, internal ALB, CloudFront, S3, log group. |
 | `deploy.sh` | Runs everything in order: stacks, image, secret, console upload, Cognito URLs, smoke test. |
-| `put_secrets.py` | Fills the secret: the agent's Cognito client secret and your government API keys. Prints key names only. |
+| `put_secrets.py` | Fills the secret: the agent's Cognito client secret, your government API keys and the Gmail / X OAuth apps. Prints key names only. |
 | `cognito_urls.py` | Adds (or with `--remove`, takes out) the HTTPS URL in the `staff-web` client's callback and logout URLs. Keeps `http://localhost:3000/`. |
 | `add_tester.py` | Creates a judge's or tester's account. Cognito emails them a temporary password. |
 | `smoke.sh` | Read-only checks of the live site. |
@@ -70,7 +84,9 @@ check on the Agents tab's email setup. Both report an error in the console inste
 - The AWS CLI v2, Node 20 and the repo's `.venv` (created by `scripts/run-gateway.sh`).
 - Fresh Workshop Studio credentials for the event account in your shell, region `us-east-1`. They expire after a few
   hours; on `ExpiredToken`, fetch new ones from the event portal and repeat the step.
-- This branch merged into the checkout you run from (or run from this worktree).
+- This branch merged into the checkout you run from (or run from this worktree), together with Lane E's agent-role
+  work (`HOMEFRONT_AGENT_ROLE_ARN` in the supervisor and `Backend/infra/agent-role.sh`). Without it, deployed agents
+  get no AWS credentials and cannot answer.
 - Your repo-root `.env` holds the government API keys you want live. Only `put_secrets.py` reads it, and only those keys.
 
 ### Deploy
@@ -98,7 +114,24 @@ check on the Agents tab's email setup. Both report an error in the console inste
    ```
 
    This takes 15 to 25 minutes the first time, mostly CloudFront. It worked when it ends with `SMOKE OK` and
-   `Console: https://<id>.cloudfront.net/`. Copy that URL.
+   `Console: https://<id>.cloudfront.net/`. Copy that URL. If the output shows `WARNING: role homefront-agent is
+   missing`, do step 3a and 3b.
+
+3a. Preview the agent role, trusting the gateway's task role. Replace `<account>` with the id from step 1.
+
+   ```bash
+   bash Backend/infra/agent-role.sh --trust-principal arn:aws:iam::<account>:role/homefront-gateway-task
+   ```
+
+   It prints the role and its Bedrock-only policy as dry-run lines.
+
+3b. Create it.
+
+   ```bash
+   bash Backend/infra/agent-role.sh --apply --trust-principal arn:aws:iam::<account>:role/homefront-gateway-task
+   ```
+
+   It worked when a re-run of `deploy/aws/deploy.sh` prints `agent role homefront-agent exists`.
 
 4. Preview a tester's account.
 

@@ -31,7 +31,7 @@ The repo holds CloudFormation templates and dry-run-by-default scripts that, whe
 | C1 | Templates lint clean | `/private/tmp/claude-501/-Users-tranquanghuy-Projects-aws-a10-hack-2026/84011187-45c8-4436-868e-23188cf55860/scratchpad/cfn/bin/cfn-lint deploy/aws/foundation.yaml deploy/aws/app.yaml` | exit 0 |
 | C2 | Policy, secrets and dry-run tests pass (fake `aws` CLI records every call; no write call without `--apply`) | `.venv/bin/python -m pytest -q deploy/aws/tests` | exit 0 |
 | C3 | Container builds and answers its health check with AWS credentials stripped | `deploy/aws/local-test.sh` | stdout contains HEALTH OK |
-| C4 | Agent children get the task role's credentials (container credential variables pass the allowlist) | `PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src:packages/guardrail-scanner/src .venv/bin/python -m pytest -q Backend/tests/test_agent_autostart.py -k container` | stdout matches /[1-9]\d* passed/ |
+| C4 | Agent children never inherit the gateway task role (lead, 2026-11-08: separate identities; agents get only homefront-agent credentials via AssumeRole) | `grep -c AWS_CONTAINER Backend/app/services/agent_supervisor.py` | stdout matches /^0\s*$/ |
 | C5 | Backend suite still green (except `test_agent_requests.py`: 11 failures already on origin/main 3d7d0e1, router not mounted; reported as a follow-up) | `PYTHONPATH=Backend:packages/mandate-contracts/src:packages/atlas-enricher/src:packages/mcp-tools/src:packages/identity-gateway/src:packages/guardrail-scanner/src .venv/bin/python -m pytest -q Backend/tests --ignore=Backend/tests/test_agent_requests.py` | exit 0 |
 
 ## Not Checkable By Command
@@ -62,6 +62,8 @@ The repo holds CloudFormation templates and dry-run-by-default scripts that, whe
 ## Rounds
 
 ## Decisions
+
+- 2026-11-08: Scope change from the lead (verbatim): "The gateway and the agent processes must not share an identity. Gateway task role: DynamoDB, Verified Permissions, Cognito admin calls, SES, Secrets Manager, and kms:Decrypt/Encrypt on Lane I's connected-accounts key (with the EncryptionContext condition). Agent role: Bedrock only (`bedrock:InvokeModel*` on the Sonnet 5 / Haiku 5.5 profiles, `bedrock:ApplyGuardrail` on `l74ju5pcrcdg`), assumed by the gateway per agent via `sts:AssumeRole` (env `HOMEFRONT_AGENT_ROLE_ARN`)." C4 rewritten to match (it previously required the opposite); commit 6243691 reverted.
 
 - 2026-11-08: Approval gate skipped. The lead's brief already fixed the deliverables and the tests (local container health check with credentials stripped, template lint); these checks restate them. The lead can stop the loop.
 - 2026-11-08: Lead (this session) builds directly instead of spawning team-implementer: the work is new IaC files with one small app edit, and the brief asks for a lite trial only.

@@ -74,9 +74,19 @@ Parameters:
       "true" once the Admin-Roles work (admin tab: people and roles) is merged; its routes list users and change
       group membership. main today calls no Cognito admin API.
 
+  AgentRoleName:
+    Type: String
+    Default: homefront-agent
+    Description: Bedrock-only role the gateway assumes per agent (Backend/infra/agent-role.sh creates it)
+  ConnectionsKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: ARN of the alias/homefront-connections KMS key (Backend/infra/connections.sh). Empty = no KMS grant.
+
 Conditions:
   HasSes: !Not [!Equals [!Ref SesFromAddress, ""]]
   HasCognitoAdmin: !Equals [!Ref GrantCognitoAdmin, "true"]
+  HasConnectionsKey: !Not [!Equals [!Ref ConnectionsKmsKeyArn, ""]]
 
 Resources:
   # ---------------------------------------------------------------- logs
@@ -108,10 +118,13 @@ Resources:
                 Action: secretsmanager:GetSecretValue
                 Resource: !Ref SecretArn
 
-  # What the gateway and its agents may do. Replaces the developer's Workshop Studio keys.
+  # What the gateway may do. Replaces the developer's Workshop Studio keys. The agents do NOT get
+  # this identity: the gateway assumes the separate homefront-agent role (Bedrock only) for each
+  # agent and hands the child only those temporary credentials.
   TaskRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: homefront-gateway-task # fixed: the homefront-agent trust policy names it
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -150,18 +163,11 @@ Resources:
                 Effect: Allow
                 Action: verifiedpermissions:IsAuthorized
                 Resource: !Sub arn:${AWS::Partition}:verifiedpermissions::${AWS::AccountId}:policy-store/${PolicyStoreId}
-              - Sid: AgentModelThroughInferenceProfiles
+              - Sid: BecomeTheAgentRoleForEachAgent
                 Effect: Allow
-                Action:
-                  - bedrock:InvokeModel
-                  - bedrock:InvokeModelWithResponseStream
-                Resource:
-                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-sonnet-5*
-                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-5-5*
-                  # A cross-region profile routes to the model in any US region, so the model ARN
-                  # is region-wildcarded, but only reachable through one of the profiles above.
-                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.claude-sonnet-5*
-                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.claude-haiku-5-5*
+                Action: sts:AssumeRole
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AgentRoleName}
+              # The gateway's own scan of untrusted tool output (guarded() -> guardrail_scanner.scan).
               - Sid: GuardrailScan
                 Effect: Allow
                 Action: bedrock:ApplyGuardrail
@@ -200,6 +206,24 @@ Resources:
                     - cognito-idp:AdminAddUserToGroup
                     - cognito-idp:AdminRemoveUserFromGroup
                   Resource: !Sub arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
+          - !Ref AWS::NoValue
+        - !If
+          - HasConnectionsKey
+          - PolicyName: homefront-connections-kms
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Sid: ConnectedAccountTokensWithContextOnly
+                  Effect: Allow
+                  Action:
+                    - kms:Encrypt
+                    - kms:Decrypt
+                  Resource: !Ref ConnectionsKmsKeyArn
+                  Condition:
+                    "Null":
+                      kms:EncryptionContextKeys: "false"
+                    ForAllValues:StringEquals:
+                      kms:EncryptionContextKeys: [staffer, provider]
           - !Ref AWS::NoValue
 
   # ---------------------------------------------------------------- network
@@ -334,6 +358,12 @@ Resources:
             - { Name: DYNAMODB_TABLE_PREFIX, Value: !Ref TablePrefix }
             - { Name: AGENT_STORE, Value: dynamodb }
             - { Name: HOMEFRONT_AUTOSTART_AGENT, Value: "1" }
+            - Name: HOMEFRONT_AGENT_ROLE_ARN
+              Value: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AgentRoleName}
+            - Name: CONNECTIONS_KMS_KEY_ID
+              Value: !If [HasConnectionsKey, alias/homefront-connections, ""]
+            - Name: CONNECTIONS_REDIRECT_URI
+              Value: !Sub https://${Distribution.DomainName}/account/connected
             - { Name: HOMEFRONT_LIVE_SCRAPE, Value: "1" }
             - { Name: HOMEFRONT_EMAIL_FROM, Value: !Ref SesFromAddress }
             # The console is same-origin through CloudFront; localhost stays for local development.
@@ -358,6 +388,10 @@ Resources:
             - { Name: EPA_API_KEY, ValueFrom: !Sub "${SecretArn}:EPA_API_KEY::" }
             - { Name: FEC_API_KEY, ValueFrom: !Sub "${SecretArn}:FEC_API_KEY::" }
             - { Name: FCC_API_KEY, ValueFrom: !Sub "${SecretArn}:FCC_API_KEY::" }
+            - { Name: GOOGLE_OAUTH_CLIENT_ID, ValueFrom: !Sub "${SecretArn}:GOOGLE_OAUTH_CLIENT_ID::" }
+            - { Name: GOOGLE_OAUTH_CLIENT_SECRET, ValueFrom: !Sub "${SecretArn}:GOOGLE_OAUTH_CLIENT_SECRET::" }
+            - { Name: X_OAUTH_CLIENT_ID, ValueFrom: !Sub "${SecretArn}:X_OAUTH_CLIENT_ID::" }
+            - { Name: X_OAUTH_CLIENT_SECRET, ValueFrom: !Sub "${SecretArn}:X_OAUTH_CLIENT_SECRET::" }
 
   GatewayService:
     Type: AWS::ECS::Service

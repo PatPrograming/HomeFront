@@ -84,7 +84,7 @@ def test_task_role_grants_only_the_listed_actions():
         "dynamodb:DeleteItem", "dynamodb:BatchWriteItem", "dynamodb:ConditionCheckItem",
         "dynamodb:Query", "dynamodb:Scan", "dynamodb:DescribeTable",
         "verifiedpermissions:IsAuthorized",
-        "bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream",
+        "sts:AssumeRole",
         "bedrock:ApplyGuardrail",
     }
     for s in statements("homefront-gateway"):
@@ -102,10 +102,31 @@ def test_each_statement_is_pinned_to_its_resource():
     assert APP["Parameters"]["PolicyStoreId"]["Default"] == "Fmx8fLovCMpXgABUM1bHhb"
     assert "guardrail/${GuardrailId}" in by_sid["GuardrailScan"]
     assert APP["Parameters"]["GuardrailId"]["Default"] == "l74ju5pcrcdg"
-    models = by_sid["AgentModelThroughInferenceProfiles"]
-    assert "inference-profile/us.anthropic.claude-sonnet-5" in models
-    assert "inference-profile/us.anthropic.claude-haiku-5-5" in models
-    assert "opus" not in models
+    assert by_sid["BecomeTheAgentRoleForEachAgent"] == text({"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AgentRoleName}"})
+    assert APP["Parameters"]["AgentRoleName"]["Default"] == "homefront-agent"
+
+
+def test_the_gateway_and_the_agents_do_not_share_an_identity():
+    # The gateway can't call a model at all; only homefront-agent (assumed per agent) can.
+    every_action = text(RES["TaskRole"]["Properties"]["Policies"])
+    assert "bedrock:InvokeModel" not in every_action
+    assert RES["TaskRole"]["Properties"]["RoleName"] == "homefront-gateway-task"
+    env = {v["Name"]: v["Value"] for v in CONTAINER["Environment"]}
+    assert env["HOMEFRONT_AGENT_ROLE_ARN"] == {"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AgentRoleName}"}
+    supervisor = (HERE.parents[1] / "Backend/app/services/agent_supervisor.py").read_text()
+    assert "AWS_CONTAINER_CREDENTIALS" not in supervisor  # the child never inherits the task role
+
+
+def test_connections_key_is_opt_in_and_needs_the_encryption_context():
+    policy = next(p for p in RES["TaskRole"]["Properties"]["Policies"]
+                  if "Fn::If" in p and p["Fn::If"][0] == "HasConnectionsKey")
+    _, granted, otherwise = policy["Fn::If"]
+    assert otherwise == {"Ref": "AWS::NoValue"}
+    (stmt,) = granted["PolicyDocument"]["Statement"]
+    assert set(stmt["Action"]) == {"kms:Encrypt", "kms:Decrypt"}
+    assert stmt["Resource"] == {"Ref": "ConnectionsKmsKeyArn"}
+    assert stmt["Condition"]["Null"] == {"kms:EncryptionContextKeys": "false"}
+    assert stmt["Condition"]["ForAllValues:StringEquals"] == {"kms:EncryptionContextKeys": ["staffer", "provider"]}
 
 
 def test_ses_is_granted_only_when_a_sender_is_configured_and_only_from_it():
