@@ -34,8 +34,13 @@ class Settings(BaseSettings):
     # scripts/create_tables.py, app/core/dynamodb.py). The running app uses the
     # `mandate` table, not these.
     aws_region: str = ""
+    aws_profile: str = ""  # exported by apply_aws_env() for boto3 (SES), if set in .env
     dynamodb_table_prefix: str = "homefront-"
     dynamodb_endpoint_url: str = ""  # http://localhost:8000 for DynamoDB Local
+
+    # Outbound email (SES). Fallback sender when an agent has none of its own.
+    homefront_email_from: str = ""
+    homefront_ses_region: str = ""
 
     # api.data.gov — gateway-held only; never returned to agents (AML.M0026).
     data_gov_api_key: str = ""
@@ -74,6 +79,25 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def apply_aws_env() -> None:
+    """Export AWS and email settings from .env for code that reads os.environ
+    (boto3's credential chain, the MCP email handlers). Values already set in
+    the real environment win."""
+    import os
+
+    settings = get_settings()
+    exports = {
+        "AWS_PROFILE": settings.aws_profile,
+        "AWS_REGION": settings.resolved_aws_region,
+        "AWS_DEFAULT_REGION": settings.resolved_aws_region,
+        "HOMEFRONT_EMAIL_FROM": settings.homefront_email_from,
+        "HOMEFRONT_SES_REGION": settings.homefront_ses_region,
+    }
+    for key, value in exports.items():
+        if value and value.strip():
+            os.environ.setdefault(key, value.strip())
 
 
 def apply_datagov_env() -> None:

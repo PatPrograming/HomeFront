@@ -14,3 +14,7 @@ These files came from `main` in the second merge into `Merge-Main-Huy` (main `4b
 TODO: to revive a page, port it to the mandate API in `src/lib/api.ts` (`/sessions`, `/events`, `/staff/{id}/offboard`)
 and add backend routes on the mandate design first. Approvals would need a pending-approval step inside `guarded()`
 after the Cedar ALLOW, never a separate token path.
+
+Third merge (main `130c7e1`): main's new `RunTask`, `EmailSetup`, `EmailDelivery` pages, the edited `Monitoring`
+page and `lib/api.js` (which sends the old pool's ID token) are parked here as well. The next commit on
+`Merge-Main-Huy-2` restores them in `src/` on our `lib/api.ts` login (Huy's decision: keep the teammates' tabs).

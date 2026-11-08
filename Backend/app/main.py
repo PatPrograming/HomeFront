@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agent_iam import ensure_package_paths, include_agent_iam
-from app.core.config import apply_datagov_env, get_settings
+from app.core.config import apply_aws_env, apply_datagov_env, get_settings
 
 ensure_package_paths()  # the routers below import the gateway packages
 
@@ -17,6 +17,7 @@ API_PREFIX = "/api/v1"
 def create_app() -> FastAPI:
     settings = get_settings()
     apply_datagov_env()
+    apply_aws_env()
     app = FastAPI(
         title="HomeFront API",
         description="HomeFront: delegated agent identity, Cedar-authorized MCP tools, instant offboarding",

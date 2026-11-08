@@ -9,5 +9,5 @@ def home() -> dict:
     return {
         # Same copy as the frontend's fallback in Frontend/src/pages/Home.tsx.
         "mission": ["Agentic Outreach for", "Federal Agencies."],
-        "buttons": ["Social Platform", "button2"],
+        "buttons": ["Start a communication", "View agents"],
     }

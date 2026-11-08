@@ -1,92 +1,24 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import { api } from "../lib/api.js";
 import { describeError, kindLabel, sendsEmail, type Agent, type AgentType } from "../lib/agents";
+import EmailSetup, { NoEmailNote } from "./EmailSetup";
+import RunTask from "./RunTask";
 import "./Agents.css";
-
-const parseEmails = (text: string) =>
-  text
-    .split(/[\s,;]+/)
-    .map((e) => e.trim())
-    .filter(Boolean);
-
-function MailingList({ agent, onSaved }: { agent: Agent; onSaved: (a: Agent) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const count = agent.recipients.length;
-
-  function open() {
-    setDraft(agent.recipients.join("\n"));
-    setError(null);
-    setEditing(true);
-  }
-
-  async function save() {
-    setBusy(true);
-    setError(null);
-    try {
-      onSaved(await api.setRecipients(agent.agent_id, parseEmails(draft)));
-      setEditing(false);
-    } catch (e) {
-      setError(describeError(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="mailing-list">
-      <div className="mailing-list-head">
-        <span className="field-label">Mailing list</span>
-        <span className={count ? "muted" : "mailing-list-empty"}>
-          {count ? `${count} address${count === 1 ? "" : "es"}` : "Empty: this agent can't email anyone"}
-        </span>
-        {!editing && (
-          <button className="btn btn-ghost" type="button" onClick={open}>
-            {count ? "Edit" : "Add addresses"}
-          </button>
-        )}
-      </div>
-      {editing && (
-        <>
-          <textarea
-            className="textarea"
-            rows={6}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={"One address per line, or paste a comma-separated list"}
-            aria-label={`Mailing list for ${agent.name}`}
-          />
-          <p className="muted mailing-list-hint">
-            {parseEmails(draft).length} address{parseEmails(draft).length === 1 ? "" : "es"} · the agent can only
-            email these.
-          </p>
-          {error && (
-            <p className="alert alert-error" role="alert">
-              {error}
-            </p>
-          )}
-          <div className="form-actions">
-            <button className="btn btn-primary" type="button" disabled={busy} onClick={save}>
-              {busy ? "Saving…" : "Save list"}
-            </button>
-            <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => setEditing(false)}>
-              Cancel
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 export default function Agents() {
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [types, setTypes] = useState<AgentType[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // ?edit=<agent id>&section=email (or /agents/<id>/email) opens that agent's email setup.
+  const [params] = useSearchParams();
+  const editId = params.get("section") === "email" ? params.get("edit") : null;
+
+  useEffect(() => {
+    if (!editId || !agents) return;
+    document.getElementById(`email-${editId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [editId, agents]);
 
   useEffect(() => {
     Promise.all([api.agents(), api.agentTypes()])
@@ -135,20 +67,24 @@ export default function Agents() {
                   <h2>{a.name}</h2>
                   <p className="muted">{a.agency}</p>
                   <div className="type-tools">
-                    {a.tool_grants.length ? (
+                    {(a.tool_grants ?? []).length ? (
                       a.tool_grants.map((t) => <code key={t}>{t}</code>)
                     ) : (
                       <span className="muted">No tools granted</span>
                     )}
                   </div>
-                  {sendsEmail(a) && (
-                    <MailingList
+                  {sendsEmail(a) ? (
+                    <EmailSetup
                       agent={a}
+                      defaultOpen={a.agent_id === editId}
                       onSaved={(updated) =>
                         setAgents((list) => list && list.map((x) => (x.agent_id === updated.agent_id ? updated : x)))
                       }
                     />
+                  ) : (
+                    <NoEmailNote agent={a} types={types} />
                   )}
+                  <RunTask agent={a} collapsible />
                   <Link
                     to={`/monitoring?agent=${encodeURIComponent(a.agent_id)}`}
                     className="btn btn-outline"

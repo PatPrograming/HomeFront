@@ -11,6 +11,7 @@ interface HeroProps {
 export default function Hero({ mission, buttons }: HeroProps) {
   const { session } = useAuth();
   const primaryLabel = buttons?.[0] || "Start a communication";
+  const secondaryLabel = buttons?.[1] || "View agents";
   return (
     <section className="hero">
       <div className="container hero-grid">
@@ -33,7 +34,7 @@ export default function Hero({ mission, buttons }: HeroProps) {
             </Link>
             {session ? (
               <Link className="btn btn-outline" to="/monitoring">
-                View agent activity
+                {secondaryLabel}
               </Link>
             ) : (
               <Link className="btn btn-outline" to="/login">

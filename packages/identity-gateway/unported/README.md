@@ -14,3 +14,8 @@ package and is outside `src/`), so nothing imports or serves them.
 Their tests (`Backend/tests/test_runner.py`, `test_agents.py`, `test_agent_ownership.py`, and from the second merge `test_activity_log.py`, `test_approvals.py`, `test_agent_types.py`, `test_mailing_list.py`) are skipped with this
 reason. To revive the runner, port it to fetch a mandate token from the broker and call tools through `guarded()`
 instead of `gateway_tool_call`; `store.py` is in git history at `origin/main` (`f96f53a`).
+
+Third merge (main `130c7e1`): main's old-gateway `app.py` (agents, `/auth/token`, grants, approvals, runs, `/audit`,
+email setup routes), `store.py` and the new `email_admin.py` (SES account, sender and recipient verification) are
+parked here too, with their tests `test_ses_tools.py` and `test_email_settings.py` skipped. The next commit on
+`Merge-Main-Huy-2` restores all of them behind our Cognito login (Huy's decision: keep the teammates' tabs).
